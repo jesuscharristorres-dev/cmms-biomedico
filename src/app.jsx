@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
-  Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X, ChevronRight,
+  Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X,
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
-  ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, Image as ImageIcon
+  ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -112,7 +112,7 @@ async function loadEquipos() {
   try {
     const raw = localStorage.getItem('cmms-equipos');
     if (raw) return JSON.parse(raw);
-  } catch (e) { /* sin datos aún */ }
+  } catch { /* sin datos aún */ }
   return [];
 }
 async function saveEquipos(equipos) {
@@ -171,7 +171,7 @@ function RecordList({ t, records, fields, onAdd, onRemove, onUpdate }) {
           <div key={r.id} className={`rounded-lg border p-2.5 ${t.panel3} ${t.border}`}>
             <div className="flex flex-wrap gap-2">
               {fields.map(f => (
-                <div key={f.key} className="flex-1 min-w-[120px]">
+                <div key={f.key} className="flex-1 min-w-30">
                   <label className="text-[9px] uppercase text-slate-400">{f.label}</label>
                   {f.type === 'select'
                     ? <SelectInput t={t} value={r[f.key]} options={f.options} onChange={v => onUpdate(i, f.key, v)} />
@@ -186,7 +186,7 @@ function RecordList({ t, records, fields, onAdd, onRemove, onUpdate }) {
       <div className={`rounded-lg border p-2.5 ${t.panel3} ${t.border}`}>
         <div className="flex flex-wrap gap-2">
           {fields.map(f => (
-            <div key={f.key} className="flex-1 min-w-[120px]">
+            <div key={f.key} className="flex-1 min-w-30">
               <label className="text-[9px] uppercase text-slate-400">{f.label}</label>
               {f.type === 'select'
                 ? <SelectInput t={t} value={draft[f.key] || f.options[0]} options={f.options} onChange={v => setDraft({ ...draft, [f.key]: v })} />
@@ -221,7 +221,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, accent }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className={`relative w-full sm:w-[640px] h-full overflow-y-auto ${t.panel} border-l ${t.border}`}>
+      <div className={`relative w-full sm:w-160 h-full overflow-y-auto ${t.panel} border-l ${t.border}`}>
         <div className="sticky top-0 z-10 px-5 py-4 border-b flex items-center justify-between" style={{ background: accent, borderColor: accent }}>
           <div>
             <div className="text-white/70 text-[10px] uppercase tracking-wide">{equipo.empresa} · {equipo.sede}</div>
@@ -230,7 +230,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, accent }) {
           <button onClick={onClose} className="text-white/80 hover:text-white"><X size={20} /></button>
         </div>
 
-        <div className="flex overflow-x-auto border-b sticky top-[60px] z-10 bg-inherit" style={{ borderColor: 'inherit' }}>
+        <div className="flex overflow-x-auto border-b sticky top-15 z-10 bg-inherit" style={{ borderColor: 'inherit' }}>
           {DRAWER_TABS.map(tb => (
             <button key={tb} onClick={() => setTab(tb)}
               className={`px-3 py-2.5 text-xs whitespace-nowrap border-b-2 transition ${tab === tb ? 'font-semibold' : `${t.muted} border-transparent`}`}
@@ -408,7 +408,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, accent }) {
 function ObsModal({ equipo, onClose, onSave, t, accent }) {
   const [val, setVal] = useState(equipo.observaciones || '');
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div className={`relative w-full max-w-md rounded-xl border p-4 ${t.panel} ${t.border}`}>
         <div className="flex justify-between items-center mb-3">
@@ -442,7 +442,7 @@ function LoginScreen({ onLogin }) {
   };
 
   return (
-    <div className="min-h-[700px] h-full flex items-center justify-center bg-slate-950 text-slate-100" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
+    <div className="min-h-175 h-full flex items-center justify-center bg-slate-950 text-slate-100" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
       <form onSubmit={submit} className="w-full max-w-sm bg-slate-900 border border-slate-700/60 rounded-xl p-7">
         <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: '#4FD1C5' }}>CMMS Biomédico</div>
         <h1 className="text-lg font-bold mb-5">Iniciar sesión</h1>
@@ -578,7 +578,7 @@ function MainApp({ onLogout }) {
 
   /* ---------------------------------------------------------------- */
   return (
-    <div className={`flex h-full min-h-[700px] font-sans ${t.bg} ${t.text}`} style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
+    <div className={`flex h-full min-h-175 font-sans ${t.bg} ${t.text}`} style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
       {/* SIDEBAR */}
       <div className={`w-56 shrink-0 border-r flex flex-col ${t.panel} ${t.border}`}>
         <div className="px-4 py-5 border-b" style={{ borderColor: 'inherit' }}>
@@ -792,7 +792,7 @@ const INVENTORY_HEAD = [
   { key: 'clasificacionRiesgo', label: 'RIESGO' }, { key: 'inventario', label: 'INVENTARIO' },
 ];
 
-function InventarioPage({ mode, equipos, allEquipos, t, accent, filters, setFilters, search, setSearch, sort, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport }) {
+function InventarioPage({ mode, equipos, t, accent, filters, setFilters, search, setSearch, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport }) {
   const year = new Date().getFullYear();
   const title = { inventario: 'Inventario de equipos', mantenimientos: 'Mantenimientos preventivos', calibraciones: 'Calibraciones', correctivos: 'Correctivos' }[mode];
 
@@ -974,7 +974,7 @@ function InventarioPage({ mode, equipos, allEquipos, t, accent, filters, setFilt
 /* ---------------------------------------------------------------- */
 /* PÁGINA: REPORTES                                                   */
 /* ---------------------------------------------------------------- */
-function ReportesPage({ equipos, t, accent, onExport }) {
+function ReportesPage({ t, accent, onExport }) {
   const reportes = [
     'Reporte mensual', 'Reporte anual', 'Reporte por empresa', 'Reporte por sede',
     'Reporte por técnico', 'Reporte de calibraciones', 'Reporte de correctivos', 'Reporte de preventivos',
@@ -998,7 +998,7 @@ function ReportesPage({ equipos, t, accent, onExport }) {
 /* ---------------------------------------------------------------- */
 /* PÁGINA: CONFIGURACIÓN                                              */
 /* ---------------------------------------------------------------- */
-function ConfigPage({ t, accent, onReset, onLogout }) {
+function ConfigPage({ t, onReset, onLogout }) {
   return (
     <div>
       <h1 className="text-lg font-bold mb-4">Configuración</h1>
@@ -1021,7 +1021,7 @@ function ConfigPage({ t, accent, onReset, onLogout }) {
 /* ---------------------------------------------------------------- */
 export default function App() {
   const [authed, setAuthed] = useState(() => {
-    try { return localStorage.getItem('cmms-auth-ok') === 'true'; } catch (e) { return false; }
+    try { return localStorage.getItem('cmms-auth-ok') === 'true'; } catch { return false; }
   });
 
   if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
