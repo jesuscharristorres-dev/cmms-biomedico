@@ -10,6 +10,10 @@ import {
   CartesianGrid, Legend, LineChart, Line
 } from 'recharts';
 import * as XLSX from 'xlsx';
+import {
+  notifyFallaReportada, notifyCorrectivoRegistrado, notifyPreventivoProximo, notifyCalibracionProxima,
+  sendAlertsSummary, getNotifiedIds, markNotified,
+} from './services/emailService';
 
 /* ---------------------------------------------------------------- */
 /* CONFIG                                                            */
@@ -21,7 +25,7 @@ const NEUTRAL_ACCENT = '#4FD1C5';
 const ReadOnlyContext = React.createContext(false);
 // Sello de versión — actualízalo cuando reemplaces App.jsx, así confirmas en Configuración
 // que el navegador está sirviendo la versión más reciente y no una copia en caché.
-const APP_BUILD = '2026-08-02 · Login rediseñado con ilustración e identidad corporativa';
+const APP_BUILD = '2026-08-02 · Notificaciones por correo con Resend';
 
 const COMPANIES = [
   { key: 'MACROMED', color: '#002485', gradient: 'linear-gradient(135deg, #002485 0%, #1F4FB8 100%)', sedes: ['Bogotá'] },
@@ -619,7 +623,7 @@ function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, renderExtra
 
 const DRAWER_TABS = ['Información General', 'Cronograma', 'Preventivos', 'Correctivos', 'Calibraciones', 'Instalaciones', 'Baja de Equipo', 'Documentos', 'Historial'];
 
-function EquipoDrawer({ equipo, onClose, onUpdate, t, accent: _accentProp, readOnly }) {
+function EquipoDrawer({ equipo, onClose, onUpdate, t, accent: _accentProp, readOnly, alertEmails }) {
   const [tab, setTab] = useState('Información General');
   const c = calibStatus(equipo);
   const year = new Date().getFullYear();
@@ -753,7 +757,11 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, accent: _accentProp, readO
                 { key: 'responsable', label: 'Responsable' },
                 { key: 'pdfUrl', label: 'PDF (URL)' },
               ]}
-              onAdd={(d) => patchList('correctivos', [...equipo.correctivos, { id: uid('cv'), fecha: todayISO(), ...d }])}
+              onAdd={(d) => {
+                const nuevo = { id: uid('cv'), fecha: todayISO(), ...d };
+                patchList('correctivos', [...equipo.correctivos, nuevo]);
+                try { notifyCorrectivoRegistrado(equipo, nuevo, alertEmails); } catch (err) { console.error('No se pudo notificar el correctivo por correo', err); }
+              }}
               onRemove={(i) => patchList('correctivos', equipo.correctivos.filter((_, idx) => idx !== i))}
               onUpdate={(i, k, v) => { const list = [...equipo.correctivos]; list[i] = { ...list[i], [k]: v }; patchList('correctivos', list); }}
               renderExtra={(r, i) => (
@@ -917,7 +925,7 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
         .login-card-wrap { width: 100%; animation: login-card-in .5s ease both; }
         @media (min-width: 1024px) { .login-card-wrap { width: 80%; max-width: 1180px; } }
         .login-illus { animation: illus-float 5s ease-in-out infinite; }
-        .login-benefit:hover { transform: translateY(-2px); background: rgba(255,255,255,0.32); }
+        .login-benefit:hover { transform: translateY(-3px); box-shadow: 0 14px 28px -10px rgba(15,23,42,0.18); }
         .login-input:focus { box-shadow: 0 0 0 3px rgba(79,209,197,0.25); border-color: #4FD1C5; }
         .login-btn-primary { background: #4FD1C5; transition: background 250ms ease, transform 250ms ease; }
         .login-btn-primary:hover { background: #3EBDB1; }
@@ -1136,6 +1144,11 @@ function ReporteFallaForm({ onBack }) {
     };
     await saveReportes([...reportes, nuevo]);
     setSent(true);
+    // Notificación por correo — no bloquea el flujo si falla el envío.
+    try {
+      const destinatarios = JSON.parse(localStorage.getItem('cmms-alert-emails') || '[]');
+      notifyFallaReportada(nuevo, destinatarios);
+    } catch (err) { console.error('No se pudo notificar el reporte de falla por correo', err); }
   };
 
   if (sent) {
@@ -1272,6 +1285,30 @@ function MainApp({ onLogout, readOnly }) {
   }, []);
   const updateReporte = (updated) => setReportesFalla(prev => prev.map(r => r.id === updated.id ? updated : r));
   const nuevosReportes = reportesFalla.filter(r => !r.visto).length;
+
+  // Notificación automática de preventivos/calibraciones próximos a vencer o vencidos.
+  // Corre cada vez que cambian los equipos o los correos configurados. No hay backend con
+  // cron en esta app, así que esto se dispara cuando alguien tiene el CMMS abierto — y cada
+  // alerta se notifica UNA sola vez (se guarda un registro local para no reenviar en cada visita).
+  useEffect(() => {
+    if (readOnly || !loaded || alertEmails.length === 0) return;
+    const alerts = buildAlerts(equipos);
+    if (alerts.length === 0) return;
+    const notified = getNotifiedIds();
+    const pendientes = alerts.filter(a => !notified.has(`${a.tipo}:${a.equipoId}:${a.status}`));
+    if (pendientes.length === 0) return;
+    (async () => {
+      const idsEnviados = [];
+      for (const a of pendientes) {
+        const equipo = equipos.find(e => e.id === a.equipoId);
+        if (!equipo) continue;
+        const fn = a.tipo === 'Calibración' ? notifyCalibracionProxima : notifyPreventivoProximo;
+        const res = await fn(equipo, a, alertEmails);
+        if (res.success) idsEnviados.push(`${a.tipo}:${a.equipoId}:${a.status}`);
+      }
+      if (idsEnviados.length > 0) markNotified(idsEnviados);
+    })();
+  }, [equipos, alertEmails, loaded, readOnly]);
 
   const theme = themeOf(activeCompany);
   const accent = theme.solid;
@@ -1462,7 +1499,7 @@ function MainApp({ onLogout, readOnly }) {
         {menu === 'configuracion' && <ConfigPage t={t} accent={accent} onReset={() => { if (confirm('¿Borrar todos los equipos guardados?')) setEquipos([]); }} onLogout={onLogout} alertEmails={alertEmails} setAlertEmails={setAlertEmails} readOnly={readOnly} />}
       </div>
 
-      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => setDrawerId(null)} onUpdate={updateEquipo} t={t} accent={accent} readOnly={readOnly} />}
+      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => setDrawerId(null)} onUpdate={updateEquipo} t={t} accent={accent} readOnly={readOnly} alertEmails={alertEmails} />}
       {obsEquipo && <ObsModal equipo={obsEquipo} onClose={() => setObsModalId(null)} onSave={(v) => updateEquipo({ ...obsEquipo, observaciones: v })} t={t} accent={accent} readOnly={readOnly} />}
       </div>
     </div>
@@ -1945,17 +1982,16 @@ function AlertasPage({ equipos, activeCompany, t, accent, alertEmails, onOpen, r
   const alerts = buildAlerts(scoped);
   const vencidas = alerts.filter(a => a.status === 'vencido');
   const proximas = alerts.filter(a => a.status === 'proximo');
+  const [sendState, setSendState] = useState('idle'); // idle | sending | sent | error
 
   const badgeColor = (a) => a.status === 'vencido' ? '#EF4444' : '#F59E0B';
   const daysTxt = (a) => a.status === 'vencido' ? `Vencida hace ${Math.abs(a.diffDays)} días` : `Faltan ${a.diffDays} días`;
 
-  const mailtoHref = () => {
-    const subject = encodeURIComponent(`Alertas de mantenimiento — ${alerts.length} pendientes`);
-    const lines = alerts.map(a => `• [${a.tipo}] ${a.equipo} — ${a.empresa} / ${a.sede} — ${a.status === 'vencido' ? 'VENCIDA' : 'PRÓXIMA'} (${daysTxt(a)})`);
-    const body = encodeURIComponent(
-      `Resumen de alertas de mantenimiento biomédico:\n\n${lines.join('\n')}\n\nGenerado desde el panel CMMS Biomédico.`
-    );
-    return `mailto:${alertEmails.join(',')}?subject=${subject}&body=${body}`;
+  const handleSendAlerts = async () => {
+    setSendState('sending');
+    const res = await sendAlertsSummary(alerts, alertEmails);
+    setSendState(res.success ? 'sent' : 'error');
+    setTimeout(() => setSendState('idle'), 3000);
   };
 
   return (
@@ -1964,7 +2000,14 @@ function AlertasPage({ equipos, activeCompany, t, accent, alertEmails, onOpen, r
         <h1 className="text-lg font-bold">Alertas</h1>
         {!readOnly && alerts.length > 0 && (
           alertEmails.length > 0
-            ? <a href={mailtoHref()} className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold" style={{ background: accent, color: '#fff' }}><Mail size={13} /> Enviar alertas por correo</a>
+            ? (
+              <button onClick={handleSendAlerts} disabled={sendState === 'sending'}
+                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold disabled:opacity-60"
+                style={{ background: sendState === 'error' ? '#EF4444' : accent, color: '#fff' }}>
+                <Mail size={13} />
+                {sendState === 'sending' ? 'Enviando…' : sendState === 'sent' ? 'Enviado ✓' : sendState === 'error' ? 'Error al enviar' : 'Enviar alertas por correo'}
+              </button>
+            )
             : <span className={`text-[11px] ${t.muted}`}>Agrega correos en Configuración para poder enviarlas</span>
         )}
       </div>
