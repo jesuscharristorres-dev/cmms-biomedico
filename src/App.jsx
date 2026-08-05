@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo, useContext } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X, ChevronRight,
+  Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X,
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
-  ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, Image as ImageIcon, BellRing, Mail, AlertTriangle, Lock,
-  User, Eye, EyeOff, ArrowRight, Activity
+  ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, Mail, AlertTriangle, Lock,
+  User, Eye, EyeOff, Activity
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -14,7 +14,7 @@ import {
   notifyFallaReportada, notifyCorrectivoRegistrado, notifyPreventivoProximo, notifyCalibracionProxima,
   sendAlertsSummary, getNotifiedIds, markNotified,
 } from './services/emailService';
-import { PREVENTIVO_ALERTA_DIAS, calibStatus, preventivoAlertStatus, buildAlerts } from './services/alertLogic';
+import { PREVENTIVO_ALERTA_DIAS, calibStatus, buildAlerts } from './services/alertLogic';
 
 /* ---------------------------------------------------------------- */
 /* CONFIG                                                            */
@@ -56,10 +56,10 @@ function themeOf(companyKey) {
 }
 
 const MONTHS = [
-  { k: 'ene', l: 'Ene', idx: 0 }, { k: 'feb', l: 'Feb', idx: 1 }, { k: 'mar', l: 'Mar', idx: 2 },
-  { k: 'abr', l: 'Abr', idx: 3 }, { k: 'may', l: 'May', idx: 4 }, { k: 'jun', l: 'Jun', idx: 5 },
-  { k: 'jul', l: 'Jul', idx: 6 }, { k: 'ago', l: 'Ago', idx: 7 }, { k: 'sep', l: 'Sep', idx: 8 },
-  { k: 'oct', l: 'Oct', idx: 9 }, { k: 'nov', l: 'Nov', idx: 10 }, { k: 'dic', l: 'Dic', idx: 11 },
+  { k: 'ene', l: 'Ene', full: 'Enero', idx: 0 }, { k: 'feb', l: 'Feb', full: 'Febrero', idx: 1 }, { k: 'mar', l: 'Mar', full: 'Marzo', idx: 2 },
+  { k: 'abr', l: 'Abr', full: 'Abril', idx: 3 }, { k: 'may', l: 'May', full: 'Mayo', idx: 4 }, { k: 'jun', l: 'Jun', full: 'Junio', idx: 5 },
+  { k: 'jul', l: 'Jul', full: 'Julio', idx: 6 }, { k: 'ago', l: 'Ago', full: 'Agosto', idx: 7 }, { k: 'sep', l: 'Sep', full: 'Septiembre', idx: 8 },
+  { k: 'oct', l: 'Oct', full: 'Octubre', idx: 9 }, { k: 'nov', l: 'Nov', full: 'Noviembre', idx: 10 }, { k: 'dic', l: 'Dic', full: 'Diciembre', idx: 11 },
 ];
 function formatFechaCorta(fechaStr) {
   const d = new Date(fechaStr + 'T00:00:00');
@@ -219,7 +219,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
       <div class="headwrap">
         <div class="headleft">
           <div class="brand">${equipo.empresa}</div>
-          <h1>Reporte Mantenimiento Preventivo/Correctivo</h1>
+          <h1>Reporte ${tipoLabel}</h1>
           <div class="sub">GESTIÓN DE EQUIPOS BIOMÉDICOS</div>
         </div>
         <div class="headright">
@@ -442,7 +442,7 @@ async function loadEquipos() {
   try {
     const raw = localStorage.getItem('cmms-equipos');
     if (raw) return JSON.parse(raw);
-  } catch (e) { /* sin datos aún */ }
+  } catch { /* sin datos aún */ }
   return [];
 }
 async function saveEquipos(equipos) {
@@ -462,7 +462,7 @@ async function loadReportes() {
   try {
     const raw = localStorage.getItem(REPORTES_KEY);
     if (raw) return JSON.parse(raw);
-  } catch (e) { /* sin datos aún */ }
+  } catch { /* sin datos aún */ }
   return [];
 }
 async function saveReportes(reportes) {
@@ -487,16 +487,6 @@ const REPORTE_ESTADO_HEX = { Reportado: '#EF4444', 'En revisión': '#F59E0B', 'E
 /* ---------------------------------------------------------------- */
 /* COMPONENTES REUTILIZABLES                                         */
 /* ---------------------------------------------------------------- */
-
-function KpiCard({ label, value, color, t }) {
-  return (
-    <div className={`rounded-xl p-4 border relative overflow-hidden ${t.panel} ${t.border}`}>
-      <div className="absolute left-0 top-0 h-full w-1" style={{ background: color }} />
-      <div className="text-2xl font-bold font-mono">{value}</div>
-      <div className={`text-[11px] uppercase tracking-wide mt-1 ${t.muted}`}>{label}</div>
-    </div>
-  );
-}
 
 function Field({ label, children }) {
   return (
@@ -577,7 +567,7 @@ function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, renderExtra
 
 const DRAWER_TABS = ['Información General', 'Cronograma', 'Preventivos', 'Correctivos', 'Calibraciones', 'Instalaciones', 'Baja de Equipo', 'Documentos', 'Historial'];
 
-function EquipoDrawer({ equipo, onClose, onUpdate, t, accent: _accentProp, readOnly, alertEmails }) {
+function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
   const [tab, setTab] = useState('Información General');
   const c = calibStatus(equipo);
   const year = new Date().getFullYear();
@@ -664,7 +654,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, accent: _accentProp, readO
                   return (
                     <div key={m.k} className={`rounded-lg border p-3 text-center ${t.panel3} ${t.border}`}>
                       <div className="w-3 h-3 rounded-full mx-auto mb-1.5" style={{ background: STATUS_HEX[st] }} />
-                      <div className="text-[11px] font-mono">{m.l}</div>
+                      <div className="text-[11px] font-mono uppercase" translate="no" lang="es">{m.full}</div>
                     </div>
                   );
                 })}
@@ -1226,7 +1216,7 @@ function MainApp({ onLogout, readOnly }) {
   const [drawerId, setDrawerId] = useState(null);
   const [obsModalId, setObsModalId] = useState(null);
   const [alertEmails, setAlertEmails] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('cmms-alert-emails') || '[]'); } catch (e) { return []; }
+    try { return JSON.parse(localStorage.getItem('cmms-alert-emails') || '[]'); } catch { return []; }
   });
   const [reportesFalla, setReportesFalla] = useState([]);
   const [reportesLoaded, setReportesLoaded] = useState(false);
@@ -1354,7 +1344,7 @@ function MainApp({ onLogout, readOnly }) {
     }
     const str = val.toString().trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str; // ya viene en AAAA-MM-DD
-    const dmy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/); // DD/MM/AAAA
+    const dmy = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/); // DD/MM/AAAA
     if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
     const d = new Date(str);
     return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
@@ -1491,7 +1481,7 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, on
   const fallasSolucionadas = reportesScoped.filter(r => r.estado === 'Finalizado').length;
   const fallasPorEstado = REPORTE_ESTADOS.map(s => ({ name: s, value: reportesScoped.filter(r => r.estado === s).length, fill: REPORTE_ESTADO_HEX[s] }));
 
-  let prevProgramados = 0, prevEjecutados = 0, correctivosAbiertos = 0;
+  let prevProgramados = 0, prevEjecutados = 0;
   let calVigente = 0, calProximo = 0, calVencido = 0;
   let fueraServicio = 0;
   scoped.forEach(e => {
@@ -1500,7 +1490,6 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, on
       const d = new Date(p.fecha + 'T00:00:00');
       if (d.getFullYear() === year && d.getMonth() === month) { prevProgramados++; if (p.estado === 'Ejecutado') prevEjecutados++; }
     });
-    correctivosAbiertos += (e.correctivos || []).length;
     const cs = calibStatus(e);
     if (cs.status === 'vigente') calVigente++; else if (cs.status === 'proximo') calProximo++; else if (cs.status === 'vencido') calVencido++;
     if (e.estado === 'Fuera de servicio') fueraServicio++;
@@ -1954,7 +1943,7 @@ function EvolucionAnual({ scoped, activeCompany, theme, t, accent }) {
   );
 }
 
-function HeroStat({ t, label, value, sub, color, ring, onClick, brandBg }) {
+function HeroStat({ t, label, value, sub, color, onClick, brandBg }) {
   return (
     <div onClick={onClick} className={`rounded-xl p-4 border relative overflow-hidden ${t.panel} ${t.border} ${onClick ? 'cursor-pointer' : ''}`}>
       {brandBg && <div className="absolute top-0 left-0 w-full h-[3px]" style={{ background: brandBg }} />}
@@ -2107,7 +2096,7 @@ const INVENTORY_HEAD = [
   { key: 'clasificacionRiesgo', label: 'RIESGO' }, { key: 'inventario', label: 'INVENTARIO' },
 ];
 
-function InventarioPage({ mode, equipos, allEquipos, t, accent, accentBg, filters, setFilters, search, setSearch, sort, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport, activeCompany, onClearFilters, readOnly }) {
+function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilters, search, setSearch, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport, activeCompany, onClearFilters, readOnly }) {
   const year = new Date().getFullYear();
   const title = { inventario: 'Inventario de equipos', mantenimientos: 'Mantenimientos preventivos', calibraciones: 'Calibraciones', correctivos: 'Correctivos' }[mode];
   const hayFiltrosActivos = Boolean(
@@ -2387,7 +2376,7 @@ function ReportesFallaPage({ reportes, t, accent, onUpdate, readOnly }) {
   );
 }
 
-function ReportesPage({ equipos, t, accent, onExport }) {
+function ReportesPage({ t, accent, onExport }) {
   const reportes = [
     'Reporte mensual', 'Reporte anual', 'Reporte por empresa', 'Reporte por sede',
     'Reporte por técnico', 'Reporte de calibraciones', 'Reporte de correctivos', 'Reporte de preventivos',
@@ -2475,7 +2464,7 @@ function ConfigPage({ t, accent, onReset, onLogout, alertEmails, setAlertEmails,
 /* ---------------------------------------------------------------- */
 export default function App() {
   const [authed, setAuthed] = useState(() => {
-    try { return localStorage.getItem('cmms-auth-ok') === 'true'; } catch (e) { return false; }
+    try { return localStorage.getItem('cmms-auth-ok') === 'true'; } catch { return false; }
   });
   const [guestMode, setGuestMode] = useState(false);
   const [publicView, setPublicView] = useState(null); // null | 'reporte'
