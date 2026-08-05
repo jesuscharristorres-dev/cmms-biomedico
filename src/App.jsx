@@ -2120,7 +2120,6 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                 <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => e.target.files[0] && onImport(e.target.files[0])} />
               </label>
             )}
-            <button onClick={() => window.print()} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs border ${t.border}`}><FileText size={13} /> Exportar / Imprimir PDF</button>
           </div>
         )}
       </div>
@@ -2384,7 +2383,7 @@ function ReportesPage({ t, accent, onExport }) {
   return (
     <div>
       <h1 className="text-lg font-bold mb-4">Reportes</h1>
-      <p className={`text-xs mb-5 ${t.muted}`}>Exporta el inventario completo con todos los datos actuales a Excel. Para un PDF, usa "Exportar / Imprimir PDF" desde Inventario.</p>
+      <p className={`text-xs mb-5 ${t.muted}`}>Exporta el inventario completo con todos los datos actuales a Excel.</p>
       <div className="grid md:grid-cols-2 gap-3">
         {reportes.map(r => (
           <div key={r} className={`rounded-lg border p-4 flex items-center justify-between ${t.panel} ${t.border}`}>
