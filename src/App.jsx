@@ -61,6 +61,11 @@ const MONTHS = [
   { k: 'jul', l: 'Jul', idx: 6 }, { k: 'ago', l: 'Ago', idx: 7 }, { k: 'sep', l: 'Sep', idx: 8 },
   { k: 'oct', l: 'Oct', idx: 9 }, { k: 'nov', l: 'Nov', idx: 10 }, { k: 'dic', l: 'Dic', idx: 11 },
 ];
+function formatFechaCorta(fechaStr) {
+  const d = new Date(fechaStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return fechaStr;
+  return `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()].l} ${d.getFullYear()}`;
+}
 // Acceso simple — cámbialo por tus propios datos.
 const AUTH_USER = 'jesus.charris';
 const AUTH_PASS = 'biomedica2026';
@@ -1552,6 +1557,24 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, on
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
+  // Próximo mantenimiento preventivo pendiente (fecha más cercana, aún no vencida) por empresa —
+  // siempre las 5 empresas, sin importar el filtro activo del Dashboard.
+  const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+  const proximosPorEmpresa = COMPANIES.map(c => {
+    let best = null;
+    equipos.filter(e => e.empresa === c.key && e.aplicaPreventivo).forEach(e => {
+      (e.preventivos || []).forEach(p => {
+        if (p.estado === 'Ejecutado' || !p.fecha) return;
+        const d = new Date(p.fecha + 'T00:00:00');
+        if (isNaN(d.getTime())) return;
+        const diffDays = Math.round((d - today0) / 86400000);
+        if (diffDays < 0) return;
+        if (!best || diffDays < best.diffDays) best = { equipo: e.equipo || 'Sin nombre', fecha: p.fecha, diffDays };
+      });
+    });
+    return { company: c, next: best };
+  });
+
   return (
     <div>
       {alertCount > 0 && (
@@ -1644,6 +1667,32 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, on
             <MiniRow key={s} label={s} value={reportesScoped.filter(r => r.estado === s).length} t={t} color={REPORTE_ESTADO_HEX[s]} />
           ))}
         </ClusterCard>
+      </div>
+
+      {/* PRÓXIMOS MANTENIMIENTOS PREVENTIVOS POR EMPRESA */}
+      <div className={`rounded-xl border p-5 mb-5 ${t.panel} ${t.border}`}>
+        <div className="text-xs font-semibold mb-4 uppercase tracking-wide" style={{ color: accent }}>Próximos mantenimientos preventivos por empresa</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {proximosPorEmpresa.map(({ company, next }) => (
+            <div key={company.key} className={`rounded-lg border p-3 min-w-0 ${t.panel3} ${t.border}`}>
+              <div className="flex items-center gap-1.5 mb-2 min-w-0">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: company.color }} />
+                <span className="text-[10px] font-semibold uppercase tracking-wide truncate" title={company.key}>{company.key}</span>
+              </div>
+              {next ? (
+                <>
+                  <div className="text-xs font-medium truncate" title={next.equipo}>{next.equipo}</div>
+                  <div className={`text-[10px] font-mono mt-0.5 ${t.muted}`}>{formatFechaCorta(next.fecha)}</div>
+                  <div className="text-[11px] font-mono font-semibold mt-1.5" style={{ color: next.diffDays <= PREVENTIVO_ALERTA_DIAS ? '#F59E0B' : '#22C55E' }}>
+                    {next.diffDays === 0 ? 'Hoy' : `En ${next.diffDays} día${next.diffDays !== 1 ? 's' : ''}`}
+                  </div>
+                </>
+              ) : (
+                <div className={`text-[11px] italic ${t.muted}`}>Sin mantenimientos próximos</div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* BENTO — comparativos */}
