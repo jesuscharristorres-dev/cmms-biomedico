@@ -94,7 +94,7 @@ function newEquipo(empresaKey) {
   const c = companyOf(empresaKey) || COMPANIES[0];
   return {
     id: uid('eq'),
-    empresa: c.key, sede: c.sedes[0], area: '', servicio: '',
+    empresa: c.key, sede: c.sedes[0],
     equipo: '', marca: '', modelo: '', numeroSerie: '', registroInvima: '',
     clasificacionRiesgo: 'IIB', inventario: '',
     proveedor: '', fabricante: '', fechaCompra: '', fechaInstalacion: '', garantiaHasta: '',
@@ -618,8 +618,6 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, accent: _accentProp, readO
             <div className="grid grid-cols-2 gap-3">
               <Field label="Empresa"><SelectInput t={t} disabled={readOnly} value={equipo.empresa} options={COMPANIES.map(c => c.key)} onChange={v => onUpdate({ ...equipo, empresa: v, sede: companyOf(v).sedes[0] })} /></Field>
               <Field label="Sede"><SelectInput t={t} disabled={readOnly} value={equipo.sede} options={companyOf(equipo.empresa).sedes} onChange={v => patch('sede', v)} /></Field>
-              <Field label="Área"><TextInput t={t} disabled={readOnly} value={equipo.area} onChange={v => patch('area', v)} /></Field>
-              <Field label="Servicio"><TextInput t={t} disabled={readOnly} value={equipo.servicio} onChange={v => patch('servicio', v)} /></Field>
               <Field label="Equipo"><TextInput t={t} disabled={readOnly} value={equipo.equipo} onChange={v => patch('equipo', v)} /></Field>
               <Field label="Marca"><TextInput t={t} disabled={readOnly} value={equipo.marca} onChange={v => patch('marca', v)} /></Field>
               <Field label="Modelo"><TextInput t={t} disabled={readOnly} value={equipo.modelo} onChange={v => patch('modelo', v)} /></Field>
