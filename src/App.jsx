@@ -1047,9 +1047,16 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
               Ingresar como Invitado
             </button>
 
+            <div className="flex items-center gap-2 mt-5 mb-1">
+              <div className="flex-1 h-px bg-slate-200" />
+              <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">¿Eres coordinador de sede?</span>
+              <div className="flex-1 h-px bg-slate-200" />
+            </div>
+
             <button onClick={onReportarFalla} type="button"
-              className="login-fast w-full mt-2 rounded-lg py-2 text-xs font-medium text-slate-400 hover:text-teal-700">
-              Soy coordinador de sede — Reportar una falla
+              className="login-fast w-full mt-2 rounded-lg py-3 text-sm font-bold text-white flex items-center justify-center gap-2 shadow-sm"
+              style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' }}>
+              <Wrench size={16} /> Reportar una falla de equipo
             </button>
 
             <div className="flex items-center gap-1.5 justify-center text-[11px] text-slate-400 mt-6">
