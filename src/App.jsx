@@ -1201,6 +1201,33 @@ function ReporteFallaForm({ onBack }) {
 }
 
 /* ---------------------------------------------------------------- */
+/* AMBIENTACIÓN DINÁMICA DEL ÁREA DE CONTENIDO                        */
+/* ---------------------------------------------------------------- */
+// Fondo ambiental del panel principal (NO el sidebar) — reutiliza el mismo `theme`
+// que ya calcula themeOf(activeCompany) para el resto de la UI (accent, degradados),
+// así que cambiar de empresa reambienta el fondo sin ninguna lógica nueva de color.
+// Son manchas difuminadas de color sólido (no gradientes) para que el cambio entre
+// empresas transicione con un simple `transition-colors`, sin parpadeos.
+function AmbientBackground({ theme, dark }) {
+  const isNeutral = theme.key === 'TODAS';
+  const c1 = isNeutral ? '#0EA5E9' : theme.solid; // "azul tenue" neutro, o color de marca
+  const c2 = isNeutral ? '#94A3B8' : theme.light; // "gris claro" neutro, o variante clara de marca
+  const c3 = isNeutral ? '#CBD5E1' : theme.dark;  // variante suave adicional, o variante oscura de marca
+  const op = dark ? 0.24 : 0.14; // intensidad baja — la legibilidad manda
+
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+      <div className="absolute rounded-full transition-colors duration-500 ease-out"
+        style={{ width: '34rem', height: '34rem', top: '-10rem', right: '-8rem', backgroundColor: c1, opacity: op, filter: 'blur(95px)' }} />
+      <div className="absolute rounded-full transition-colors duration-500 ease-out"
+        style={{ width: '30rem', height: '30rem', bottom: '-12rem', left: '-8rem', backgroundColor: c2, opacity: op, filter: 'blur(100px)' }} />
+      <div className="absolute rounded-full transition-colors duration-500 ease-out"
+        style={{ width: '26rem', height: '26rem', top: '30%', left: '42%', backgroundColor: c3, opacity: op * 0.65, filter: 'blur(110px)' }} />
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
 /* APP PRINCIPAL                                                     */
 /* ---------------------------------------------------------------- */
 
@@ -1420,7 +1447,9 @@ function MainApp({ onLogout, readOnly }) {
       </div>
 
       {/* MAIN */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 relative overflow-hidden">
+        <AmbientBackground theme={theme} dark={dark} />
+        <div className="absolute inset-0 overflow-y-auto p-6">
         {/* Empresa pills */}
         <div className="flex gap-2 flex-wrap mb-5">
           <button onClick={() => setActiveCompany('TODAS')}
@@ -1459,6 +1488,7 @@ function MainApp({ onLogout, readOnly }) {
         {menu === 'fallas' && <ReportesFallaPage reportes={reportesFalla} t={t} accent={accent} onUpdate={updateReporte} readOnly={readOnly} />}
         {menu === 'reportes' && <ReportesPage equipos={equipos} t={t} accent={accent} onExport={exportExcel} />}
         {menu === 'configuracion' && <ConfigPage t={t} accent={accent} onReset={() => { if (confirm('¿Borrar todos los equipos guardados?')) setEquipos([]); }} onLogout={onLogout} alertEmails={alertEmails} setAlertEmails={setAlertEmails} readOnly={readOnly} />}
+        </div>
       </div>
 
       {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => setDrawerId(null)} onUpdate={updateEquipo} t={t} accent={accent} readOnly={readOnly} alertEmails={alertEmails} />}
