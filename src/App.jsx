@@ -55,6 +55,14 @@ function themeOf(companyKey) {
   return { key: c.key, solid: c.color, bg: c.gradient, light: shade(c.color, 0.4), dark: shade(c.color, -0.25), shades: [0.5, 0.3, 0.12, -0.1, -0.28, -0.45, -0.58].map(p => shade(c.color, p)) };
 }
 
+// Clases de superficie claro/oscuro — única fuente de verdad, la usa MainApp y
+// también las pantallas públicas (ReporteFallaForm) para no divergir del resto del CMMS.
+function uiTheme(dark) {
+  return dark
+    ? { bg: 'bg-slate-950', panel: 'bg-slate-900', panel3: 'bg-slate-800/60', border: 'border-slate-700/60', text: 'text-slate-100', muted: 'text-slate-400', input: 'bg-slate-950 border-slate-700 text-slate-100' }
+    : { bg: 'bg-slate-50', panel: 'bg-white', panel3: 'bg-slate-100', border: 'border-slate-200', text: 'text-slate-900', muted: 'text-slate-500', input: 'bg-white border-slate-300 text-slate-900' };
+}
+
 const MONTHS = [
   { k: 'ene', l: 'Ene', full: 'Enero', idx: 0 }, { k: 'feb', l: 'Feb', full: 'Febrero', idx: 1 }, { k: 'mar', l: 'Mar', full: 'Marzo', idx: 2 },
   { k: 'abr', l: 'Abr', full: 'Abril', idx: 3 }, { k: 'may', l: 'May', full: 'Mayo', idx: 4 }, { k: 'jun', l: 'Jun', full: 'Junio', idx: 5 },
@@ -1107,9 +1115,10 @@ function ReporteFallaForm({ onBack }) {
   const [persona, setPersona] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [prioridad, setPrioridad] = useState('Media');
-  const [adjuntos, setAdjuntos] = useState([]);
-  const [adjDraft, setAdjDraft] = useState({ nombre: '', url: '' });
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+  const [dark, setDark] = useState(false);
+  const t = uiTheme(dark);
 
   useEffect(() => { loadEquipos().then(setEquipos); }, []);
 
@@ -1117,12 +1126,17 @@ function ReporteFallaForm({ onBack }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (!persona.trim()) {
+      setError('Debe ingresar el nombre de la persona que reporta la falla.');
+      return;
+    }
+    setError('');
     const eq = equipos.find(x => x.id === equipoId);
     const reportes = await loadReportes();
     const nuevo = {
       ...newReporte(empresa, sede),
       equipoId, equipoNombre: eq ? eq.equipo : '(equipo no encontrado en inventario)',
-      personaReporta: persona, descripcion, prioridad, adjuntos,
+      personaReporta: persona, descripcion, prioridad,
     };
     await saveReportes([...reportes, nuevo]);
     setSent(true);
@@ -1135,99 +1149,85 @@ function ReporteFallaForm({ onBack }) {
 
   if (sent) {
     return (
-      <div className="min-h-dvh flex items-center justify-center bg-slate-950 text-slate-100 p-6 text-center" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
-        <div>
+      <div className={`min-h-dvh flex items-center justify-center p-6 text-center ${t.bg} ${t.text}`} style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
+        <div className={`max-w-sm w-full rounded-xl border p-8 ${t.panel} ${t.border}`}>
           <div className="text-4xl mb-3">✅</div>
           <h1 className="text-lg font-bold mb-2">Reporte enviado</h1>
-          <p className="text-sm text-slate-400 mb-5">Ingeniería Biomédica ha sido notificada.</p>
-          <button onClick={onBack} className="rounded-md px-4 py-2 text-sm font-semibold" style={{ background: '#4FD1C5', color: '#0F1419' }}>Volver</button>
+          <p className={`text-sm mb-5 ${t.muted}`}>Ingeniería Biomédica ha sido notificada.</p>
+          <button onClick={onBack} className="rounded-md px-4 py-2 text-sm font-semibold text-white" style={{ background: 'linear-gradient(135deg, #173B6C 0%, #2F8FD1 100%)' }}>Volver</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-dvh bg-slate-950 text-slate-100 p-6" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
+    <div className={`min-h-dvh p-6 ${t.bg} ${t.text}`} style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
       <div className="max-w-lg mx-auto">
-        <button onClick={onBack} className="text-xs text-slate-400 mb-4">&larr; Volver</button>
-        <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: '#4FD1C5' }}>CMMS Biomédico</div>
-        <h1 className="text-lg font-bold mb-1">Reportar falla de equipo</h1>
-        <p className="text-xs text-slate-400 mb-5">Diligencia este formulario si detectas una novedad o daño en un equipo.</p>
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={onBack} className={`text-xs ${t.muted}`}>&larr; Volver</button>
+          <button type="button" onClick={() => setDark(d => !d)} className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] border ${t.border} ${t.muted}`}>
+            {dark ? <Sun size={12} /> : <Moon size={12} />} {dark ? 'Modo claro' : 'Modo oscuro'}
+          </button>
+        </div>
 
-        <form onSubmit={submit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[10px] uppercase text-slate-400">Empresa</label>
-              <select value={empresa} onChange={e => { setEmpresa(e.target.value); setSede(companyOf(e.target.value).sedes[0]); setEquipoId(''); }} className="w-full mt-1 rounded-md px-3 py-2 text-sm bg-slate-900 border border-slate-700">
-                {COMPANIES.map(c => <option key={c.key} value={c.key}>{c.key}</option>)}
+        <div className={`rounded-xl border p-6 ${t.panel} ${t.border}`}>
+          <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: '#2F8FD1' }}>CMMS Biomédico</div>
+          <h1 className="text-lg font-bold mb-1">Reportar falla de equipo</h1>
+          <p className={`text-xs mb-5 ${t.muted}`}>Diligencia este formulario si detectas una novedad o daño en un equipo.</p>
+
+          <form onSubmit={submit} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Empresa">
+                <SelectInput t={t} value={empresa} options={COMPANIES.map(c => c.key)}
+                  onChange={v => { setEmpresa(v); setSede(companyOf(v).sedes[0]); setEquipoId(''); }} />
+              </Field>
+              <Field label="Sede">
+                <SelectInput t={t} value={sede} options={companyOf(empresa).sedes}
+                  onChange={v => { setSede(v); setEquipoId(''); }} />
+              </Field>
+            </div>
+
+            <Field label="Equipo biomédico">
+              <select required value={equipoId} onChange={e => setEquipoId(e.target.value)}
+                className={`w-full rounded-md px-2.5 py-1.5 text-xs border ${t.input}`}>
+                <option value="">Selecciona un equipo…</option>
+                {equiposFiltrados.map(e => <option key={e.id} value={e.id}>{e.equipo}{e.inventario ? ` (${e.inventario})` : ''}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] uppercase text-slate-400">Sede</label>
-              <select value={sede} onChange={e => { setSede(e.target.value); setEquipoId(''); }} className="w-full mt-1 rounded-md px-3 py-2 text-sm bg-slate-900 border border-slate-700">
-                {companyOf(empresa).sedes.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-          </div>
+              {equiposFiltrados.length === 0 && <p className="text-[11px] mt-1" style={{ color: '#D97706' }}>No hay equipos cargados para esta sede todavía en este dispositivo.</p>}
+            </Field>
 
-          <div>
-            <label className="text-[10px] uppercase text-slate-400">Equipo biomédico</label>
-            <select required value={equipoId} onChange={e => setEquipoId(e.target.value)} className="w-full mt-1 rounded-md px-3 py-2 text-sm bg-slate-900 border border-slate-700">
-              <option value="">Selecciona un equipo…</option>
-              {equiposFiltrados.map(e => <option key={e.id} value={e.id}>{e.equipo}{e.inventario ? ` (${e.inventario})` : ''}</option>)}
-            </select>
-            {equiposFiltrados.length === 0 && <p className="text-[11px] text-amber-400 mt-1">No hay equipos cargados para esta sede todavía en este dispositivo.</p>}
-          </div>
+            <Field label="Fecha del reporte"><TextInput t={t} disabled value={todayISO()} onChange={() => {}} /></Field>
 
-          <div>
-            <label className="text-[10px] uppercase text-slate-400">Fecha del reporte</label>
-            <input disabled value={todayISO()} className="w-full mt-1 rounded-md px-3 py-2 text-sm bg-slate-900/50 border border-slate-800 text-slate-500" />
-          </div>
+            <Field label="Persona que reporta">
+              <TextInput t={t} value={persona} placeholder="Nombre completo" onChange={v => { setPersona(v); setError(''); }} />
+            </Field>
 
-          <div>
-            <label className="text-[10px] uppercase text-slate-400">Persona que reporta</label>
-            <input required value={persona} onChange={e => setPersona(e.target.value)} className="w-full mt-1 rounded-md px-3 py-2 text-sm bg-slate-900 border border-slate-700" />
-          </div>
+            <Field label="Descripción del daño o novedad">
+              <textarea required rows={4} value={descripcion} onChange={e => setDescripcion(e.target.value)}
+                className={`w-full rounded-md px-2.5 py-2 text-xs border ${t.input}`} />
+            </Field>
 
-          <div>
-            <label className="text-[10px] uppercase text-slate-400">Descripción del daño o novedad</label>
-            <textarea required rows={4} value={descripcion} onChange={e => setDescripcion(e.target.value)} className="w-full mt-1 rounded-md px-3 py-2 text-sm bg-slate-900 border border-slate-700" />
-          </div>
-
-          <div>
-            <label className="text-[10px] uppercase text-slate-400">Prioridad</label>
-            <div className="flex gap-2 mt-1">
-              {PRIORIDADES.map(p => (
-                <button type="button" key={p} onClick={() => setPrioridad(p)}
-                  className="flex-1 rounded-md py-2 text-xs font-semibold border"
-                  style={prioridad === p ? { background: PRIORIDAD_HEX[p] + '22', borderColor: PRIORIDAD_HEX[p], color: PRIORIDAD_HEX[p] } : { borderColor: '#334155', color: '#94a3b8' }}>
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="text-[10px] uppercase text-slate-400">Fotografías o documentos (enlace)</label>
-            <div className="flex gap-2 mt-1">
-              <input value={adjDraft.nombre} onChange={e => setAdjDraft({ ...adjDraft, nombre: e.target.value })} placeholder="Nombre" className="flex-1 rounded-md px-3 py-2 text-sm bg-slate-900 border border-slate-700" />
-              <input value={adjDraft.url} onChange={e => setAdjDraft({ ...adjDraft, url: e.target.value })} placeholder="https://..." className="flex-1 rounded-md px-3 py-2 text-sm bg-slate-900 border border-slate-700" />
-              <button type="button" onClick={() => { if (adjDraft.url) { setAdjuntos([...adjuntos, adjDraft]); setAdjDraft({ nombre: '', url: '' }); } }} className="rounded-md px-3 py-2 text-xs font-semibold border border-slate-700">+</button>
-            </div>
-            {adjuntos.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {adjuntos.map((a, i) => (
-                  <span key={i} className="text-[11px] px-2 py-1 rounded-full bg-slate-800 flex items-center gap-1.5">
-                    {a.nombre || 'Adjunto'} <button type="button" onClick={() => setAdjuntos(adjuntos.filter((_, idx) => idx !== i))}><X size={10} /></button>
-                  </span>
+            <Field label="Prioridad">
+              <div className="flex gap-2">
+                {PRIORIDADES.map(p => (
+                  <button type="button" key={p} onClick={() => setPrioridad(p)}
+                    className="flex-1 rounded-md py-2 text-xs font-semibold border"
+                    style={prioridad === p ? { background: PRIORIDAD_HEX[p] + '22', borderColor: PRIORIDAD_HEX[p], color: PRIORIDAD_HEX[p] } : { borderColor: dark ? '#334155' : '#CBD5E1', color: dark ? '#94A3B8' : '#64748B' }}>
+                    {p}
+                  </button>
                 ))}
               </div>
-            )}
-            <p className="text-[10px] text-slate-500 mt-1">Sube la foto o el documento a Drive/WhatsApp Web y pega aquí el enlace — esta versión no almacena archivos directamente.</p>
-          </div>
+            </Field>
 
-          <button type="submit" className="w-full rounded-md py-2.5 text-sm font-semibold mt-2" style={{ background: '#4FD1C5', color: '#0F1419' }}>Enviar reporte</button>
-        </form>
+            {error && (
+              <div className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 border ${dark ? 'text-red-400 bg-red-500/10 border-red-500/30' : 'text-red-600 bg-red-50 border-red-200'}`}>
+                <AlertTriangle size={13} className="shrink-0" /> {error}
+              </div>
+            )}
+
+            <button type="submit" className="w-full rounded-md py-2.5 text-sm font-semibold mt-2 text-white" style={{ background: 'linear-gradient(135deg, #173B6C 0%, #2F8FD1 100%)' }}>Enviar reporte</button>
+          </form>
+        </div>
       </div>
     </div>
   );
@@ -1336,9 +1336,7 @@ function MainApp({ onLogout, readOnly }) {
   const accent = theme.solid;
   const accentBg = theme.bg;
 
-  const t = dark
-    ? { bg: 'bg-slate-950', panel: 'bg-slate-900', panel3: 'bg-slate-800/60', border: 'border-slate-700/60', text: 'text-slate-100', muted: 'text-slate-400', input: 'bg-slate-950 border-slate-700 text-slate-100' }
-    : { bg: 'bg-slate-50', panel: 'bg-white', panel3: 'bg-slate-100', border: 'border-slate-200', text: 'text-slate-900', muted: 'text-slate-500', input: 'bg-white border-slate-300 text-slate-900' };
+  const t = uiTheme(dark);
 
   const updateEquipo = (updated) => setEquipos(prev => prev.map(e => e.id === updated.id ? updated : e));
   const removeEquipo = (id) => setEquipos(prev => prev.filter(e => e.id !== id));
