@@ -74,6 +74,13 @@ function formatFechaCorta(fechaStr) {
   if (isNaN(d.getTime())) return fechaStr;
   return `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()].l} ${d.getFullYear()}`;
 }
+// Solo mes y año (ej. "Agosto 2026") — usado en el reporte de mantenimiento preventivo,
+// donde no se necesita el día exacto de la próxima intervención.
+function formatMesAnio(fechaStr) {
+  if (!fechaStr) return '';
+  const d = new Date(fechaStr + 'T00:00:00');
+  return isNaN(d.getTime()) ? fechaStr : `${MONTHS[d.getMonth()].full} ${d.getFullYear()}`;
+}
 // Acceso simple — cámbialo por tus propios datos.
 const AUTH_USER = 'jesus.charris';
 const AUTH_PASS = 'biomedica2026';
@@ -180,11 +187,13 @@ const TIPO_INTERVENCION_MAP = { Preventivo: 'Preventivo', Correctivo: 'Correctiv
 function generarReportePDF(equipo, tipoKey, rep) {
   const co = companyOf(equipo.empresa);
   const tipoLabel = TIPOS_REPORTE_LABEL[tipoKey] || tipoKey;
+  const esPreventivo = tipoKey === 'Preventivo';
   const win = window.open('', '_blank');
   if (!win) { alert('El navegador bloqueó la ventana emergente. Habilítala para generar el PDF.'); return; }
   const esc = (v) => (v || '—');
   const box = (checked) => checked ? '☑' : '☐';
 
+  // En Preventivos el reporte no incluye la columna de observaciones del checklist.
   const checklistRows = CHECKLIST_ITEMS.map(item => {
     const c = (rep.checklist && rep.checklist[item]) || { estado: 'no_aplica', obs: '' };
     return `<tr>
@@ -192,13 +201,49 @@ function generarReportePDF(equipo, tipoKey, rep) {
       <td style="text-align:center;">${c.estado === 'no_aplica' ? '✔' : ''}</td>
       <td style="text-align:center;">${c.estado === 'bueno' ? '✔' : ''}</td>
       <td style="text-align:center;">${c.estado === 'malo' ? '✔' : ''}</td>
-      <td>${c.obs || ''}</td>
+      ${esPreventivo ? '' : `<td>${c.obs || ''}</td>`}
     </tr>`;
   }).join('');
+
+  // En Preventivos, la fecha de próximo mantenimiento solo muestra mes y año.
+  const fechaProximoTxt = esPreventivo ? formatMesAnio(rep.fechaProximo) : rep.fechaProximo;
 
   const repuestosTxt = (rep.repuestos || []).length
     ? rep.repuestos.map(r => `${r.item}${r.cantidad ? ' — ' + r.cantidad : ''}`).join('<br/>')
     : '—';
+
+  // En Preventivos, la firma cargada por el técnico se imprime como imagen sobre la línea de firma.
+  const firmasHtml = esPreventivo ? `
+      <div class="firmas">
+        <div class="firma-col">
+          <div class="firma-slot">${rep.firma ? `<img src="${rep.firma}" alt="Firma" />` : ''}</div>
+          <div class="firma-info">
+            <div>${esc(rep.quienRealizaNombre)}</div>
+            <div class="cargo">${esc(rep.quienRealizaCargo)}</div>
+            <div style="margin-top:2px;">Nombre y firma de quien realiza</div>
+          </div>
+        </div>
+        <div class="firma-col">
+          <div class="firma-slot"></div>
+          <div class="firma-info">
+            <div>${esc(rep.quienRecibeNombre)}</div>
+            <div class="cargo">${esc(rep.quienRecibeCargo)}</div>
+            <div style="margin-top:2px;">Nombre y firma de quien recibe</div>
+          </div>
+        </div>
+      </div>` : `
+      <div class="firmas">
+        <div class="firma">
+          <div>${esc(rep.quienRealizaNombre)}</div>
+          <div class="cargo">${esc(rep.quienRealizaCargo)}</div>
+          <div style="margin-top:2px;">Nombre y firma de quien realiza</div>
+        </div>
+        <div class="firma">
+          <div>${esc(rep.quienRecibeNombre)}</div>
+          <div class="cargo">${esc(rep.quienRecibeCargo)}</div>
+          <div style="margin-top:2px;">Nombre y firma de quien recibe</div>
+        </div>
+      </div>`;
 
   win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Reporte de mantenimiento — ${equipo.equipo || ''}</title>
     <style>
@@ -223,6 +268,11 @@ function generarReportePDF(equipo, tipoKey, rep) {
       .firmas { display:flex; margin-top:26px; }
       .firma { flex:1; border-top:1px solid #1e293b; margin:0 30px; padding-top:5px; text-align:center; font-size:10.5px; }
       .firma .cargo { color:#64748b; font-size:10px; }
+      .firma-col { flex:1; margin:0 30px; text-align:center; font-size:10.5px; }
+      .firma-slot { height:46px; display:flex; align-items:flex-end; justify-content:center; }
+      .firma-slot img { max-height:44px; max-width:170px; object-fit:contain; }
+      .firma-info { border-top:1px solid #1e293b; padding-top:5px; }
+      .firma-info .cargo { color:#64748b; font-size:10px; }
       @media print { body { padding:14px; } }
     </style></head>
     <body>
@@ -246,7 +296,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
       <table class="info">
         <tr><td class="label">EQUIPO</td><td>${esc(equipo.equipo)}</td><td class="label">MARCA</td><td>${esc(equipo.marca)}</td><td class="label">N° ACTIVO</td><td>${esc(equipo.inventario)}</td></tr>
         <tr><td class="label">SERIE</td><td>${esc(equipo.numeroSerie)}</td><td class="label">MODELO</td><td>${esc(equipo.modelo)}</td><td class="label">UBICACIÓN</td><td>${esc(equipo.ubicacion)}</td></tr>
-        <tr><td class="label">FECHA DE MANTENIMIENTO</td><td>${esc(rep.fecha)}</td><td class="label">FECHA PRÓX. MANTENIMIENTO</td><td colspan="3">${esc(rep.fechaProximo)}</td></tr>
+        <tr><td class="label">FECHA DE MANTENIMIENTO</td><td>${esc(rep.fecha)}</td><td class="label">FECHA PRÓX. MANTENIMIENTO</td><td colspan="3">${esc(fechaProximoTxt)}</td></tr>
       </table>
       <div class="tipos">
         <span>${box(tipoKey === 'Preventivo')} PREVENTIVO</span>
@@ -260,7 +310,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
 
       <h2 class="section" style="margin-top:14px;">Características a inspeccionar</h2>
       <table class="checklist">
-        <thead><tr><th style="text-align:left;">Ítem</th><th>No aplica</th><th>Buen estado</th><th>Mal estado</th><th style="text-align:left;">Observaciones</th></tr></thead>
+        <thead><tr><th style="text-align:left;">Ítem</th><th>No aplica</th><th>Buen estado</th><th>Mal estado</th>${esPreventivo ? '' : '<th style="text-align:left;">Observaciones</th>'}</tr></thead>
         <tbody>${checklistRows}</tbody>
       </table>
 
@@ -269,19 +319,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
 
       <h2 class="section" style="margin-top:14px;">Repuestos utilizados en el servicio</h2>
       <div class="box">${repuestosTxt}</div>
-
-      <div class="firmas">
-        <div class="firma">
-          <div>${esc(rep.quienRealizaNombre)}</div>
-          <div class="cargo">${esc(rep.quienRealizaCargo)}</div>
-          <div style="margin-top:2px;">Nombre y firma de quien realiza</div>
-        </div>
-        <div class="firma">
-          <div>${esc(rep.quienRecibeNombre)}</div>
-          <div class="cargo">${esc(rep.quienRecibeCargo)}</div>
-          <div style="margin-top:2px;">Nombre y firma de quien recibe</div>
-        </div>
-      </div>
+      ${firmasHtml}
     </body></html>`);
   win.document.close();
   win.focus();
@@ -302,13 +340,23 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
   const [quienRecibeNombre, setQuienRecibeNombre] = useState(existing.quienRecibeNombre || '');
   const [quienRecibeCargo, setQuienRecibeCargo] = useState(existing.quienRecibeCargo || '');
   const [documentoUrl, setDocumentoUrl] = useState(existing.documentoUrl || '');
+  const [firma, setFirma] = useState(existing.firma || '');
+  const esPreventivo = tipoKey === 'Preventivo';
 
   const setItemEstado = (item, estado) => !readOnly && setChecklist({ ...checklist, [item]: { ...checklist[item], estado } });
   const setItemObs = (item, obs) => !readOnly && setChecklist({ ...checklist, [item]: { ...checklist[item], obs } });
 
+  const handleFirmaFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setFirma(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
   const buildReport = () => ({
     fecha, fechaProximo, estadoInicial, checklist, trabajoRealizado, repuestos,
-    quienRealizaNombre, quienRealizaCargo, quienRecibeNombre, quienRecibeCargo, documentoUrl,
+    quienRealizaNombre, quienRealizaCargo, quienRecibeNombre, quienRecibeCargo, documentoUrl, firma,
     generadoEl: existing.generadoEl || new Date().toISOString(),
   });
 
@@ -408,10 +456,30 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
           </div>
         </div>
 
-        <div className="mt-3">
-          <Field label="Documento original (enlace)"><TextInput t={t} value={documentoUrl} disabled={readOnly} placeholder="https://drive.google.com/..." onChange={setDocumentoUrl} /></Field>
-          {!readOnly && <p className={`text-[10px] mt-1 ${t.muted}`}>Sube el PDF firmado a Drive/OneDrive/SharePoint y pega aquí el enlace — esta versión no almacena archivos directamente.</p>}
-        </div>
+        {esPreventivo ? (
+          <div className="mt-3">
+            <label className="text-[10px] uppercase tracking-wide text-slate-400">Firma del responsable (imagen PNG)</label>
+            <div className={`mt-1 rounded-lg border p-3 flex items-center gap-3 ${t.panel3} ${t.border}`}>
+              <div className={`w-28 h-16 rounded-md border overflow-hidden flex items-center justify-center shrink-0 bg-white ${t.border}`}>
+                {firma
+                  ? <img src={firma} alt="Firma del responsable" className="w-full h-full object-contain" />
+                  : <div className={`flex flex-col items-center gap-0.5 text-center px-1 ${t.muted}`}><ImageIcon size={16} /><span className="text-[8px] leading-tight">Sin firma</span></div>}
+              </div>
+              {!readOnly && (
+                <div className="flex-1">
+                  <input type="file" accept="image/png" onChange={handleFirmaFile} className={`w-full text-[11px] ${t.muted}`} />
+                  <p className={`text-[10px] mt-1 ${t.muted}`}>Sube una imagen PNG de la firma (idealmente con fondo transparente). Se guarda junto con este mantenimiento y se imprime automáticamente en el reporte.</p>
+                  {firma && <button type="button" onClick={() => setFirma('')} className="text-[10px] text-red-400 mt-1">Quitar firma</button>}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3">
+            <Field label="Documento original (enlace)"><TextInput t={t} value={documentoUrl} disabled={readOnly} placeholder="https://drive.google.com/..." onChange={setDocumentoUrl} /></Field>
+            {!readOnly && <p className={`text-[10px] mt-1 ${t.muted}`}>Sube el PDF firmado a Drive/OneDrive/SharePoint y pega aquí el enlace — esta versión no almacena archivos directamente.</p>}
+          </div>
+        )}
 
         <div className="flex gap-2 mt-5">
           {!readOnly && <button onClick={() => onSave(buildReport())} className="rounded-md px-4 py-2 text-xs font-semibold" style={{ background: accent, color: '#fff' }}>Guardar reporte</button>}
