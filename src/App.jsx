@@ -924,6 +924,20 @@ function LogoMark({ size = 120, withWordmark = true, className = '' }) {
     </div>
   );
 }
+// Marca de agua institucional — el mismo isotipo (anillo, sin texto), muy grande y
+// casi imperceptible, solo para dar profundidad de fondo sin competir con el formulario.
+function LogoWatermark({ size = 820, opacity = 0.035 }) {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
+      <div style={{ opacity, filter: 'blur(2px)' }}>
+        <LogoMark size={size} withWordmark={false} />
+      </div>
+    </div>
+  );
+}
+// Degradado institucional casi imperceptible (azul · celeste · verde sobre blanco) —
+// solo para el modo claro; el modo oscuro conserva el fondo sólido habitual del CMMS.
+const REPORTE_BG_LIGHT = 'linear-gradient(160deg, #FFFFFF 0%, #EEF6FB 24%, #FFFFFF 48%, #EFF9F2 76%, #FFFFFF 100%)';
 
 /* ---------------------------------------------------------------- */
 /* PANTALLA DE ACCESO                                                 */
@@ -1149,8 +1163,10 @@ function ReporteFallaForm({ onBack }) {
 
   if (sent) {
     return (
-      <div className={`min-h-dvh flex items-center justify-center p-6 text-center ${t.bg} ${t.text}`} style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
-        <div className={`max-w-sm w-full rounded-xl border p-8 ${t.panel} ${t.border}`}>
+      <div className={`min-h-dvh flex items-center justify-center p-6 text-center relative overflow-hidden ${dark ? t.bg : ''} ${t.text}`}
+        style={{ fontFamily: "'IBM Plex Sans', sans-serif", background: dark ? undefined : REPORTE_BG_LIGHT }}>
+        <LogoWatermark />
+        <div className={`relative max-w-sm w-full rounded-xl border p-8 ${t.panel} ${t.border}`}>
           <div className="text-4xl mb-3">✅</div>
           <h1 className="text-lg font-bold mb-2">Reporte enviado</h1>
           <p className={`text-sm mb-5 ${t.muted}`}>Ingeniería Biomédica ha sido notificada.</p>
@@ -1161,8 +1177,10 @@ function ReporteFallaForm({ onBack }) {
   }
 
   return (
-    <div className={`min-h-dvh p-6 ${t.bg} ${t.text}`} style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
-      <div className="max-w-lg mx-auto">
+    <div className={`min-h-dvh p-6 relative overflow-hidden ${dark ? t.bg : ''} ${t.text}`}
+      style={{ fontFamily: "'IBM Plex Sans', sans-serif", background: dark ? undefined : REPORTE_BG_LIGHT }}>
+      <LogoWatermark />
+      <div className="max-w-lg mx-auto relative">
         <div className="flex items-center justify-between mb-4">
           <button onClick={onBack} className={`text-xs ${t.muted}`}>&larr; Volver</button>
           <button type="button" onClick={() => setDark(d => !d)} className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] border ${t.border} ${t.muted}`}>
