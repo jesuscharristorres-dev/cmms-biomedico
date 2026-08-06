@@ -404,8 +404,10 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
                   </button>
                 ))}
               </div>
-              <input value={checklist[item]?.obs || ''} disabled={readOnly} onChange={e => setItemObs(item, e.target.value)} placeholder="Observación"
-                className={`rounded-md px-2 py-1 text-[11px] border w-40 ${t.input} ${readOnly ? 'opacity-60' : ''}`} />
+              {!esPreventivo && (
+                <input value={checklist[item]?.obs || ''} disabled={readOnly} onChange={e => setItemObs(item, e.target.value)} placeholder="Observación"
+                  className={`rounded-md px-2 py-1 text-[11px] border w-40 ${t.input} ${readOnly ? 'opacity-60' : ''}`} />
+              )}
             </div>
           ))}
         </div>
@@ -812,7 +814,6 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
                 { key: 'fecha', label: 'Fecha', type: 'date' },
                 { key: 'responsable', label: 'Responsable' },
                 { key: 'estado', label: 'Estado', type: 'select', options: ['Programado', 'Ejecutado'] },
-                { key: 'observaciones', label: 'Observaciones' },
                 { key: 'pdfUrl', label: 'PDF (URL)', type: 'url' },
               ]}
               onAdd={(d) => patchList('preventivos', [...equipo.preventivos, { id: uid('pv'), fecha: todayISO(), estado: 'Programado', ...d }])}
