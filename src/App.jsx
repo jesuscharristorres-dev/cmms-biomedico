@@ -80,6 +80,7 @@ const AUTH_PASS = 'biomedica2026';
 
 const CLASIFICACIONES = ['I', 'IIA', 'IIB', 'III'];
 const ESTADOS_EQUIPO = ['Operativo', 'Fuera de servicio', 'En mantenimiento', 'Dado de baja'];
+const PERIODICIDADES = ['Mensual', 'Bimestral', 'Trimestral', 'Semestral', 'Anual'];
 const MENU = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'alertas', label: 'Alertas', icon: BellRing },
@@ -107,6 +108,7 @@ function newEquipo(empresaKey) {
     clasificacionRiesgo: 'IIB', inventario: '',
     proveedor: '', fabricante: '', fechaCompra: '', fechaInstalacion: '', garantiaHasta: '',
     fotografiaUrl: '', ubicacion: '', estado: 'Operativo', actaEntregaUrl: '',
+    periodicidadMantenimiento: 'Anual', periodicidadCalibracion: 'Anual',
     aplicaCalibracion: true, aplicaPreventivo: true,
     fechaUltimaCalibracion: '', certificadoUrl: '', observaciones: '',
     preventivos: [], correctivos: [], calibraciones: [], instalaciones: [], documentos: [], bajas: [],
@@ -629,6 +631,8 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
               <Field label="Fecha de compra"><TextInput t={t} disabled={readOnly} type="date" value={equipo.fechaCompra} onChange={v => patch('fechaCompra', v)} /></Field>
               <Field label="Fecha de instalación"><TextInput t={t} disabled={readOnly} type="date" value={equipo.fechaInstalacion} onChange={v => patch('fechaInstalacion', v)} /></Field>
               <Field label="Garantía hasta"><TextInput t={t} disabled={readOnly} type="date" value={equipo.garantiaHasta} onChange={v => patch('garantiaHasta', v)} /></Field>
+              <Field label="Periodicidad de mantenimiento"><SelectInput t={t} disabled={readOnly} value={equipo.periodicidadMantenimiento} options={PERIODICIDADES} onChange={v => patch('periodicidadMantenimiento', v)} /></Field>
+              <Field label="Periodicidad de calibración"><SelectInput t={t} disabled={readOnly} value={equipo.periodicidadCalibracion} options={PERIODICIDADES} onChange={v => patch('periodicidadCalibracion', v)} /></Field>
               <Field label="Ubicación"><TextInput t={t} disabled={readOnly} value={equipo.ubicacion} onChange={v => patch('ubicacion', v)} /></Field>
               <div className="col-span-2"><Field label="Fotografía (URL)"><TextInput t={t} disabled={readOnly} value={equipo.fotografiaUrl} placeholder="https://..." onChange={v => patch('fotografiaUrl', v)} /></Field></div>
               {equipo.fotografiaUrl && <img src={equipo.fotografiaUrl} alt="Equipo" className="col-span-2 rounded-lg border max-h-48 object-cover" style={{ borderColor: accent }} />}
@@ -1396,6 +1400,8 @@ function MainApp({ onLogout, readOnly }) {
       MONTHS.forEach(m => { row[m.l.toUpperCase()] = getMonthStatus(e, m.idx, year); });
       row.CALIBRACION = e.aplicaCalibracion ? 'SI' : 'NO';
       row.PREVENTIVO = e.aplicaPreventivo ? 'SI' : 'NO';
+      row['PERIODICIDAD DE MANTENIMIENTO'] = e.periodicidadMantenimiento;
+      row['PERIODICIDAD DE CALIBRACION'] = e.periodicidadCalibracion;
       row['UBICACIÓN'] = e.ubicacion;
       row['FECHA DE ULTIMA CALIBRACION'] = e.fechaUltimaCalibracion;
       const cs = calibStatus(e);
@@ -1442,6 +1448,7 @@ function MainApp({ onLogout, readOnly }) {
           equipo: r.EQUIPO || '', marca: r.MARCA || '', modelo: r.MODELO || '',
           numeroSerie: r['NUMERO DE SERIE'] || '', registroInvima: r['REGISTRO INVIMA'] || '',
           clasificacionRiesgo: r['CLASIFICACION DE RIESGO'] || 'IIB', inventario: r.INVENTARIO || '',
+          periodicidadMantenimiento: r['PERIODICIDAD DE MANTENIMIENTO'] || 'Anual', periodicidadCalibracion: r['PERIODICIDAD DE CALIBRACION'] || 'Anual',
           ubicacion: r['UBICACIÓN'] || '', fechaUltimaCalibracion: parseExcelDate(r['FECHA DE ULTIMA CALIBRACION']),
           estado: r.ESTADO || 'Operativo', certificadoUrl: r['CERTIFICADO DE CALIBRACION'] || '', observaciones: r.OBSERVACIONES || '',
         };
@@ -2249,12 +2256,11 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                 {MONTHS.map(m => <th key={m.k} className={`px-2 py-2.5 font-mono text-[10px] ${t.muted}`}>{m.l}</th>)}
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>CALIB.</th>
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PREV.</th>
+                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PERIOD. MANTO.</th>
+                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PERIOD. CALIB.</th>
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>UBICACIÓN</th>
-                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>ÚLT. CALIB.</th>
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PRÓX. CALIB.</th>
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>ESTADO</th>
-                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>CERTIFICADO</th>
-                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>OBS.</th>
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>ACCIONES</th>
               </tr>
             </thead>
@@ -2282,27 +2288,25 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                     })}
                     <td className="px-3 py-2 text-center">{e.aplicaCalibracion ? '✓' : '—'}</td>
                     <td className="px-3 py-2 text-center">{e.aplicaPreventivo ? '✓' : '—'}</td>
+                    <td className="px-3 py-2">{e.periodicidadMantenimiento || '—'}</td>
+                    <td className="px-3 py-2">{e.periodicidadCalibracion || '—'}</td>
                     <td className="px-3 py-2">{e.ubicacion || '—'}</td>
-                    <td className="px-3 py-2">{e.fechaUltimaCalibracion || '—'}</td>
                     <td className="px-3 py-2">{cs.next ? cs.next.toISOString().slice(0, 10) : '—'}</td>
                     <td className="px-3 py-2">
                       <span className="px-2 py-0.5 rounded-full text-[10px]" style={{ background: (e.estado === 'Operativo' ? '#22C55E' : e.estado === 'Dado de baja' ? '#EF4444' : '#F59E0B') + '22', color: e.estado === 'Operativo' ? '#22C55E' : e.estado === 'Dado de baja' ? '#EF4444' : '#F59E0B' }}>{e.estado}</span>
                     </td>
                     <td className="px-3 py-2" onClick={ev => ev.stopPropagation()}>
-                      {e.certificadoUrl
-                        ? <a href={e.certificadoUrl} target="_blank" rel="noreferrer" className="text-[11px] underline" style={{ color: accent }}>📄 Ver certificado</a>
-                        : <span className={`text-[11px] ${t.muted}`}>Sin certificado</span>}
-                    </td>
-                    <td className="px-3 py-2 text-center" onClick={ev => { ev.stopPropagation(); onObs(e.id); }}>
-                      <MessageCircle size={14} className={e.observaciones ? '' : t.muted} style={e.observaciones ? { color: accent } : {}} />
-                    </td>
-                    <td className="px-3 py-2" onClick={ev => ev.stopPropagation()}>
-                      {!readOnly && (
-                        <div className="flex gap-2">
-                          <button onClick={() => onDuplicate(e)} title="Duplicar"><Copy size={13} className={t.muted} /></button>
-                          <button onClick={() => onRemove(e.id)} title="Eliminar"><Trash2 size={13} className="text-red-400" /></button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => onObs(e.id)} title="Observaciones">
+                          <MessageCircle size={14} className={e.observaciones ? '' : t.muted} style={e.observaciones ? { color: accent } : {}} />
+                        </button>
+                        {!readOnly && (
+                          <>
+                            <button onClick={() => onDuplicate(e)} title="Duplicar"><Copy size={13} className={t.muted} /></button>
+                            <button onClick={() => onRemove(e.id)} title="Eliminar"><Trash2 size={13} className="text-red-400" /></button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
