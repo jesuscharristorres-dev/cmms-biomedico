@@ -2256,8 +2256,8 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                 {MONTHS.map(m => <th key={m.k} className={`px-2 py-2.5 font-mono text-[10px] ${t.muted}`}>{m.l}</th>)}
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>CALIB.</th>
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PREV.</th>
-                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PERIOD. MANTO.</th>
-                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PERIOD. CALIB.</th>
+                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PERIODICIDAD DE MANTENIMIENTO</th>
+                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PERIODICIDAD DE CALIBRACIÓN</th>
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>UBICACIÓN</th>
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PRÓX. CALIB.</th>
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>ESTADO</th>
