@@ -888,11 +888,11 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
           {tab === 'Documentos' && (
             <RecordList t={t} records={equipo.documentos} readOnly={readOnly}
               fields={[
-                { key: 'tipo', label: 'Tipo', type: 'select', options: ['Manual', 'Registro INVIMA', 'Certificado', 'Fotografía', 'Factura', 'Acta', 'Otro'] },
+                { key: 'tipo', label: 'Tipo', type: 'select', options: ['Manuales', 'Fichas técnicas', 'Guías de uso rápido', 'Registro INVIMA', 'Certificado de calibración', 'Factura', 'Otros'] },
                 { key: 'nombre', label: 'Nombre' },
                 { key: 'url', label: 'Enlace (URL)', type: 'url' },
               ]}
-              onAdd={(d) => patchList('documentos', [...equipo.documentos, { id: uid('doc'), tipo: 'Otro', ...d }])}
+              onAdd={(d) => patchList('documentos', [...equipo.documentos, { id: uid('doc'), tipo: 'Otros', ...d }])}
               onRemove={(i) => patchList('documentos', equipo.documentos.filter((_, idx) => idx !== i))}
               onUpdate={(i, k, v) => { const list = [...equipo.documentos]; list[i] = { ...list[i], [k]: v }; patchList('documentos', list); }}
             />
