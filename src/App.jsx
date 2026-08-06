@@ -107,7 +107,7 @@ function newEquipo(empresaKey) {
     equipo: '', marca: '', modelo: '', numeroSerie: '', registroInvima: '',
     clasificacionRiesgo: 'IIB', inventario: '',
     fechaInstalacion: '',
-    fotografiaUrl: '', ubicacion: '', estado: 'Operativo', actaEntregaUrl: '',
+    fotografiaUrl: '', ubicacion: '', estado: 'Operativo', actaEntregaUrl: '', hojaVidaUrl: '',
     periodicidadMantenimiento: 'Anual', periodicidadCalibracion: 'Anual',
     aplicaCalibracion: true, aplicaPreventivo: true,
     fechaUltimaCalibracion: '', certificadoUrl: '', observaciones: '',
@@ -615,32 +615,29 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
 
         <div className="p-5">
           {tab === 'Información General' && (
-            <div>
-              {/* Encabezado de la ficha: Empresa/Sede a la izquierda, fotografía a la derecha */}
-              <div className="flex gap-4 items-start mb-4">
-                <div className="flex-1 grid grid-cols-2 gap-3">
-                  <Field label="Empresa"><SelectInput t={t} disabled={readOnly} value={equipo.empresa} options={COMPANIES.map(c => c.key)} onChange={v => onUpdate({ ...equipo, empresa: v, sede: companyOf(v).sedes[0] })} /></Field>
-                  <Field label="Sede"><SelectInput t={t} disabled={readOnly} value={equipo.sede} options={companyOf(equipo.empresa).sedes} onChange={v => patch('sede', v)} /></Field>
+            <div className="relative pr-36">
+              {/* Fotografía — flotante en la esquina superior derecha, fuera del flujo de la grilla
+                  para que los campos de la izquierda no dependan de su altura. */}
+              <div className="absolute top-0 right-0 w-32.5">
+                <div className={`w-32.5 h-32.5 rounded-lg border overflow-hidden flex items-center justify-center ${t.panel3} ${t.border}`}>
+                  {equipo.fotografiaUrl
+                    ? <img src={equipo.fotografiaUrl} alt="Equipo" className="w-full h-full object-contain" />
+                    : (
+                      <div className={`flex flex-col items-center gap-1 text-center px-2 ${t.muted}`}>
+                        <ImageIcon size={20} />
+                        <span className="text-[9px] leading-tight">Sin fotografía</span>
+                      </div>
+                    )}
                 </div>
-                <div className="shrink-0 w-32.5">
-                  <div className={`w-32.5 h-32.5 rounded-lg border overflow-hidden flex items-center justify-center ${t.panel3} ${t.border}`}>
-                    {equipo.fotografiaUrl
-                      ? <img src={equipo.fotografiaUrl} alt="Equipo" className="w-full h-full object-contain" />
-                      : (
-                        <div className={`flex flex-col items-center gap-1 text-center px-2 ${t.muted}`}>
-                          <ImageIcon size={20} />
-                          <span className="text-[9px] leading-tight">Sin fotografía</span>
-                        </div>
-                      )}
-                  </div>
-                  {!readOnly && (
-                    <input value={equipo.fotografiaUrl || ''} placeholder="URL de la foto" onChange={e => patch('fotografiaUrl', e.target.value)}
-                      className={`mt-1.5 w-32.5 rounded-md px-1.5 py-1 text-[10px] border ${t.input}`} />
-                  )}
-                </div>
+                {!readOnly && (
+                  <input value={equipo.fotografiaUrl || ''} placeholder="URL de la foto" onChange={e => patch('fotografiaUrl', e.target.value)}
+                    className={`mt-1.5 w-32.5 rounded-md px-1.5 py-1 text-[10px] border ${t.input}`} />
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
+                <Field label="Empresa"><SelectInput t={t} disabled={readOnly} value={equipo.empresa} options={COMPANIES.map(c => c.key)} onChange={v => onUpdate({ ...equipo, empresa: v, sede: companyOf(v).sedes[0] })} /></Field>
+                <Field label="Sede"><SelectInput t={t} disabled={readOnly} value={equipo.sede} options={companyOf(equipo.empresa).sedes} onChange={v => patch('sede', v)} /></Field>
                 <Field label="Equipo"><TextInput t={t} disabled={readOnly} value={equipo.equipo} onChange={v => patch('equipo', v)} /></Field>
                 <Field label="Marca"><TextInput t={t} disabled={readOnly} value={equipo.marca} onChange={v => patch('marca', v)} /></Field>
                 <Field label="Modelo"><TextInput t={t} disabled={readOnly} value={equipo.modelo} onChange={v => patch('modelo', v)} /></Field>
@@ -654,20 +651,35 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
                 <Field label="Periodicidad de mantenimiento"><SelectInput t={t} disabled={readOnly} value={equipo.periodicidadMantenimiento} options={PERIODICIDADES} onChange={v => patch('periodicidadMantenimiento', v)} /></Field>
                 <Field label="Periodicidad de calibración"><SelectInput t={t} disabled={readOnly} value={equipo.periodicidadCalibracion} options={PERIODICIDADES} onChange={v => patch('periodicidadCalibracion', v)} /></Field>
 
-                <div className="col-span-2">
+                <div>
                   <Field label="Acta de entrega (URL)">
                     <div className="flex gap-2">
                       <div className="flex-1"><TextInput t={t} disabled={readOnly} value={equipo.actaEntregaUrl} placeholder="https://drive.google.com/..." onChange={v => patch('actaEntregaUrl', v)} /></div>
                       {equipo.actaEntregaUrl && (
-                        <a href={equipo.actaEntregaUrl} target="_blank" rel="noreferrer"
-                          className="shrink-0 flex items-center gap-1.5 rounded-md px-3 text-xs font-semibold border" style={{ borderColor: accent, color: accent }}>
-                          <FileText size={13} /> Ver acta
+                        <a href={equipo.actaEntregaUrl} target="_blank" rel="noreferrer" title="Ver acta de entrega"
+                          className="shrink-0 flex items-center justify-center w-8 h-8 rounded-md border" style={{ borderColor: accent, color: accent }}>
+                          <FileText size={13} />
                         </a>
                       )}
                     </div>
                   </Field>
                   {!readOnly && <p className={`text-[10px] mt-1 ${t.muted}`}>Sube el acta firmada a Drive/OneDrive/SharePoint y pega aquí el enlace.</p>}
                 </div>
+                <div>
+                  <Field label="Hoja de vida (URL)">
+                    <div className="flex gap-2">
+                      <div className="flex-1"><TextInput t={t} disabled={readOnly} value={equipo.hojaVidaUrl} placeholder="https://drive.google.com/..." onChange={v => patch('hojaVidaUrl', v)} /></div>
+                      {equipo.hojaVidaUrl && (
+                        <a href={equipo.hojaVidaUrl} target="_blank" rel="noreferrer" title="Ver hoja de vida"
+                          className="shrink-0 flex items-center justify-center w-8 h-8 rounded-md border" style={{ borderColor: accent, color: accent }}>
+                          <FileText size={13} />
+                        </a>
+                      )}
+                    </div>
+                  </Field>
+                  {!readOnly && <p className={`text-[10px] mt-1 ${t.muted}`}>Sube la hoja de vida a Drive/OneDrive/SharePoint y pega aquí el enlace.</p>}
+                </div>
+
                 <div className="col-span-2 flex gap-4 mt-1">
                   <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={equipo.aplicaCalibracion} disabled={readOnly} onChange={e => patch('aplicaCalibracion', e.target.checked)} /> Aplica calibración</label>
                   <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={equipo.aplicaPreventivo} disabled={readOnly} onChange={e => patch('aplicaPreventivo', e.target.checked)} /> Aplica preventivo</label>
