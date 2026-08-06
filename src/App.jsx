@@ -3,7 +3,7 @@ import {
   Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X,
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, Mail, AlertTriangle, Lock,
-  User, Eye, EyeOff
+  User, Eye, EyeOff, Image as ImageIcon
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -106,7 +106,7 @@ function newEquipo(empresaKey) {
     empresa: c.key, sede: c.sedes[0],
     equipo: '', marca: '', modelo: '', numeroSerie: '', registroInvima: '',
     clasificacionRiesgo: 'IIB', inventario: '',
-    proveedor: '', fabricante: '', fechaCompra: '', fechaInstalacion: '', garantiaHasta: '',
+    fechaInstalacion: '',
     fotografiaUrl: '', ubicacion: '', estado: 'Operativo', actaEntregaUrl: '',
     periodicidadMantenimiento: 'Anual', periodicidadCalibracion: 'Anual',
     aplicaCalibracion: true, aplicaPreventivo: true,
@@ -615,44 +615,63 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
 
         <div className="p-5">
           {tab === 'Información General' && (
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Empresa"><SelectInput t={t} disabled={readOnly} value={equipo.empresa} options={COMPANIES.map(c => c.key)} onChange={v => onUpdate({ ...equipo, empresa: v, sede: companyOf(v).sedes[0] })} /></Field>
-              <Field label="Sede"><SelectInput t={t} disabled={readOnly} value={equipo.sede} options={companyOf(equipo.empresa).sedes} onChange={v => patch('sede', v)} /></Field>
-              <Field label="Equipo"><TextInput t={t} disabled={readOnly} value={equipo.equipo} onChange={v => patch('equipo', v)} /></Field>
-              <Field label="Marca"><TextInput t={t} disabled={readOnly} value={equipo.marca} onChange={v => patch('marca', v)} /></Field>
-              <Field label="Modelo"><TextInput t={t} disabled={readOnly} value={equipo.modelo} onChange={v => patch('modelo', v)} /></Field>
-              <Field label="Serie"><TextInput t={t} disabled={readOnly} value={equipo.numeroSerie} onChange={v => patch('numeroSerie', v)} /></Field>
-              <Field label="Inventario"><TextInput t={t} disabled={readOnly} value={equipo.inventario} onChange={v => patch('inventario', v)} /></Field>
-              <Field label="Registro INVIMA"><TextInput t={t} disabled={readOnly} value={equipo.registroInvima} onChange={v => patch('registroInvima', v)} /></Field>
-              <Field label="Clasificación de riesgo"><SelectInput t={t} disabled={readOnly} value={equipo.clasificacionRiesgo} options={CLASIFICACIONES} onChange={v => patch('clasificacionRiesgo', v)} /></Field>
-              <Field label="Estado"><SelectInput t={t} disabled={readOnly} value={equipo.estado} options={ESTADOS_EQUIPO} onChange={v => patch('estado', v)} /></Field>
-              <Field label="Proveedor"><TextInput t={t} disabled={readOnly} value={equipo.proveedor} onChange={v => patch('proveedor', v)} /></Field>
-              <Field label="Fabricante"><TextInput t={t} disabled={readOnly} value={equipo.fabricante} onChange={v => patch('fabricante', v)} /></Field>
-              <Field label="Fecha de compra"><TextInput t={t} disabled={readOnly} type="date" value={equipo.fechaCompra} onChange={v => patch('fechaCompra', v)} /></Field>
-              <Field label="Fecha de instalación"><TextInput t={t} disabled={readOnly} type="date" value={equipo.fechaInstalacion} onChange={v => patch('fechaInstalacion', v)} /></Field>
-              <Field label="Garantía hasta"><TextInput t={t} disabled={readOnly} type="date" value={equipo.garantiaHasta} onChange={v => patch('garantiaHasta', v)} /></Field>
-              <Field label="Periodicidad de mantenimiento"><SelectInput t={t} disabled={readOnly} value={equipo.periodicidadMantenimiento} options={PERIODICIDADES} onChange={v => patch('periodicidadMantenimiento', v)} /></Field>
-              <Field label="Periodicidad de calibración"><SelectInput t={t} disabled={readOnly} value={equipo.periodicidadCalibracion} options={PERIODICIDADES} onChange={v => patch('periodicidadCalibracion', v)} /></Field>
-              <Field label="Ubicación"><TextInput t={t} disabled={readOnly} value={equipo.ubicacion} onChange={v => patch('ubicacion', v)} /></Field>
-              <div className="col-span-2"><Field label="Fotografía (URL)"><TextInput t={t} disabled={readOnly} value={equipo.fotografiaUrl} placeholder="https://..." onChange={v => patch('fotografiaUrl', v)} /></Field></div>
-              {equipo.fotografiaUrl && <img src={equipo.fotografiaUrl} alt="Equipo" className="col-span-2 rounded-lg border max-h-48 object-cover" style={{ borderColor: accent }} />}
-              <div className="col-span-2">
-                <Field label="Acta de entrega (URL)">
-                  <div className="flex gap-2">
-                    <div className="flex-1"><TextInput t={t} disabled={readOnly} value={equipo.actaEntregaUrl} placeholder="https://drive.google.com/..." onChange={v => patch('actaEntregaUrl', v)} /></div>
-                    {equipo.actaEntregaUrl && (
-                      <a href={equipo.actaEntregaUrl} target="_blank" rel="noreferrer"
-                        className="shrink-0 flex items-center gap-1.5 rounded-md px-3 text-xs font-semibold border" style={{ borderColor: accent, color: accent }}>
-                        <FileText size={13} /> Ver acta
-                      </a>
-                    )}
+            <div>
+              {/* Encabezado de la ficha: Empresa/Sede a la izquierda, fotografía a la derecha */}
+              <div className="flex gap-4 items-start mb-4">
+                <div className="flex-1 grid grid-cols-2 gap-3">
+                  <Field label="Empresa"><SelectInput t={t} disabled={readOnly} value={equipo.empresa} options={COMPANIES.map(c => c.key)} onChange={v => onUpdate({ ...equipo, empresa: v, sede: companyOf(v).sedes[0] })} /></Field>
+                  <Field label="Sede"><SelectInput t={t} disabled={readOnly} value={equipo.sede} options={companyOf(equipo.empresa).sedes} onChange={v => patch('sede', v)} /></Field>
+                </div>
+                <div className="shrink-0 w-32.5">
+                  <div className={`w-32.5 h-32.5 rounded-lg border overflow-hidden flex items-center justify-center ${t.panel3} ${t.border}`}>
+                    {equipo.fotografiaUrl
+                      ? <img src={equipo.fotografiaUrl} alt="Equipo" className="w-full h-full object-contain" />
+                      : (
+                        <div className={`flex flex-col items-center gap-1 text-center px-2 ${t.muted}`}>
+                          <ImageIcon size={20} />
+                          <span className="text-[9px] leading-tight">Sin fotografía</span>
+                        </div>
+                      )}
                   </div>
-                </Field>
-                {!readOnly && <p className={`text-[10px] mt-1 ${t.muted}`}>Sube el acta firmada a Drive/OneDrive/SharePoint y pega aquí el enlace.</p>}
+                  {!readOnly && (
+                    <input value={equipo.fotografiaUrl || ''} placeholder="URL de la foto" onChange={e => patch('fotografiaUrl', e.target.value)}
+                      className={`mt-1.5 w-32.5 rounded-md px-1.5 py-1 text-[10px] border ${t.input}`} />
+                  )}
+                </div>
               </div>
-              <div className="col-span-2 flex gap-4 mt-1">
-                <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={equipo.aplicaCalibracion} disabled={readOnly} onChange={e => patch('aplicaCalibracion', e.target.checked)} /> Aplica calibración</label>
-                <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={equipo.aplicaPreventivo} disabled={readOnly} onChange={e => patch('aplicaPreventivo', e.target.checked)} /> Aplica preventivo</label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Equipo"><TextInput t={t} disabled={readOnly} value={equipo.equipo} onChange={v => patch('equipo', v)} /></Field>
+                <Field label="Marca"><TextInput t={t} disabled={readOnly} value={equipo.marca} onChange={v => patch('marca', v)} /></Field>
+                <Field label="Modelo"><TextInput t={t} disabled={readOnly} value={equipo.modelo} onChange={v => patch('modelo', v)} /></Field>
+                <Field label="Serie"><TextInput t={t} disabled={readOnly} value={equipo.numeroSerie} onChange={v => patch('numeroSerie', v)} /></Field>
+                <Field label="Registro INVIMA"><TextInput t={t} disabled={readOnly} value={equipo.registroInvima} onChange={v => patch('registroInvima', v)} /></Field>
+                <Field label="Clasificación de riesgo"><SelectInput t={t} disabled={readOnly} value={equipo.clasificacionRiesgo} options={CLASIFICACIONES} onChange={v => patch('clasificacionRiesgo', v)} /></Field>
+                <Field label="Inventario"><TextInput t={t} disabled={readOnly} value={equipo.inventario} onChange={v => patch('inventario', v)} /></Field>
+                <Field label="Estado"><SelectInput t={t} disabled={readOnly} value={equipo.estado} options={ESTADOS_EQUIPO} onChange={v => patch('estado', v)} /></Field>
+                <Field label="Fecha de instalación"><TextInput t={t} disabled={readOnly} type="date" value={equipo.fechaInstalacion} onChange={v => patch('fechaInstalacion', v)} /></Field>
+                <Field label="Ubicación"><TextInput t={t} disabled={readOnly} value={equipo.ubicacion} onChange={v => patch('ubicacion', v)} /></Field>
+                <Field label="Periodicidad de mantenimiento"><SelectInput t={t} disabled={readOnly} value={equipo.periodicidadMantenimiento} options={PERIODICIDADES} onChange={v => patch('periodicidadMantenimiento', v)} /></Field>
+                <Field label="Periodicidad de calibración"><SelectInput t={t} disabled={readOnly} value={equipo.periodicidadCalibracion} options={PERIODICIDADES} onChange={v => patch('periodicidadCalibracion', v)} /></Field>
+
+                <div className="col-span-2">
+                  <Field label="Acta de entrega (URL)">
+                    <div className="flex gap-2">
+                      <div className="flex-1"><TextInput t={t} disabled={readOnly} value={equipo.actaEntregaUrl} placeholder="https://drive.google.com/..." onChange={v => patch('actaEntregaUrl', v)} /></div>
+                      {equipo.actaEntregaUrl && (
+                        <a href={equipo.actaEntregaUrl} target="_blank" rel="noreferrer"
+                          className="shrink-0 flex items-center gap-1.5 rounded-md px-3 text-xs font-semibold border" style={{ borderColor: accent, color: accent }}>
+                          <FileText size={13} /> Ver acta
+                        </a>
+                      )}
+                    </div>
+                  </Field>
+                  {!readOnly && <p className={`text-[10px] mt-1 ${t.muted}`}>Sube el acta firmada a Drive/OneDrive/SharePoint y pega aquí el enlace.</p>}
+                </div>
+                <div className="col-span-2 flex gap-4 mt-1">
+                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={equipo.aplicaCalibracion} disabled={readOnly} onChange={e => patch('aplicaCalibracion', e.target.checked)} /> Aplica calibración</label>
+                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={equipo.aplicaPreventivo} disabled={readOnly} onChange={e => patch('aplicaPreventivo', e.target.checked)} /> Aplica preventivo</label>
+                </div>
               </div>
             </div>
           )}
