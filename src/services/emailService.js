@@ -110,7 +110,7 @@ export async function notifyCorrectivoRegistrado(equipo, correctivo, destinatari
       ['Empresa', equipo.empresa],
       ['Sede', equipo.sede],
       ['Fecha', correctivo.fecha],
-      ['Falla reportada', correctivo.fallaReportada],
+      ['Estado', correctivo.estado],
       ['Responsable', correctivo.responsable],
     ],
   });
@@ -194,7 +194,7 @@ const NOTIFIED_KEY = 'cmms-notified-alerts';
 export function getNotifiedIds() {
   try {
     return new Set(JSON.parse(localStorage.getItem(NOTIFIED_KEY) || '[]'));
-  } catch (e) {
+  } catch {
     return new Set();
   }
 }

@@ -147,7 +147,7 @@ function getMonthStatus(equipo, monthIdx, year) {
 function historialDe(equipo) {
   const rows = [];
   (equipo.preventivos || []).forEach(p => rows.push({ fecha: p.fecha, tipo: 'Preventivo', detalle: `${p.responsable || 'Sin responsable'} · ${p.estado || ''}`, reporte: !!p.reporteTecnico }));
-  (equipo.correctivos || []).forEach(c => rows.push({ fecha: c.fecha, tipo: 'Correctivo', detalle: c.fallaReportada || '', reporte: !!c.reporteTecnico }));
+  (equipo.correctivos || []).forEach(c => rows.push({ fecha: c.fecha, tipo: 'Correctivo', detalle: `${c.responsable || 'Sin responsable'} · ${c.estado || ''}`, reporte: !!c.reporteTecnico }));
   (equipo.calibraciones || []).forEach(c => rows.push({ fecha: c.fecha, tipo: 'Calibración', detalle: c.certificadoUrl ? 'Con certificado' : 'Sin certificado' }));
   (equipo.instalaciones || []).forEach(i => rows.push({ fecha: i.fecha, tipo: 'Instalación', detalle: i.proveedor || '', reporte: !!i.reporteTecnico }));
   (equipo.bajas || []).forEach(b => rows.push({ fecha: b.fecha, tipo: 'Baja de equipo', detalle: b.motivo || '', reporte: !!b.reporteTecnico }));
@@ -189,13 +189,12 @@ const TIPO_INTERVENCION_MAP = { Preventivo: 'Preventivo', Correctivo: 'Correctiv
 function generarReportePDF(equipo, tipoKey, rep) {
   const co = companyOf(equipo.empresa);
   const tipoLabel = TIPOS_REPORTE_LABEL[tipoKey] || tipoKey;
-  const esPreventivo = tipoKey === 'Preventivo';
   const win = window.open('', '_blank');
   if (!win) { alert('El navegador bloqueó la ventana emergente. Habilítala para generar el PDF.'); return; }
   const esc = (v) => (v || '—');
   const box = (checked) => checked ? '☑' : '☐';
 
-  // En Preventivos el reporte no incluye la columna de observaciones del checklist.
+  // El reporte no incluye la columna de observaciones del checklist (formato unificado).
   const checklistRows = CHECKLIST_ITEMS.map(item => {
     const c = (rep.checklist && rep.checklist[item]) || { estado: 'no_aplica', obs: '' };
     return `<tr>
@@ -203,19 +202,18 @@ function generarReportePDF(equipo, tipoKey, rep) {
       <td style="text-align:center;">${c.estado === 'no_aplica' ? '✔' : ''}</td>
       <td style="text-align:center;">${c.estado === 'bueno' ? '✔' : ''}</td>
       <td style="text-align:center;">${c.estado === 'malo' ? '✔' : ''}</td>
-      ${esPreventivo ? '' : `<td>${c.obs || ''}</td>`}
     </tr>`;
   }).join('');
 
-  // En Preventivos, la fecha de próximo mantenimiento solo muestra mes y año.
-  const fechaProximoTxt = esPreventivo ? formatMesAnio(rep.fechaProximo) : rep.fechaProximo;
+  // La fecha de próximo mantenimiento solo muestra mes y año (formato unificado).
+  const fechaProximoTxt = formatMesAnio(rep.fechaProximo);
 
   const repuestosTxt = (rep.repuestos || []).length
     ? rep.repuestos.map(r => `${r.item}${r.cantidad ? ' — ' + r.cantidad : ''}`).join('<br/>')
     : '—';
 
-  // En Preventivos, cada firma cargada se imprime como imagen sobre su línea correspondiente.
-  const firmasHtml = esPreventivo ? `
+  // Cada firma cargada se imprime como imagen sobre su línea correspondiente (formato unificado).
+  const firmasHtml = `
       <div class="firmas">
         <div class="firma-col">
           <div class="firma-slot">${rep.firmaRealiza ? `<img src="${rep.firmaRealiza}" alt="Firma de quien realiza" />` : ''}</div>
@@ -230,18 +228,6 @@ function generarReportePDF(equipo, tipoKey, rep) {
             <div>${esc(rep.quienRecibeNombre)}</div>
             <div style="margin-top:2px;">Nombre y firma de quien recibe</div>
           </div>
-        </div>
-      </div>` : `
-      <div class="firmas">
-        <div class="firma">
-          <div>${esc(rep.quienRealizaNombre)}</div>
-          <div class="cargo">${esc(rep.quienRealizaCargo)}</div>
-          <div style="margin-top:2px;">Nombre y firma de quien realiza</div>
-        </div>
-        <div class="firma">
-          <div>${esc(rep.quienRecibeNombre)}</div>
-          <div class="cargo">${esc(rep.quienRecibeCargo)}</div>
-          <div style="margin-top:2px;">Nombre y firma de quien recibe</div>
         </div>
       </div>`;
 
@@ -310,7 +296,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
 
       <h2 class="section" style="margin-top:14px;">Características a inspeccionar</h2>
       <table class="checklist">
-        <thead><tr><th style="text-align:left;">Ítem</th><th>No aplica</th><th>Buen estado</th><th>Mal estado</th>${esPreventivo ? '' : '<th style="text-align:left;">Observaciones</th>'}</tr></thead>
+        <thead><tr><th style="text-align:left;">Ítem</th><th>No aplica</th><th>Buen estado</th><th>Mal estado</th></tr></thead>
         <tbody>${checklistRows}</tbody>
       </table>
 
@@ -328,12 +314,11 @@ function generarReportePDF(equipo, tipoKey, rep) {
 
 function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent, t, readOnly }) {
   const existing = record.reporteTecnico || {};
-  // En Preventivos, la fecha de mantenimiento es la que se registró al crear el
-  // preventivo (record.fecha) — es la única fuente de verdad, nunca se sobrescribe
-  // con un valor distinto guardado previamente en el reporte.
-  const [fecha, setFecha] = useState(
-    tipoKey === 'Preventivo' ? (record.fecha || todayISO()) : (existing.fecha || record.fecha || todayISO())
-  );
+  // La fecha de mantenimiento es la que se registró al crear el registro (record.fecha)
+  // — es la única fuente de verdad, nunca se sobrescribe con un valor distinto guardado
+  // previamente en el reporte. Formato unificado para Preventivos, Correctivos,
+  // Instalaciones y Baja de Equipo.
+  const [fecha] = useState(record.fecha || todayISO());
   const [fechaProximo, setFechaProximo] = useState(existing.fechaProximo || '');
   const [estadoInicial, setEstadoInicial] = useState(existing.estadoInicial || record.fallaReportada || '');
   const [checklist, setChecklist] = useState(existing.checklist || defaultChecklist());
@@ -341,20 +326,15 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
   const [repuestos, setRepuestos] = useState(existing.repuestos || []);
   const [repDraft, setRepDraft] = useState({ item: '', cantidad: '' });
   const [quienRealizaNombre, setQuienRealizaNombre] = useState(existing.quienRealizaNombre || record.responsable || '');
-  const [quienRealizaCargo, setQuienRealizaCargo] = useState(existing.quienRealizaCargo || 'Biomédica');
   const [quienRecibeNombre, setQuienRecibeNombre] = useState(existing.quienRecibeNombre || '');
-  const [quienRecibeCargo, setQuienRecibeCargo] = useState(existing.quienRecibeCargo || '');
-  const [documentoUrl, setDocumentoUrl] = useState(existing.documentoUrl || '');
   const [firmaRealiza, setFirmaRealiza] = useState(existing.firmaRealiza || '');
   const [firmaRecibe, setFirmaRecibe] = useState(existing.firmaRecibe || '');
-  const esPreventivo = tipoKey === 'Preventivo';
 
   const setItemEstado = (item, estado) => !readOnly && setChecklist({ ...checklist, [item]: { ...checklist[item], estado } });
-  const setItemObs = (item, obs) => !readOnly && setChecklist({ ...checklist, [item]: { ...checklist[item], obs } });
 
   const buildReport = () => ({
     fecha, fechaProximo, estadoInicial, checklist, trabajoRealizado, repuestos,
-    quienRealizaNombre, quienRealizaCargo, quienRecibeNombre, quienRecibeCargo, documentoUrl,
+    quienRealizaNombre, quienRecibeNombre,
     firmaRealiza, firmaRecibe,
     generadoEl: existing.generadoEl || new Date().toISOString(),
   });
@@ -386,10 +366,10 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
 
         <div className="grid grid-cols-2 gap-3 mb-1">
           <div>
-            <Field label="Fecha de mantenimiento"><TextInput t={t} type="date" value={fecha} disabled={readOnly || esPreventivo} onChange={esPreventivo ? () => {} : setFecha} /></Field>
-            {esPreventivo && <p className={`text-[10px] mt-1 ${t.muted}`}>Definida al registrar el mantenimiento — no se puede modificar aquí.</p>}
+            <Field label="Fecha de mantenimiento"><TextInput t={t} type="date" value={fecha} disabled onChange={() => {}} /></Field>
+            <p className={`text-[10px] mt-1 ${t.muted}`}>Definida al registrar el mantenimiento — no se puede modificar aquí.</p>
           </div>
-          <Field label="Fecha de próximo mantenimiento"><TextInput t={t} type={esPreventivo ? 'month' : 'date'} value={fechaProximo} disabled={readOnly} onChange={setFechaProximo} /></Field>
+          <Field label="Fecha de próximo mantenimiento"><TextInput t={t} type="month" value={fechaProximo} disabled={readOnly} onChange={setFechaProximo} /></Field>
         </div>
 
         <Field label="Descripción del estado inicial del equipo">
@@ -412,10 +392,6 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
                   </button>
                 ))}
               </div>
-              {!esPreventivo && (
-                <input value={checklist[item]?.obs || ''} disabled={readOnly} onChange={e => setItemObs(item, e.target.value)} placeholder="Observación"
-                  className={`rounded-md px-2 py-1 text-[11px] border w-40 ${t.input} ${readOnly ? 'opacity-60' : ''}`} />
-              )}
             </div>
           ))}
         </div>
@@ -449,27 +425,16 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
           <div>
             <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">Nombre de quien realiza</div>
             <TextInput t={t} value={quienRealizaNombre} disabled={readOnly} onChange={setQuienRealizaNombre} />
-            <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-2 mb-1">{esPreventivo ? 'Firma' : 'Cargo'}</div>
-            {esPreventivo
-              ? <FirmaInput t={t} value={firmaRealiza} onChange={setFirmaRealiza} readOnly={readOnly} alt="Firma de quien realiza" />
-              : <TextInput t={t} value={quienRealizaCargo} disabled={readOnly} onChange={setQuienRealizaCargo} />}
+            <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-2 mb-1">Firma</div>
+            <FirmaInput t={t} value={firmaRealiza} onChange={setFirmaRealiza} readOnly={readOnly} alt="Firma de quien realiza" />
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">Nombre de quien recibe</div>
             <TextInput t={t} value={quienRecibeNombre} disabled={readOnly} onChange={setQuienRecibeNombre} />
-            <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-2 mb-1">{esPreventivo ? 'Firma' : 'Cargo'}</div>
-            {esPreventivo
-              ? <FirmaInput t={t} value={firmaRecibe} onChange={setFirmaRecibe} readOnly={readOnly} alt="Firma de quien recibe" />
-              : <TextInput t={t} value={quienRecibeCargo} disabled={readOnly} onChange={setQuienRecibeCargo} />}
+            <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-2 mb-1">Firma</div>
+            <FirmaInput t={t} value={firmaRecibe} onChange={setFirmaRecibe} readOnly={readOnly} alt="Firma de quien recibe" />
           </div>
         </div>
-
-        {!esPreventivo && (
-          <div className="mt-3">
-            <Field label="Documento original (enlace)"><TextInput t={t} value={documentoUrl} disabled={readOnly} placeholder="https://drive.google.com/..." onChange={setDocumentoUrl} /></Field>
-            {!readOnly && <p className={`text-[10px] mt-1 ${t.muted}`}>Sube el PDF firmado a Drive/OneDrive/SharePoint y pega aquí el enlace — esta versión no almacena archivos directamente.</p>}
-          </div>
-        )}
 
         <div className="flex gap-2 mt-5">
           {!readOnly && <button onClick={() => onSave(buildReport())} className="rounded-md px-4 py-2 text-xs font-semibold" style={{ background: accent, color: '#fff' }}>Guardar reporte</button>}
@@ -838,22 +803,18 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
             <RecordList t={t} records={equipo.correctivos} readOnly={readOnly}
               fields={[
                 { key: 'fecha', label: 'Fecha', type: 'date' },
-                { key: 'fallaReportada', label: 'Falla reportada' },
-                { key: 'diagnostico', label: 'Diagnóstico' },
-                { key: 'repuestos', label: 'Repuestos' },
-                { key: 'costo', label: 'Costo', type: 'number' },
-                { key: 'tiempoFueraServicio', label: 'Tiempo fuera de servicio' },
                 { key: 'responsable', label: 'Responsable' },
+                { key: 'estado', label: 'Estado', type: 'select', options: ['Programado', 'Ejecutado'] },
                 { key: 'pdfUrl', label: 'PDF (URL)', type: 'url' },
               ]}
               onAdd={(d) => {
-                const nuevo = { id: uid('cv'), fecha: todayISO(), ...d };
+                const nuevo = { id: uid('cv'), fecha: todayISO(), estado: 'Programado', ...d };
                 patchList('correctivos', [...equipo.correctivos, nuevo]);
                 try { notifyCorrectivoRegistrado(equipo, nuevo, alertEmails); } catch (err) { console.error('No se pudo notificar el correctivo por correo', err); }
               }}
               onRemove={(i) => patchList('correctivos', equipo.correctivos.filter((_, idx) => idx !== i))}
               onUpdate={(i, k, v) => { const list = [...equipo.correctivos]; list[i] = { ...list[i], [k]: v }; patchList('correctivos', list); }}
-              renderExtra={(r, i) => (
+              renderExtra={(r, i) => (r.estado ? r.estado === 'Ejecutado' : true) && (
                 <ReporteTecnicoButton equipo={equipo} record={r} tipoKey="Correctivo" accent={accent} t={t} readOnly={readOnly}
                   onSave={(rep) => { const list = [...equipo.correctivos]; list[i] = { ...list[i], reporteTecnico: rep }; patchList('correctivos', list); }} />
               )}
@@ -2491,12 +2452,13 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
           {equipos.flatMap(e => (e.correctivos || []).map(c => ({ ...c, equipoNombre: e.equipo, equipoId: e.id, empresa: e.empresa, sede: e.sede })))
             .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
             .map((c, i) => (
-              <div key={i} onClick={() => onOpen(c.equipoId)} className={`rounded-lg border p-3 cursor-pointer ${t.panel} ${t.border}`}>
-                <div className="flex justify-between">
+              <div key={i} onClick={() => onOpen(c.equipoId)} className={`rounded-lg border p-3 flex items-center gap-3 cursor-pointer ${t.panel} ${t.border}`}>
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.estado === 'Ejecutado' ? '#22C55E' : '#F59E0B' }} />
+                <div className="flex-1">
                   <div className="text-xs font-semibold">{c.equipoNombre}</div>
-                  <div className="text-[11px] font-mono">{c.fecha}</div>
+                  <div className={`text-[11px] ${t.muted}`}>{c.empresa} · {c.sede} · {c.responsable || 'sin responsable'}</div>
                 </div>
-                <div className={`text-[11px] ${t.muted}`}>{c.fallaReportada || 'Sin descripción'}</div>
+                <div className="text-[11px] font-mono">{c.fecha}</div>
               </div>
             ))}
         </div>
