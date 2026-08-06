@@ -512,7 +512,7 @@ function TextInput({ value, onChange, t, type = 'text', placeholder, disabled })
     <input
       type={type} value={value || ''} placeholder={placeholder} disabled={disabled}
       onChange={e => onChange(e.target.value)}
-      className={`rounded-md px-2.5 py-1.5 text-xs border ${t.input} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+      className={`w-full rounded-md px-2.5 py-1.5 text-xs border ${t.input} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
     />
   );
 }
@@ -521,6 +521,29 @@ function SelectInput({ value, onChange, options, t, disabled }) {
     <select value={value || ''} onChange={e => onChange(e.target.value)} disabled={disabled} className={`rounded-md px-2.5 py-1.5 text-xs border ${t.input} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
       {options.map(o => <option key={o} value={o}>{o}</option>)}
     </select>
+  );
+}
+
+// Componente único para presentar cualquier campo de documento (certificados, actas,
+// hojas de vida, manuales, adjuntos, etc.) en toda la app. Nunca se muestra la URL cruda:
+// solo un botón con ícono de PDF, o un estado "Sin documento" si está vacío. El enlace
+// real se conserva intacto en los datos — esto solo cambia la presentación visual.
+// Cualquier campo nuevo de documento debe reutilizar este mismo componente.
+function PdfLink({ url, label = 'Ver PDF', title, t }) {
+  if (!url) {
+    return (
+      <span title="Sin documento"
+        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs shrink-0 cursor-default select-none ${t ? t.border : 'border-slate-300'} ${t ? t.muted : 'text-slate-400'}`}>
+        <FileText size={13} /> Sin documento
+      </span>
+    );
+  }
+  return (
+    <a href={url} target="_blank" rel="noreferrer" title={title || label}
+      className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold shrink-0 transition-colors hover:bg-[#DC2626]/10"
+      style={{ borderColor: '#DC2626', color: '#DC2626' }}>
+      <FileText size={13} /> {label}
+    </a>
   );
 }
 
@@ -539,7 +562,14 @@ function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, renderExtra
                   <label className="text-[9px] uppercase text-slate-400">{f.label}</label>
                   {f.type === 'select'
                     ? <SelectInput t={t} value={r[f.key]} options={f.options} disabled={readOnly} onChange={v => onUpdate(i, f.key, v)} />
-                    : <TextInput t={t} type={f.type || 'text'} value={r[f.key]} disabled={readOnly} onChange={v => onUpdate(i, f.key, v)} />}
+                    : f.type === 'url'
+                      ? (
+                        <div className="flex gap-1.5">
+                          <div className="flex-1 min-w-0"><TextInput t={t} value={r[f.key]} disabled={readOnly} onChange={v => onUpdate(i, f.key, v)} /></div>
+                          <PdfLink url={r[f.key]} title={`Ver ${f.label.replace(' (URL)', '')}`} t={t} />
+                        </div>
+                      )
+                      : <TextInput t={t} type={f.type || 'text'} value={r[f.key]} disabled={readOnly} onChange={v => onUpdate(i, f.key, v)} />}
                 </div>
               ))}
               {!readOnly && <button onClick={() => onRemove(i)} className="self-end text-red-400 hover:text-red-300 p-1"><Trash2 size={14} /></button>}
@@ -654,13 +684,8 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
                 <div>
                   <Field label="Acta de entrega (URL)">
                     <div className="flex gap-2">
-                      <div className="flex-1"><TextInput t={t} disabled={readOnly} value={equipo.actaEntregaUrl} placeholder="https://drive.google.com/..." onChange={v => patch('actaEntregaUrl', v)} /></div>
-                      {equipo.actaEntregaUrl && (
-                        <a href={equipo.actaEntregaUrl} target="_blank" rel="noreferrer" title="Ver acta de entrega"
-                          className="shrink-0 flex items-center justify-center w-8 h-8 rounded-md border" style={{ borderColor: accent, color: accent }}>
-                          <FileText size={13} />
-                        </a>
-                      )}
+                      <div className="flex-1 min-w-0"><TextInput t={t} disabled={readOnly} value={equipo.actaEntregaUrl} placeholder="https://drive.google.com/..." onChange={v => patch('actaEntregaUrl', v)} /></div>
+                      <PdfLink url={equipo.actaEntregaUrl} title="Ver acta de entrega" t={t} />
                     </div>
                   </Field>
                   {!readOnly && <p className={`text-[10px] mt-1 ${t.muted}`}>Sube el acta firmada a Drive/OneDrive/SharePoint y pega aquí el enlace.</p>}
@@ -668,13 +693,8 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
                 <div>
                   <Field label="Hoja de vida (URL)">
                     <div className="flex gap-2">
-                      <div className="flex-1"><TextInput t={t} disabled={readOnly} value={equipo.hojaVidaUrl} placeholder="https://drive.google.com/..." onChange={v => patch('hojaVidaUrl', v)} /></div>
-                      {equipo.hojaVidaUrl && (
-                        <a href={equipo.hojaVidaUrl} target="_blank" rel="noreferrer" title="Ver hoja de vida"
-                          className="shrink-0 flex items-center justify-center w-8 h-8 rounded-md border" style={{ borderColor: accent, color: accent }}>
-                          <FileText size={13} />
-                        </a>
-                      )}
+                      <div className="flex-1 min-w-0"><TextInput t={t} disabled={readOnly} value={equipo.hojaVidaUrl} placeholder="https://drive.google.com/..." onChange={v => patch('hojaVidaUrl', v)} /></div>
+                      <PdfLink url={equipo.hojaVidaUrl} title="Ver hoja de vida" t={t} />
                     </div>
                   </Field>
                   {!readOnly && <p className={`text-[10px] mt-1 ${t.muted}`}>Sube la hoja de vida a Drive/OneDrive/SharePoint y pega aquí el enlace.</p>}
@@ -718,7 +738,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
                 { key: 'responsable', label: 'Responsable' },
                 { key: 'estado', label: 'Estado', type: 'select', options: ['Programado', 'Ejecutado'] },
                 { key: 'observaciones', label: 'Observaciones' },
-                { key: 'pdfUrl', label: 'PDF (URL)' },
+                { key: 'pdfUrl', label: 'PDF (URL)', type: 'url' },
               ]}
               onAdd={(d) => patchList('preventivos', [...equipo.preventivos, { id: uid('pv'), fecha: todayISO(), estado: 'Programado', ...d }])}
               onRemove={(i) => patchList('preventivos', equipo.preventivos.filter((_, idx) => idx !== i))}
@@ -740,7 +760,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
                 { key: 'costo', label: 'Costo', type: 'number' },
                 { key: 'tiempoFueraServicio', label: 'Tiempo fuera de servicio' },
                 { key: 'responsable', label: 'Responsable' },
-                { key: 'pdfUrl', label: 'PDF (URL)' },
+                { key: 'pdfUrl', label: 'PDF (URL)', type: 'url' },
               ]}
               onAdd={(d) => {
                 const nuevo = { id: uid('cv'), fecha: todayISO(), ...d };
@@ -771,7 +791,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
               <RecordList t={t} records={equipo.calibraciones} readOnly={readOnly}
                 fields={[
                   { key: 'fecha', label: 'Fecha calibración', type: 'date' },
-                  { key: 'certificadoUrl', label: 'Certificado (URL)' },
+                  { key: 'certificadoUrl', label: 'Certificado (URL)', type: 'url' },
                 ]}
                 onAdd={(d) => {
                   const list = [...equipo.calibraciones, { id: uid('cb'), fecha: todayISO(), ...d }];
@@ -825,7 +845,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
               fields={[
                 { key: 'tipo', label: 'Tipo', type: 'select', options: ['Manual', 'Registro INVIMA', 'Certificado', 'Fotografía', 'Factura', 'Acta', 'Otro'] },
                 { key: 'nombre', label: 'Nombre' },
-                { key: 'url', label: 'Enlace (URL)' },
+                { key: 'url', label: 'Enlace (URL)', type: 'url' },
               ]}
               onAdd={(d) => patchList('documentos', [...equipo.documentos, { id: uid('doc'), tipo: 'Otro', ...d }])}
               onRemove={(i) => patchList('documentos', equipo.documentos.filter((_, idx) => idx !== i))}
@@ -2407,7 +2427,7 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
 /* ---------------------------------------------------------------- */
 /* PÁGINA: REPORTES DE FALLA (Ingeniería Biomédica)                   */
 /* ---------------------------------------------------------------- */
-function ReportesFallaPage({ reportes, t, accent, onUpdate, readOnly }) {
+function ReportesFallaPage({ reportes, t, onUpdate, readOnly }) {
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroPrioridad, setFiltroPrioridad] = useState('');
   const [openId, setOpenId] = useState(null);
@@ -2461,7 +2481,7 @@ function ReportesFallaPage({ reportes, t, accent, onUpdate, readOnly }) {
                 {r.adjuntos && r.adjuntos.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {r.adjuntos.map((a, i) => (
-                      <a key={i} href={a.url} target="_blank" rel="noreferrer" className="text-[11px] underline" style={{ color: accent }}>📎 {a.nombre || 'Adjunto'}</a>
+                      <PdfLink key={i} url={a.url} label={a.nombre || 'Ver PDF'} title={a.nombre || 'Ver adjunto'} t={t} />
                     ))}
                   </div>
                 )}
