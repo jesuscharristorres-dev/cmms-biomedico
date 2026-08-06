@@ -328,7 +328,12 @@ function generarReportePDF(equipo, tipoKey, rep) {
 
 function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent, t, readOnly }) {
   const existing = record.reporteTecnico || {};
-  const [fecha, setFecha] = useState(existing.fecha || record.fecha || todayISO());
+  // En Preventivos, la fecha de mantenimiento es la que se registró al crear el
+  // preventivo (record.fecha) — es la única fuente de verdad, nunca se sobrescribe
+  // con un valor distinto guardado previamente en el reporte.
+  const [fecha, setFecha] = useState(
+    tipoKey === 'Preventivo' ? (record.fecha || todayISO()) : (existing.fecha || record.fecha || todayISO())
+  );
   const [fechaProximo, setFechaProximo] = useState(existing.fechaProximo || '');
   const [estadoInicial, setEstadoInicial] = useState(existing.estadoInicial || record.fallaReportada || '');
   const [checklist, setChecklist] = useState(existing.checklist || defaultChecklist());
@@ -379,8 +384,11 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
           <div><span className={t.muted}>Ubicación: </span>{equipo.ubicacion || '—'}</div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          <Field label="Fecha de mantenimiento"><TextInput t={t} type="date" value={fecha} disabled={readOnly} onChange={setFecha} /></Field>
+        <div className="grid grid-cols-2 gap-3 mb-1">
+          <div>
+            <Field label="Fecha de mantenimiento"><TextInput t={t} type="date" value={fecha} disabled={readOnly || esPreventivo} onChange={esPreventivo ? () => {} : setFecha} /></Field>
+            {esPreventivo && <p className={`text-[10px] mt-1 ${t.muted}`}>Definida al registrar el mantenimiento — no se puede modificar aquí.</p>}
+          </div>
           <Field label="Fecha de próximo mantenimiento"><TextInput t={t} type={esPreventivo ? 'month' : 'date'} value={fechaProximo} disabled={readOnly} onChange={setFechaProximo} /></Field>
         </div>
 
