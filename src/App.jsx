@@ -78,7 +78,9 @@ function formatFechaCorta(fechaStr) {
 // donde no se necesita el día exacto de la próxima intervención.
 function formatMesAnio(fechaStr) {
   if (!fechaStr) return '';
-  const d = new Date(fechaStr + 'T00:00:00');
+  // Soporta tanto "AAAA-MM" (input type="month") como "AAAA-MM-DD".
+  const iso = fechaStr.length === 7 ? `${fechaStr}-01` : fechaStr;
+  const d = new Date(iso + 'T00:00:00');
   return isNaN(d.getTime()) ? fechaStr : `${MONTHS[d.getMonth()].full} ${d.getFullYear()}`;
 }
 // Acceso simple — cámbialo por tus propios datos.
@@ -212,22 +214,20 @@ function generarReportePDF(equipo, tipoKey, rep) {
     ? rep.repuestos.map(r => `${r.item}${r.cantidad ? ' — ' + r.cantidad : ''}`).join('<br/>')
     : '—';
 
-  // En Preventivos, la firma cargada por el técnico se imprime como imagen sobre la línea de firma.
+  // En Preventivos, cada firma cargada se imprime como imagen sobre su línea correspondiente.
   const firmasHtml = esPreventivo ? `
       <div class="firmas">
         <div class="firma-col">
-          <div class="firma-slot">${rep.firma ? `<img src="${rep.firma}" alt="Firma" />` : ''}</div>
+          <div class="firma-slot">${rep.firmaRealiza ? `<img src="${rep.firmaRealiza}" alt="Firma de quien realiza" />` : ''}</div>
           <div class="firma-info">
             <div>${esc(rep.quienRealizaNombre)}</div>
-            <div class="cargo">${esc(rep.quienRealizaCargo)}</div>
             <div style="margin-top:2px;">Nombre y firma de quien realiza</div>
           </div>
         </div>
         <div class="firma-col">
-          <div class="firma-slot"></div>
+          <div class="firma-slot">${rep.firmaRecibe ? `<img src="${rep.firmaRecibe}" alt="Firma de quien recibe" />` : ''}</div>
           <div class="firma-info">
             <div>${esc(rep.quienRecibeNombre)}</div>
-            <div class="cargo">${esc(rep.quienRecibeCargo)}</div>
             <div style="margin-top:2px;">Nombre y firma de quien recibe</div>
           </div>
         </div>
@@ -340,23 +340,17 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
   const [quienRecibeNombre, setQuienRecibeNombre] = useState(existing.quienRecibeNombre || '');
   const [quienRecibeCargo, setQuienRecibeCargo] = useState(existing.quienRecibeCargo || '');
   const [documentoUrl, setDocumentoUrl] = useState(existing.documentoUrl || '');
-  const [firma, setFirma] = useState(existing.firma || '');
+  const [firmaRealiza, setFirmaRealiza] = useState(existing.firmaRealiza || '');
+  const [firmaRecibe, setFirmaRecibe] = useState(existing.firmaRecibe || '');
   const esPreventivo = tipoKey === 'Preventivo';
 
   const setItemEstado = (item, estado) => !readOnly && setChecklist({ ...checklist, [item]: { ...checklist[item], estado } });
   const setItemObs = (item, obs) => !readOnly && setChecklist({ ...checklist, [item]: { ...checklist[item], obs } });
 
-  const handleFirmaFile = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setFirma(ev.target.result);
-    reader.readAsDataURL(file);
-  };
-
   const buildReport = () => ({
     fecha, fechaProximo, estadoInicial, checklist, trabajoRealizado, repuestos,
-    quienRealizaNombre, quienRealizaCargo, quienRecibeNombre, quienRecibeCargo, documentoUrl, firma,
+    quienRealizaNombre, quienRealizaCargo, quienRecibeNombre, quienRecibeCargo, documentoUrl,
+    firmaRealiza, firmaRecibe,
     generadoEl: existing.generadoEl || new Date().toISOString(),
   });
 
@@ -387,7 +381,7 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
 
         <div className="grid grid-cols-2 gap-3 mb-3">
           <Field label="Fecha de mantenimiento"><TextInput t={t} type="date" value={fecha} disabled={readOnly} onChange={setFecha} /></Field>
-          <Field label="Fecha de próximo mantenimiento"><TextInput t={t} type="date" value={fechaProximo} disabled={readOnly} onChange={setFechaProximo} /></Field>
+          <Field label="Fecha de próximo mantenimiento"><TextInput t={t} type={esPreventivo ? 'month' : 'date'} value={fechaProximo} disabled={readOnly} onChange={setFechaProximo} /></Field>
         </div>
 
         <Field label="Descripción del estado inicial del equipo">
@@ -445,36 +439,22 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
           <div>
             <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">Nombre de quien realiza</div>
             <TextInput t={t} value={quienRealizaNombre} disabled={readOnly} onChange={setQuienRealizaNombre} />
-            <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-2 mb-1">Cargo</div>
-            <TextInput t={t} value={quienRealizaCargo} disabled={readOnly} onChange={setQuienRealizaCargo} />
+            <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-2 mb-1">{esPreventivo ? 'Firma' : 'Cargo'}</div>
+            {esPreventivo
+              ? <FirmaInput t={t} value={firmaRealiza} onChange={setFirmaRealiza} readOnly={readOnly} alt="Firma de quien realiza" />
+              : <TextInput t={t} value={quienRealizaCargo} disabled={readOnly} onChange={setQuienRealizaCargo} />}
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">Nombre de quien recibe</div>
             <TextInput t={t} value={quienRecibeNombre} disabled={readOnly} onChange={setQuienRecibeNombre} />
-            <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-2 mb-1">Cargo</div>
-            <TextInput t={t} value={quienRecibeCargo} disabled={readOnly} onChange={setQuienRecibeCargo} />
+            <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-2 mb-1">{esPreventivo ? 'Firma' : 'Cargo'}</div>
+            {esPreventivo
+              ? <FirmaInput t={t} value={firmaRecibe} onChange={setFirmaRecibe} readOnly={readOnly} alt="Firma de quien recibe" />
+              : <TextInput t={t} value={quienRecibeCargo} disabled={readOnly} onChange={setQuienRecibeCargo} />}
           </div>
         </div>
 
-        {esPreventivo ? (
-          <div className="mt-3">
-            <label className="text-[10px] uppercase tracking-wide text-slate-400">Firma del responsable (imagen PNG)</label>
-            <div className={`mt-1 rounded-lg border p-3 flex items-center gap-3 ${t.panel3} ${t.border}`}>
-              <div className={`w-28 h-16 rounded-md border overflow-hidden flex items-center justify-center shrink-0 bg-white ${t.border}`}>
-                {firma
-                  ? <img src={firma} alt="Firma del responsable" className="w-full h-full object-contain" />
-                  : <div className={`flex flex-col items-center gap-0.5 text-center px-1 ${t.muted}`}><ImageIcon size={16} /><span className="text-[8px] leading-tight">Sin firma</span></div>}
-              </div>
-              {!readOnly && (
-                <div className="flex-1">
-                  <input type="file" accept="image/png" onChange={handleFirmaFile} className={`w-full text-[11px] ${t.muted}`} />
-                  <p className={`text-[10px] mt-1 ${t.muted}`}>Sube una imagen PNG de la firma (idealmente con fondo transparente). Se guarda junto con este mantenimiento y se imprime automáticamente en el reporte.</p>
-                  {firma && <button type="button" onClick={() => setFirma('')} className="text-[10px] text-red-400 mt-1">Quitar firma</button>}
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
+        {!esPreventivo && (
           <div className="mt-3">
             <Field label="Documento original (enlace)"><TextInput t={t} value={documentoUrl} disabled={readOnly} placeholder="https://drive.google.com/..." onChange={setDocumentoUrl} /></Field>
             {!readOnly && <p className={`text-[10px] mt-1 ${t.muted}`}>Sube el PDF firmado a Drive/OneDrive/SharePoint y pega aquí el enlace — esta versión no almacena archivos directamente.</p>}
@@ -612,6 +592,33 @@ function PdfLink({ url, label = 'Ver PDF', title, t }) {
       style={{ borderColor: '#DC2626', color: '#DC2626' }}>
       <FileText size={13} /> {label}
     </a>
+  );
+}
+
+// Carga + vista previa de una imagen de firma (PNG). El valor se guarda como Data URI,
+// así se imprime directamente en el reporte sin depender de almacenamiento externo.
+function FirmaInput({ value, onChange, readOnly, alt, t }) {
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => onChange(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+  return (
+    <div className={`rounded-lg border p-2 flex items-center gap-2 ${t.panel3} ${t.border}`}>
+      <div className={`w-20 h-11 rounded-md border overflow-hidden flex items-center justify-center shrink-0 bg-white ${t.border}`}>
+        {value
+          ? <img src={value} alt={alt} className="w-full h-full object-contain" />
+          : <span className={`text-[8px] px-1 text-center leading-tight ${t.muted}`}>Sin firma</span>}
+      </div>
+      {!readOnly && (
+        <div className="flex-1 min-w-0">
+          <input type="file" accept="image/png" onChange={handleFile} className={`w-full text-[10px] ${t.muted}`} />
+          {value && <button type="button" onClick={() => onChange('')} className="text-[10px] text-red-400 mt-0.5">Quitar firma</button>}
+        </div>
+      )}
+    </div>
   );
 }
 
