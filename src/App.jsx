@@ -3,7 +3,7 @@ import {
   Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X,
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, Mail, AlertTriangle, Lock,
-  User, Eye, EyeOff, Activity
+  User, Eye, EyeOff
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -832,6 +832,92 @@ function ObsModal({ equipo, onClose, onSave, t, accent, readOnly }) {
 }
 
 /* ---------------------------------------------------------------- */
+/* LOGO — INGENIERÍA CLÍNICA (recreación vectorial de la marca)       */
+/* ---------------------------------------------------------------- */
+// Paleta institucional tomada del logo oficial: verde arriba, celeste/azul
+// a los lados, azul institucional (el tono más denso) a la izquierda, con
+// acentos cálidos (naranja/gris) en el arco derecho.
+const LOGO_RING_STOPS = [
+  { angle: 0, color: '#3CAA55' },
+  { angle: 50, color: '#F2994A' },
+  { angle: 95, color: '#93A0B8' },
+  { angle: 140, color: '#E8A33D' },
+  { angle: 180, color: '#2F8FBF' },
+  { angle: 225, color: '#6EC6EA' },
+  { angle: 270, color: '#173B6C' },
+  { angle: 315, color: '#4FC3E7' },
+  { angle: 360, color: '#3CAA55' },
+];
+function lerpColor(hexA, hexB, t) {
+  const a = parseInt(hexA.slice(1), 16), b = parseInt(hexB.slice(1), 16);
+  const ar = (a >> 16) & 0xFF, ag = (a >> 8) & 0xFF, ab = a & 0xFF;
+  const br = (b >> 16) & 0xFF, bg = (b >> 8) & 0xFF, bb = b & 0xFF;
+  const r = Math.round(ar + (br - ar) * t), g = Math.round(ag + (bg - ag) * t), bl = Math.round(ab + (bb - ab) * t);
+  return '#' + (0x1000000 + r * 0x10000 + g * 0x100 + bl).toString(16).slice(1);
+}
+function colorAtAngle(deg) {
+  const a = ((deg % 360) + 360) % 360;
+  for (let i = 0; i < LOGO_RING_STOPS.length - 1; i++) {
+    const s1 = LOGO_RING_STOPS[i], s2 = LOGO_RING_STOPS[i + 1];
+    if (a >= s1.angle && a <= s2.angle) return lerpColor(s1.color, s2.color, (a - s1.angle) / (s2.angle - s1.angle));
+  }
+  return LOGO_RING_STOPS[0].color;
+}
+// PRNG determinista (mulberry32) — el patrón de nodos debe ser siempre el mismo
+// entre renders, así que no se puede usar Math.random() en el cuerpo del componente.
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// Anillo de nodos tipo red molecular, inspirado en el logo oficial de Ingeniería Clínica.
+// Se calcula una sola vez a nivel de módulo: la disposición no depende de props.
+const LOGO_NODES = (() => {
+  const rand = mulberry32(20260805);
+  const count = 84;
+  const arr = Array.from({ length: count }, (_, i) => {
+    const angle = (i / count) * 360 + (rand() - 0.5) * 8;
+    const radius = 76 + (rand() - 0.5) * 34;
+    const rad = (angle * Math.PI) / 180;
+    return {
+      cx: 150 + radius * Math.sin(rad), cy: 150 - radius * Math.cos(rad),
+      r: 2.2 + rand() * 4.2, color: colorAtAngle(angle), angle,
+    };
+  });
+  return arr.sort((a, b) => a.angle - b.angle);
+})();
+function LogoMark({ size = 120, withWordmark = true, className = '' }) {
+  return (
+    <div className={className} style={{ width: size, textAlign: 'center' }}>
+      <svg viewBox="0 0 300 300" width={size} height={size} role="img" aria-label="Logo Ingeniería Clínica">
+        {LOGO_NODES.map((n, i) => {
+          const next = LOGO_NODES[(i + 1) % LOGO_NODES.length];
+          return (
+            <g key={i}>
+              <line x1={n.cx} y1={n.cy} x2={next.cx} y2={next.cy} stroke={n.color} strokeWidth="0.6" opacity="0.3" />
+              <circle cx={n.cx} cy={n.cy} r={n.r} fill={n.color} opacity="0.9" />
+            </g>
+          );
+        })}
+      </svg>
+      {withWordmark && (
+        <div style={{ marginTop: size * -0.05 }}>
+          <div className="font-bold" style={{ color: '#173B6C', fontSize: size * 0.115, letterSpacing: '0.22em' }}>INGENIERÍA</div>
+          <div className="flex items-center justify-center gap-1.5 mt-0.5">
+            <span style={{ width: size * 0.13, height: 2, background: '#173B6C' }} />
+            <span className="font-bold" style={{ color: '#3CAA55', fontSize: size * 0.1, letterSpacing: '0.22em' }}>CLÍNICA</span>
+            <span style={{ width: size * 0.13, height: 2, background: '#3CAA55' }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
 /* PANTALLA DE ACCESO                                                 */
 /* ---------------------------------------------------------------- */
 function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
@@ -860,7 +946,7 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
   ];
 
   return (
-    <div className="min-h-[700px] h-full flex items-center justify-center p-4 lg:p-8" style={{ fontFamily: "'IBM Plex Sans', sans-serif", background: 'linear-gradient(160deg, #EAFBF8 0%, #F3FBFA 55%, #FFFFFF 100%)' }}>
+    <div className="min-h-dvh flex items-center justify-center p-4 lg:p-8" style={{ fontFamily: "'IBM Plex Sans', sans-serif", background: 'linear-gradient(160deg, #EDF6FB 0%, #F3FAF6 55%, #FFFFFF 100%)' }}>
       <style>{`
         @keyframes login-card-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes illus-float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
@@ -868,127 +954,74 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
         @media (min-width: 1024px) { .login-card-wrap { width: 80%; max-width: 1180px; } }
         .login-illus { animation: illus-float 5s ease-in-out infinite; }
         .login-benefit:hover { transform: translateY(-3px); box-shadow: 0 14px 28px -10px rgba(15,23,42,0.18); }
-        .login-input:focus { box-shadow: 0 0 0 3px rgba(79,209,197,0.25); border-color: #4FD1C5; }
-        .login-btn-primary { background: #4FD1C5; transition: background 250ms ease, transform 250ms ease; }
-        .login-btn-primary:hover { background: #3EBDB1; }
+        .login-input:focus { box-shadow: 0 0 0 3px rgba(47,143,209,0.22); border-color: #2F8FD1; }
+        .login-btn-primary { background: linear-gradient(135deg, #173B6C 0%, #2F8FD1 100%); transition: filter 250ms ease, transform 250ms ease; }
+        .login-btn-primary:hover { filter: brightness(1.08); }
         .login-btn-primary:active { transform: scale(0.98); }
         .login-fast { transition: all 250ms ease; }
       `}</style>
 
       <div className="login-card-wrap flex flex-col lg:flex-row bg-white overflow-hidden" style={{ borderRadius: 28, boxShadow: '0 30px 70px -20px rgba(15,23,42,0.25)' }}>
 
-        {/* LADO IZQUIERDO — marca e ilustración (según imagen de referencia) */}
-        <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col justify-center gap-7 p-10"
-          style={{ background: 'linear-gradient(180deg, #F3FDFC 0%, #FFFFFF 45%)' }}>
+        {/* LADO IZQUIERDO — identidad institucional (logo Ingeniería Clínica) */}
+        <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col justify-between gap-6 p-10"
+          style={{ background: 'linear-gradient(180deg, #F2F9FC 0%, #FFFFFF 50%)' }}>
 
-          {/* formas orgánicas de fondo */}
-          <div className="absolute -top-24 -left-28 w-96 h-96" style={{ background: 'linear-gradient(135deg, #4FD1C5 0%, #8FD8D2 100%)', opacity: 0.5, borderRadius: '62% 38% 55% 45% / 48% 42% 58% 52%' }} />
+          {/* formas orgánicas de fondo — paleta institucional */}
+          <div className="absolute -top-24 -left-28 w-96 h-96" style={{ background: 'linear-gradient(135deg, #4FC3E7 0%, #BFE6F5 100%)', opacity: 0.45, borderRadius: '62% 38% 55% 45% / 48% 42% 58% 52%' }} />
           <div className="absolute top-10 left-14 w-16 h-16 rounded-full border-2 border-white/70" />
-          <div className="absolute -bottom-32 -left-10 w-80 h-80" style={{ background: 'linear-gradient(135deg, #8FD8D2 0%, #EAFBF8 100%)', opacity: 0.6, borderRadius: '45% 55% 60% 40% / 55% 45% 55% 45%' }} />
-          <div className="absolute bottom-10 right-10 w-10 h-10 rounded-full border-2 border-teal-200" />
+          <div className="absolute -bottom-32 -left-10 w-80 h-80" style={{ background: 'linear-gradient(135deg, #3CAA55 0%, #D2EFDB 100%)', opacity: 0.4, borderRadius: '45% 55% 60% 40% / 55% 45% 55% 45%' }} />
+          <div className="absolute bottom-10 right-10 w-10 h-10 rounded-full border-2" style={{ borderColor: '#BEE3F2' }} />
           <div className="absolute grid grid-cols-6 gap-1.5 top-8 right-10 opacity-40">
-            {Array.from({ length: 18 }).map((_, i) => <span key={i} className="w-1 h-1 rounded-full bg-teal-400" />)}
+            {Array.from({ length: 18 }).map((_, i) => <span key={i} className="w-1 h-1 rounded-full" style={{ background: '#4FC3E7' }} />)}
           </div>
           <div className="absolute grid grid-cols-8 gap-1.5 bottom-6 left-10 opacity-30">
             {Array.from({ length: 16 }).map((_, i) => <span key={i} className="w-1 h-1 rounded-full bg-slate-400" />)}
           </div>
+          {/* patrón discreto de conexiones — inspirado en redes biomédicas */}
+          <svg className="absolute inset-0 w-full h-full opacity-[0.14]" viewBox="0 0 400 500" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M20,70 L92,45 L162,92 L232,52 M92,45 L112,124" stroke="#173B6C" strokeWidth="1.2" fill="none" />
+            <path d="M34,428 L104,462 L182,414 L262,452 M104,462 L124,384" stroke="#3CAA55" strokeWidth="1.2" fill="none" />
+            {[[20,70],[92,45],[162,92],[232,52],[112,124]].map(([cx,cy],i)=><circle key={'a'+i} cx={cx} cy={cy} r="3" fill="#173B6C" />)}
+            {[[34,428],[104,462],[182,414],[262,452],[124,384]].map(([cx,cy],i)=><circle key={'b'+i} cx={cx} cy={cy} r="3" fill="#3CAA55" />)}
+          </svg>
 
           {/* texto */}
           <div className="relative">
-            <h1 className="text-5xl font-extrabold text-slate-900 tracking-tight">BIENVENIDO</h1>
-            <div className="w-12 h-1 rounded-full mt-3 mb-4" style={{ background: '#4FD1C5' }} />
+            <h1 className="text-5xl font-extrabold tracking-tight" style={{ color: '#173B6C' }}>BIENVENIDO</h1>
+            <div className="w-12 h-1 rounded-full mt-3 mb-4" style={{ background: 'linear-gradient(90deg, #173B6C 0%, #3CAA55 100%)' }} />
             <p className="text-lg leading-snug">
               <span className="text-slate-700">Sistema Integral para la</span><br />
-              <span className="font-bold" style={{ color: '#2FBBAE' }}>Gestión de Equipos Biomédicos</span>
+              <span className="font-bold" style={{ color: '#3CAA55' }}>Gestión de Equipos Biomédicos</span>
             </p>
             <p className="text-sm text-slate-500 mt-3 max-w-sm">Controla, gestiona y optimiza el ciclo de vida de tus equipos biomédicos de forma inteligente y eficiente.</p>
           </div>
 
-          {/* tarjetas de beneficios — sólidas, como en la referencia */}
+          {/* LOGO — elemento principal de la pantalla */}
+          <div className="login-illus relative flex-1 flex items-center justify-center min-h-[170px]">
+            <LogoMark size={168} />
+          </div>
+
+          {/* highlights de producto — sin cifras ficticias */}
           <div className="relative grid grid-cols-2 gap-3 max-w-sm">
             {BENEFICIOS.map(({ icon: Icon, label, desc }) => (
-              <div key={label} className="login-benefit login-fast rounded-2xl bg-white p-3.5" style={{ boxShadow: '0 8px 20px -8px rgba(15,23,42,0.12)' }}>
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-2" style={{ background: '#E3FBF7' }}>
-                  <Icon size={15} style={{ color: '#2FBBAE' }} />
+              <div key={label} className="login-benefit login-fast rounded-2xl bg-white/85 p-3.5" style={{ boxShadow: '0 8px 20px -8px rgba(23,59,108,0.14)' }}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-2" style={{ background: '#E7F4FB' }}>
+                  <Icon size={15} style={{ color: '#2F8FD1' }} />
                 </div>
                 <div className="text-[12.5px] font-bold text-slate-800 leading-tight">{label}</div>
                 <div className="text-[10.5px] text-slate-400 mt-1 leading-snug">{desc}</div>
               </div>
             ))}
           </div>
-
-          {/* ilustración: ingeniero biomédico + mockup del dashboard */}
-          <div className="relative flex-1 min-h-[130px]">
-            {/* mockup flotante del dashboard */}
-            <div className="absolute -top-2 right-0 w-52 rounded-xl bg-white p-2.5" style={{ boxShadow: '0 20px 40px -14px rgba(15,23,42,0.25)' }}>
-              <div className="flex items-center gap-1 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-200" /><span className="w-1.5 h-1.5 rounded-full bg-slate-200" /><span className="w-1.5 h-1.5 rounded-full bg-teal-300" />
-                <span className="text-[8px] text-slate-400 ml-auto font-mono">Dashboard</span>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5 mb-1.5">
-                <div className="rounded-md p-1.5" style={{ background: '#F4FBFA' }}>
-                  <div className="text-[7px] text-slate-400">Equipos Activos</div>
-                  <div className="text-[13px] font-bold text-slate-800">1,250</div>
-                </div>
-                <div className="rounded-md p-1.5 flex items-center justify-between" style={{ background: '#F4FBFA' }}>
-                  <div>
-                    <div className="text-[7px] text-slate-400">Preventivos</div>
-                    <div className="text-[13px] font-bold" style={{ color: '#2FBBAE' }}>95%</div>
-                  </div>
-                  <div className="w-5 h-5 rounded-full" style={{ background: 'conic-gradient(#4FD1C5 0 95%, #E2E8F0 95% 100%)' }} />
-                </div>
-              </div>
-              <div className="flex items-end gap-[3px] h-6 px-0.5">
-                {[5, 8, 6, 10, 7, 11, 9, 13, 10, 14, 12, 15].map((h, i) => (
-                  <div key={i} className="flex-1 rounded-sm" style={{ height: `${h * 6.5}%`, background: i % 3 === 0 ? '#4FD1C5' : '#CDEEEA' }} />
-                ))}
-              </div>
-            </div>
-
-            {/* figura del ingeniero */}
-            <svg viewBox="0 0 260 230" className="login-illus absolute bottom-0 left-2 w-48 h-44" role="img" aria-label="Ingeniero biomédico con tablet frente a equipos médicos">
-              {/* equipo médico simplificado (monitor con onda) */}
-              <rect x="178" y="120" width="60" height="66" rx="6" fill="#E8EEF1" stroke="#CBD5E1" />
-              <rect x="184" y="128" width="48" height="26" rx="3" fill="#0F3B36" />
-              <path d="M188,141 L196,141 L200,132 L206,150 L211,138 L216,141 L228,141" fill="none" stroke="#4FD1C5" strokeWidth="1.6" />
-              <circle cx="193" cy="167" r="5" fill="#CBD5E1" /><circle cx="208" cy="167" r="5" fill="#CBD5E1" /><circle cx="223" cy="167" r="5" fill="#CBD5E1" />
-              {/* sombra */}
-              <ellipse cx="110" cy="222" rx="80" ry="8" fill="rgba(15,23,42,0.07)" />
-              {/* piernas */}
-              <rect x="88" y="165" width="16" height="52" rx="8" fill="#1E293B" />
-              <rect x="114" y="165" width="16" height="52" rx="8" fill="#1E293B" />
-              {/* bata blanca */}
-              <path d="M68,95 Q110,80 152,95 L160,190 Q110,208 60,190 Z" fill="#FFFFFF" stroke="#DCEEEC" strokeWidth="2" />
-              <rect x="104" y="95" width="10" height="85" fill="#EAFBF8" opacity="0.6" />
-              <text x="72" y="150" fontSize="6.5" fontWeight="700" fill="#8FBDB6" letterSpacing="0.4" transform="rotate(-3 72 150)">INGENIERO</text>
-              <text x="74" y="159" fontSize="6.5" fontWeight="700" fill="#8FBDB6" letterSpacing="0.4" transform="rotate(-3 74 159)">BIOMÉDICO</text>
-              {/* cabeza + cabello + gafas */}
-              <rect x="100" y="64" width="20" height="22" rx="7" fill="#EBB58C" />
-              <circle cx="110" cy="48" r="24" fill="#F0C29A" />
-              <path d="M86,44 Q110,18 134,44 Q134,26 110,22 Q86,26 86,44 Z" fill="#241C18" />
-              <path d="M96,50 h13 v6 h-13 Z" fill="none" stroke="#1E293B" strokeWidth="1.6" />
-              <path d="M112,50 h13 v6 h-13 Z" fill="none" stroke="#1E293B" strokeWidth="1.6" />
-              <line x1="109" y1="53" x2="112" y2="53" stroke="#1E293B" strokeWidth="1.6" />
-              {/* brazo sosteniendo la tablet */}
-              <path d="M78,105 Q52,118 50,148 L68,156 Q74,128 88,110 Z" fill="#FFFFFF" stroke="#DCEEEC" strokeWidth="2" />
-              <rect x="30" y="118" width="46" height="62" rx="7" fill="#132A27" transform="rotate(-10 53 149)" />
-              <rect x="35" y="124" width="36" height="50" rx="3" fill="#0B211E" transform="rotate(-10 53 149)" />
-              <rect x="39" y="132" width="26" height="4" rx="2" fill="#4FD1C5" transform="rotate(-10 53 149)" />
-              <rect x="39" y="140" width="18" height="4" rx="2" fill="#8FD8D2" transform="rotate(-10 53 149)" />
-              <rect x="39" y="148" width="22" height="10" rx="2" fill="#4FD1C5" opacity="0.5" transform="rotate(-10 53 149)" />
-              {/* brazo derecho relajado */}
-              <path d="M150,105 Q172,118 168,150 L152,155 Q150,128 140,110 Z" fill="#FFFFFF" stroke="#DCEEEC" strokeWidth="2" />
-            </svg>
-          </div>
         </div>
 
         {/* LADO DERECHO — formulario */}
         <div className="w-full lg:w-1/2 flex flex-col justify-center p-8 sm:p-12">
           <div className="w-full max-w-sm mx-auto">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4" style={{ background: 'linear-gradient(135deg, #4FD1C5 0%, #3EBDB1 100%)' }}>
-              <Activity size={20} className="text-white" />
-            </div>
-            <div className="text-xl font-bold tracking-wide text-slate-900">CMMS BIOMÉDICA</div>
+            <div className="mb-4"><LogoMark size={56} withWordmark={false} /></div>
+            <div className="text-xl font-bold tracking-wide" style={{ color: '#173B6C' }}>CMMS BIOMÉDICA</div>
+            <div className="text-[10px] uppercase font-semibold" style={{ color: '#3CAA55', letterSpacing: '0.18em' }}>Ingeniería Clínica</div>
             <p className="text-xs text-slate-400 mt-1 mb-7">Inicie sesión para continuar.</p>
 
             <form onSubmit={submit} className="space-y-4">
@@ -1020,7 +1053,7 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
 
               <label className="flex items-center gap-2 text-xs text-slate-500 select-none cursor-pointer">
                 <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-slate-300 accent-[#4FD1C5]" />
+                  className="w-3.5 h-3.5 rounded border-slate-300 accent-[#2F8FD1]" />
                 Mantener sesión iniciada
               </label>
 
@@ -1036,7 +1069,7 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
             </form>
 
             <button type="button" onClick={onGuest}
-              className="login-fast w-full mt-3 rounded-lg py-2.5 text-sm font-semibold border border-slate-200 text-slate-600 hover:border-teal-300 hover:text-teal-700 hover:bg-teal-50/50">
+              className="login-fast w-full mt-3 rounded-lg py-2.5 text-sm font-semibold border border-slate-200 text-slate-600 hover:border-sky-300 hover:text-sky-700 hover:bg-sky-50/50">
               Ingresar como Invitado
             </button>
 
@@ -1102,7 +1135,7 @@ function ReporteFallaForm({ onBack }) {
 
   if (sent) {
     return (
-      <div className="min-h-[700px] h-full flex items-center justify-center bg-slate-950 text-slate-100 p-6 text-center" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
+      <div className="min-h-dvh flex items-center justify-center bg-slate-950 text-slate-100 p-6 text-center" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
         <div>
           <div className="text-4xl mb-3">✅</div>
           <h1 className="text-lg font-bold mb-2">Reporte enviado</h1>
@@ -1114,7 +1147,7 @@ function ReporteFallaForm({ onBack }) {
   }
 
   return (
-    <div className="min-h-[700px] h-full bg-slate-950 text-slate-100 p-6" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
+    <div className="min-h-dvh bg-slate-950 text-slate-100 p-6" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
       <div className="max-w-lg mx-auto">
         <button onClick={onBack} className="text-xs text-slate-400 mb-4">&larr; Volver</button>
         <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: '#4FD1C5' }}>CMMS Biomédico</div>
@@ -1406,7 +1439,7 @@ function MainApp({ onLogout, readOnly }) {
 
   /* ---------------------------------------------------------------- */
   return (
-    <div className={`flex flex-col h-full min-h-[700px] font-sans ${t.bg} ${t.text}`} style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
+    <div className={`flex flex-col min-h-dvh font-sans ${t.bg} ${t.text}`} style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
       {readOnly && (
         <div className="shrink-0 flex items-center justify-center gap-2 py-1.5 text-[11px] font-semibold text-white" style={{ background: '#B45309' }}>
           <Lock size={12} /> Modo invitado — solo lectura, no se pueden guardar cambios
