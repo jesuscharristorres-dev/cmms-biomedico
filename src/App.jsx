@@ -164,8 +164,17 @@ const TIPOS_REPORTE_LABEL = {
   Baja: 'Baja de Equipo',
 };
 
-// Datos del formato controlado — ajústalos si tu documento cambia de versión/vigencia.
-const DOC_CONTROL = { codigo: 'DLC-GEB-F-03', version: '2.0', tipoCopia: 'Controlada', vigencia: '2027-02-03', pagina: '1 de 1' };
+// Datos del formato controlado — cada empresa tiene su propio código/versión/vigencia
+// de documento; el encabezado del reporte se elige automáticamente según equipo.empresa.
+const DOC_CONTROL_POR_EMPRESA = {
+  DIAGNOSTIK: { codigo: 'DLC-GEB-F-01', version: '2.0', tipoCopia: 'CONTROLADA', vigencia: '21/01/2027', pagina: '1 DE 1' },
+  MACROMED: { codigo: 'F432', version: '1.0', tipoCopia: 'CONTROLADA', vigencia: '24/06/2027', pagina: '1 DE 1' },
+  'NP MEDICAL': { codigo: 'FSE-002', version: '4.0', tipoCopia: 'CONTROLADA', vigencia: '21/01/2027', pagina: '1 DE 1' },
+  'AUNAR SALUD': { codigo: 'AS-SGB-F04', version: '2.0', tipoCopia: 'CONTROLADA', vigencia: '31/12/2026', pagina: '1 DE 1' },
+  MEIDE: { codigo: 'ME-GF-F-001', version: '1.0', tipoCopia: 'CONTROLADA', vigencia: '27/06/2027', pagina: '1 DE 1' },
+};
+const DOC_CONTROL_DEFAULT = DOC_CONTROL_POR_EMPRESA.DIAGNOSTIK;
+const docControlDe = (empresaKey) => DOC_CONTROL_POR_EMPRESA[empresaKey] || DOC_CONTROL_DEFAULT;
 
 // Checklist "CARACTERÍSTICAS A INSPECCIONAR" — mismo orden y texto que el formato en Excel.
 const CHECKLIST_ITEMS = [
@@ -188,6 +197,7 @@ const TIPO_INTERVENCION_MAP = { Preventivo: 'Preventivo', Correctivo: 'Correctiv
 
 function generarReportePDF(equipo, tipoKey, rep) {
   const co = companyOf(equipo.empresa);
+  const docControl = docControlDe(equipo.empresa);
   const tipoLabel = TIPOS_REPORTE_LABEL[tipoKey] || tipoKey;
   const win = window.open('', '_blank');
   if (!win) { alert('El navegador bloqueó la ventana emergente. Habilítala para generar el PDF.'); return; }
@@ -270,11 +280,11 @@ function generarReportePDF(equipo, tipoKey, rep) {
         </div>
         <div class="headright">
           <table>
-            <tr><td class="k">Código</td><td>${DOC_CONTROL.codigo}</td></tr>
-            <tr><td class="k">Versión</td><td>${DOC_CONTROL.version}</td></tr>
-            <tr><td class="k">Tipo de copia</td><td>${DOC_CONTROL.tipoCopia}</td></tr>
-            <tr><td class="k">Vigencia</td><td>${DOC_CONTROL.vigencia}</td></tr>
-            <tr><td class="k">Página</td><td>${DOC_CONTROL.pagina}</td></tr>
+            <tr><td class="k">Código</td><td>${docControl.codigo}</td></tr>
+            <tr><td class="k">Versión</td><td>${docControl.version}</td></tr>
+            <tr><td class="k">Tipo de copia</td><td>${docControl.tipoCopia}</td></tr>
+            <tr><td class="k">Vigencia</td><td>${docControl.vigencia}</td></tr>
+            <tr><td class="k">Página</td><td>${docControl.pagina}</td></tr>
           </table>
         </div>
       </div>
@@ -314,6 +324,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
 
 function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent, t, readOnly }) {
   const existing = record.reporteTecnico || {};
+  const docControl = docControlDe(equipo.empresa);
   // La fecha de mantenimiento es la que se registró al crear el registro (record.fecha)
   // — es la única fuente de verdad, nunca se sobrescribe con un valor distinto guardado
   // previamente en el reporte. Formato unificado para Preventivos, Correctivos,
@@ -345,13 +356,13 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
       <div className={`relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-xl border p-5 ${t.panel} ${t.border}`}>
         <div className="flex justify-between items-start mb-1">
           <div>
-            <div className="text-[10px] uppercase tracking-wide" style={{ color: accent }}>Reporte de mantenimiento — {DOC_CONTROL.codigo}</div>
+            <div className="text-[10px] uppercase tracking-wide" style={{ color: accent }}>Reporte de mantenimiento — {docControl.codigo}</div>
             <div className="text-sm font-bold">{equipo.equipo || 'Equipo sin nombre'}</div>
           </div>
           <button onClick={onClose}><X size={18} /></button>
         </div>
         <div className={`text-[10px] mb-4 ${t.muted}`}>
-          Versión {DOC_CONTROL.version} · Vigencia {DOC_CONTROL.vigencia} · Tipo: {TIPO_INTERVENCION_MAP[tipoKey]}
+          Versión {docControl.version} · Vigencia {docControl.vigencia} · Tipo: {TIPO_INTERVENCION_MAP[tipoKey]}
           {readOnly && <span className="ml-2 inline-flex items-center gap-1"><Lock size={9} /> solo lectura</span>}
         </div>
 
@@ -2028,7 +2039,7 @@ function HeatmapMantenimientos({ scoped, activeCompany, t, accent }) {
           <thead>
             <tr>
               <th className="w-20"></th>
-              {MONTHS.map(m => <th key={m.k} className={`font-mono font-normal pb-1 px-1 ${t.muted}`}>{m.l}</th>)}
+              {MONTHS.map(m => <th key={m.k} className={`font-mono font-normal pb-1 px-1 ${t.muted}`} translate="no" lang="es">{m.l}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -2349,7 +2360,7 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                     <span className="inline-flex items-center gap-1">{h.label}<ArrowUpDown size={10} /></span>
                   </th>
                 ))}
-                {MONTHS.map(m => <th key={m.k} className={`px-2 py-2.5 font-mono text-[10px] ${t.muted}`}>{m.l}</th>)}
+                {MONTHS.map(m => <th key={m.k} className={`px-2 py-2.5 font-mono text-[10px] ${t.muted}`} translate="no" lang="es">{m.l}</th>)}
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>CALIB.</th>
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PREV.</th>
                 <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PERIODICIDAD DE MANTENIMIENTO</th>
