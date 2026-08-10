@@ -4,7 +4,8 @@ import {
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, Mail, AlertTriangle, Lock,
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
-  CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight
+  CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
+  IdCard
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -133,6 +134,7 @@ const MENU = [
   { key: 'fallas', label: 'Reportes de falla', icon: AlertTriangle },
   { key: 'planes', label: 'Planes y programas', icon: FolderOpen },
   { key: 'tecnovigilancia', label: 'Tecnovigilancia', icon: ShieldAlert },
+  { key: 'personal', label: 'Hojas de vida personal', icon: IdCard },
   { key: 'empresas', label: 'Empresas', icon: Building2 },
   { key: 'inventario', label: 'Inventario', icon: ListTree },
   { key: 'mantenimientos', label: 'Mantenimientos', icon: CalendarClock },
@@ -631,6 +633,32 @@ const TECNO_CIUDADES = {
   DIAGNOSTIK: ['Bogotá', 'Villavicencio'],
   'AUNAR SALUD': ['Bogotá', 'Villavicencio', 'Neiva'],
 };
+
+// Hojas de vida del personal — un registro sencillo por trabajador (no un módulo de RRHH):
+// datos básicos + una sola hoja de vida en PDF, asociado a una empresa existente.
+const PERSONAL_KEY = 'cmms-personal';
+async function loadPersonal() {
+  try {
+    const raw = localStorage.getItem(PERSONAL_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* sin datos aún */ }
+  return [];
+}
+async function savePersonal(personal) {
+  try { localStorage.setItem(PERSONAL_KEY, JSON.stringify(personal)); }
+  catch (e) { console.error('Error guardando personal', e); }
+}
+const TIPOS_DOCUMENTO_PERSONAL = ['CC', 'CE', 'TI', 'Pasaporte'];
+const ESTADOS_PERSONAL = ['Activo', 'Inactivo'];
+const ESTADO_PERSONAL_HEX = { Activo: '#22C55E', Inactivo: '#94A3B8' };
+function newPersonal(empresa) {
+  return {
+    id: uid('per'),
+    nombreCompleto: '', tipoDocumento: 'CC', numeroDocumento: '',
+    cargo: '', profesion: '', empresa, fechaIngreso: todayISO(),
+    estado: 'Activo', hojaVidaUrl: '',
+  };
+}
 function newReporte(empresa, sede) {
   return {
     id: uid('rf'),
@@ -1654,6 +1682,8 @@ function MainApp({ onLogout, readOnly }) {
   const [tecnoTransversalLoaded, setTecnoTransversalLoaded] = useState(false);
   const [tecnoReportes, setTecnoReportes] = useState({});
   const [tecnoReportesLoaded, setTecnoReportesLoaded] = useState(false);
+  const [personal, setPersonal] = useState([]);
+  const [personalLoaded, setPersonalLoaded] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => { loadEquipos().then(d => { setEquipos(d); setLoaded(true); }); }, []);
@@ -1701,6 +1731,11 @@ function MainApp({ onLogout, readOnly }) {
       const anioObj = sedeObj[anio] || {};
       return { ...prev, [empresaKey]: { ...emp, [sede]: { ...sedeObj, [anio]: { ...anioObj, [trimestre]: valor } } } };
     });
+
+  useEffect(() => { loadPersonal().then(d => { setPersonal(d); setPersonalLoaded(true); }); }, []);
+  useEffect(() => { if (personalLoaded) savePersonal(personal); }, [personal, personalLoaded]);
+  const addPersonal = (record) => setPersonal(prev => [...prev, record]);
+  const updatePersonal = (updated) => setPersonal(prev => prev.map(p => p.id === updated.id ? updated : p));
 
   // Notificación automática de preventivos/calibraciones próximos a vencer o vencidos.
   // Corre cada vez que cambian los equipos o los correos configurados. No hay backend con
@@ -1911,6 +1946,7 @@ function MainApp({ onLogout, readOnly }) {
         {menu === 'fallas' && <ReportesFallaPage reportes={reportesFalla} t={t} accent={accent} onUpdate={updateReporte} readOnly={readOnly} />}
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
+        {menu === 'personal' && <PersonalPage personal={personal} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
         {menu === 'reportes' && <ReportesPage equipos={equipos} t={t} accent={accent} onExport={exportExcel} />}
         {menu === 'configuracion' && <ConfigPage t={t} accent={accent} onReset={() => { if (confirm('¿Borrar todos los equipos guardados?')) setEquipos([]); }} onLogout={onLogout} alertEmails={alertEmails} setAlertEmails={setAlertEmails} readOnly={readOnly} />}
         </div>
@@ -3137,6 +3173,177 @@ function TecnovigilanciaPage({ transversal, reportes, t, accent, onUpdateTransve
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Hojas de vida del personal — control sencillo de quién trabaja en cada empresa, su
+// cargo y si ya tiene su hoja de vida (PDF) cargada. No es un módulo de RRHH: un solo
+// documento por persona, sin diplomas/certificados/otros anexos.
+function PersonalPage({ personal, t, accent, onAdd, onUpdate, readOnly }) {
+  const [filtroNombre, setFiltroNombre] = useState('');
+  const [filtroEmpresa, setFiltroEmpresa] = useState('');
+  const [filtroCargo, setFiltroCargo] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('Activo');
+  const [openId, setOpenId] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const activos = personal.filter(p => p.estado === 'Activo');
+  const cargadas = activos.filter(p => p.hojaVidaUrl).length;
+  const pendientes = activos.length - cargadas;
+  const empresasConPersonal = new Set(personal.map(p => p.empresa)).size;
+
+  const cargoOptions = [...new Set(personal.map(p => p.cargo).filter(Boolean))].sort();
+
+  const list = personal
+    .filter(p => !filtroNombre.trim() || (p.nombreCompleto || '').toLowerCase().includes(filtroNombre.trim().toLowerCase()))
+    .filter(p => !filtroEmpresa || p.empresa === filtroEmpresa)
+    .filter(p => !filtroCargo || p.cargo === filtroCargo)
+    .filter(p => !filtroEstado || p.estado === filtroEstado)
+    .sort((a, b) => (a.nombreCompleto || '').localeCompare(b.nombreCompleto || ''));
+
+  return (
+    <div>
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
+        <h1 className="text-lg font-bold flex items-center gap-2">
+          <IdCard size={19} style={{ color: accent }} /> Gestión de hojas de vida del personal
+        </h1>
+        {!readOnly && (
+          <Button variant="primary" accent={accent} icon={Plus} onClick={() => setShowForm(true)}>Agregar personal</Button>
+        )}
+      </div>
+      <p className={`text-xs mb-5 ${t.muted}`}>Consulta y gestión de las hojas de vida del personal activo.</p>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <HeroStat t={t} label="Personal activo" color={accent} value={activos.length} sub="registrados como activos" />
+        <HeroStat t={t} label="Hojas de vida cargadas" color="#22C55E" value={cargadas} sub="del personal activo" />
+        <HeroStat t={t} label="Hojas de vida pendientes" color="#F59E0B" value={pendientes} sub="del personal activo" />
+        <HeroStat t={t} label="Empresas" color={accent} value={empresasConPersonal} sub="con personal registrado" />
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input value={filtroNombre} onChange={e => setFiltroNombre(e.target.value)} placeholder="Buscar por nombre…"
+            className={`rounded-md pl-7 pr-2.5 py-1.5 text-xs border ${t.input}`} />
+        </div>
+        <select value={filtroEmpresa} onChange={e => setFiltroEmpresa(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+          <option value="">Toda empresa</option>
+          {COMPANIES.map(c => <option key={c.key} value={c.key}>{c.key}</option>)}
+        </select>
+        <select value={filtroCargo} onChange={e => setFiltroCargo(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+          <option value="">Todo cargo</option>
+          {cargoOptions.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+          <option value="">Todo estado</option>
+          {ESTADOS_PERSONAL.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+
+      {list.length === 0 && <div className={`text-sm text-center py-10 ${t.muted}`}>Sin personal registrado con estos filtros.</div>}
+
+      <div className="space-y-2">
+        {list.map(p => {
+          const empresaCfg = companyOf(p.empresa);
+          const empresaColor = empresaCfg ? empresaCfg.color : '#64748B';
+          const open = openId === p.id;
+          const initials = (p.nombreCompleto || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+          return (
+            <div key={p.id} className={`rounded-lg border overflow-hidden shadow-sm hover:shadow-md transition ${t.panel} ${t.border}`}>
+              <div onClick={() => setOpenId(open ? null : p.id)} className="p-3 flex items-center gap-3 cursor-pointer flex-wrap">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 text-white" style={{ background: empresaColor }}>
+                  {initials || <User size={14} />}
+                </div>
+                <div className="flex-1 min-w-40">
+                  <div className="text-xs font-semibold">{p.nombreCompleto || 'Sin nombre'}</div>
+                  <div className={`text-2xs ${t.muted}`}>{p.cargo || 'Cargo sin definir'}{p.profesion ? ` · ${p.profesion}` : ''}</div>
+                </div>
+                <Badge color={empresaColor}>{p.empresa}</Badge>
+                <Badge color={ESTADO_PERSONAL_HEX[p.estado]}>{p.estado}</Badge>
+                <PdfLink url={p.hojaVidaUrl} t={t} label="Ver hoja de vida" title={`Hoja de vida — ${p.nombreCompleto}`} emptyLabel="Pendiente de hoja de vida" />
+              </div>
+              {open && (
+                <div className={`p-3 border-t space-y-3 ${t.border} ${t.panel3}`}>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <Field label="Nombre completo"><TextInput t={t} value={p.nombreCompleto} disabled={readOnly} onChange={v => onUpdate({ ...p, nombreCompleto: v })} /></Field>
+                    <Field label="Cargo"><TextInput t={t} value={p.cargo} disabled={readOnly} onChange={v => onUpdate({ ...p, cargo: v })} /></Field>
+                    <Field label="Profesión"><TextInput t={t} value={p.profesion} disabled={readOnly} onChange={v => onUpdate({ ...p, profesion: v })} /></Field>
+                    <Field label="Empresa">
+                      <SelectInput t={t} value={p.empresa} disabled={readOnly} options={COMPANIES.map(c => c.key)} onChange={v => onUpdate({ ...p, empresa: v })} />
+                    </Field>
+                    <Field label="Tipo de documento">
+                      <SelectInput t={t} value={p.tipoDocumento} disabled={readOnly} options={TIPOS_DOCUMENTO_PERSONAL} onChange={v => onUpdate({ ...p, tipoDocumento: v })} />
+                    </Field>
+                    <Field label="Número de documento"><TextInput t={t} value={p.numeroDocumento} disabled={readOnly} onChange={v => onUpdate({ ...p, numeroDocumento: v })} /></Field>
+                    <Field label="Fecha de ingreso"><TextInput t={t} type="date" value={p.fechaIngreso} disabled={readOnly} onChange={v => onUpdate({ ...p, fechaIngreso: v })} /></Field>
+                    <Field label="Estado">
+                      <SelectInput t={t} value={p.estado} disabled={readOnly} options={ESTADOS_PERSONAL} onChange={v => onUpdate({ ...p, estado: v })} />
+                    </Field>
+                  </div>
+                  <Field label="Hoja de vida (URL del PDF)">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex-1 min-w-55">
+                        <TextInput t={t} value={p.hojaVidaUrl} disabled={readOnly} placeholder="URL del PDF" onChange={v => onUpdate({ ...p, hojaVidaUrl: v })} />
+                      </div>
+                      <PdfLink url={p.hojaVidaUrl} t={t} label="Ver hoja de vida" title={`Hoja de vida — ${p.nombreCompleto}`} emptyLabel="Pendiente de hoja de vida" />
+                    </div>
+                  </Field>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {showForm && !readOnly && (
+        <PersonalFormModal t={t} accent={accent} onClose={() => setShowForm(false)}
+          onSave={(record) => { onAdd(record); setShowForm(false); }} />
+      )}
+    </div>
+  );
+}
+
+function PersonalFormModal({ t, accent, onClose, onSave }) {
+  const [form, setForm] = useState(() => newPersonal(COMPANIES[0].key));
+  const patch = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const canSave = form.nombreCompleto.trim() && form.numeroDocumento.trim() && form.cargo.trim();
+
+  return (
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+      <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className={`animate-modal-in relative w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-xl border p-5 ${t.panel} ${t.border}`}>
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <div className="text-3xs uppercase tracking-wide" style={{ color: accent }}>Nuevo registro</div>
+            <div className="text-sm font-bold">Información del personal</div>
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" className="flex items-center justify-center w-11 h-11 -mr-2 -mt-2"><X size={18} /></button>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label="Nombre completo"><TextInput t={t} value={form.nombreCompleto} placeholder="Nombre y apellidos" onChange={v => patch('nombreCompleto', v)} /></Field>
+          <Field label="Tipo de documento"><SelectInput t={t} value={form.tipoDocumento} options={TIPOS_DOCUMENTO_PERSONAL} onChange={v => patch('tipoDocumento', v)} /></Field>
+          <Field label="Número de documento"><TextInput t={t} value={form.numeroDocumento} onChange={v => patch('numeroDocumento', v)} /></Field>
+          <Field label="Cargo"><TextInput t={t} value={form.cargo} placeholder="Ej. Ingeniero Biomédico" onChange={v => patch('cargo', v)} /></Field>
+          <Field label="Profesión"><TextInput t={t} value={form.profesion} placeholder="Ej. Ingeniería Biomédica" onChange={v => patch('profesion', v)} /></Field>
+          <Field label="Empresa"><SelectInput t={t} value={form.empresa} options={COMPANIES.map(c => c.key)} onChange={v => patch('empresa', v)} /></Field>
+          <Field label="Fecha de ingreso"><TextInput t={t} type="date" value={form.fechaIngreso} onChange={v => patch('fechaIngreso', v)} /></Field>
+          <Field label="Estado"><SelectInput t={t} value={form.estado} options={ESTADOS_PERSONAL} onChange={v => patch('estado', v)} /></Field>
+        </div>
+
+        <div className="mt-3">
+          <Field label="Cargar hoja de vida (URL del PDF)">
+            <TextInput t={t} value={form.hojaVidaUrl} placeholder="https://…pdf" onChange={v => patch('hojaVidaUrl', v)} />
+          </Field>
+          <p className={`text-3xs mt-1 ${t.muted}`}>Pega el enlace del PDF de la hoja de vida. Puedes agregarlo después si aún no lo tienes.</p>
+        </div>
+
+        <div className="flex justify-end gap-2 mt-5">
+          <Button variant="outline" t={t} onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" accent={accent} disabled={!canSave} onClick={() => onSave(form)}>Guardar</Button>
+        </div>
       </div>
     </div>
   );
