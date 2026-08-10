@@ -620,6 +620,17 @@ const TECNO_TRIMESTRES = [
   { key: 't3', label: '3.er trimestre' },
   { key: 't4', label: '4.º trimestre' },
 ];
+// Ciudades/departamentos habilitados para reportes de Tecnovigilancia, por empresa.
+// Es una lista propia del módulo (no las sedes operativas de COMPANIES): un reporte
+// regional cubre todas las sedes de esa zona, así que aquí solo van ciudades, sin
+// duplicar ni mezclar entre empresas.
+const TECNO_CIUDADES = {
+  MACROMED: ['Bogotá'],
+  MEIDE: ['Armenia', 'Manizales', 'La Dorada', 'Bogotá'],
+  'NP MEDICAL': ['Bogotá', 'Girardot'],
+  DIAGNOSTIK: ['Bogotá', 'Villavicencio'],
+  'AUNAR SALUD': ['Bogotá', 'Villavicencio', 'Neiva'],
+};
 function newReporte(empresa, sede) {
   return {
     id: uid('rf'),
@@ -2934,16 +2945,16 @@ function TecnovigilanciaPage({ transversal, reportes, t, accent, onUpdateTransve
 
   const cargadosTransversal = TECNO_DOCS.filter(d => transversal[d.key]).length;
 
-  const totalSedes = COMPANIES.reduce((acc, c) => acc + c.sedes.length, 0);
+  const totalCiudades = COMPANIES.reduce((acc, c) => acc + (TECNO_CIUDADES[c.key] || []).length, 0);
   const anioActual = new Date().getFullYear();
   let cargadosAnioActual = 0;
   COMPANIES.forEach(c => {
-    c.sedes.forEach(sede => {
-      const anioData = reportes?.[c.key]?.[sede]?.[anioActual];
+    (TECNO_CIUDADES[c.key] || []).forEach(ciudad => {
+      const anioData = reportes?.[c.key]?.[ciudad]?.[anioActual];
       if (anioData) TECNO_TRIMESTRES.forEach(tr => { if (anioData[tr.key]) cargadosAnioActual++; });
     });
   });
-  const totalSlotsAnioActual = totalSedes * TECNO_TRIMESTRES.length;
+  const totalSlotsAnioActual = totalCiudades * TECNO_TRIMESTRES.length;
   const pendientesAnioActual = totalSlotsAnioActual - cargadosAnioActual;
 
   const empresa = empresaSel ? companyOf(empresaSel) : null;
@@ -2957,7 +2968,7 @@ function TecnovigilanciaPage({ transversal, reportes, t, accent, onUpdateTransve
       <h1 className="text-lg font-bold mb-1 flex items-center gap-2">
         <ShieldAlert size={19} style={{ color: accent }} /> Tecnovigilancia
       </h1>
-      <p className={`text-xs mb-5 ${t.muted}`}>Documentación transversal y reportes trimestrales de tecnovigilancia por empresa y sede.</p>
+      <p className={`text-xs mb-5 ${t.muted}`}>Documentación transversal y reportes trimestrales de tecnovigilancia por empresa y ciudad/departamento.</p>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <HeroStat t={t} label="Documentos transversales" color={accent}
@@ -3009,16 +3020,19 @@ function TecnovigilanciaPage({ transversal, reportes, t, accent, onUpdateTransve
           <div>
             <p className={`text-2xs mb-3 ${t.muted}`}>Selecciona una empresa para consultar sus reportes.</p>
             <div className="grid md:grid-cols-3 gap-4">
-              {COMPANIES.map(c => (
-                <button key={c.key} onClick={() => setEmpresaSel(c.key)}
-                  className={`text-left rounded-xl border overflow-hidden hover:-translate-y-0.5 transition ${t.panel} ${t.border}`}>
-                  <div className="h-2" style={{ background: c.gradient }} />
-                  <div className="p-5">
-                    <div className="text-sm font-bold" style={{ color: c.color }}>{c.key}</div>
-                    <div className={`text-2xs mt-1 ${t.muted}`}>{c.sedes.length} sede{c.sedes.length !== 1 ? 's' : ''}</div>
-                  </div>
-                </button>
-              ))}
+              {COMPANIES.map(c => {
+                const ciudades = TECNO_CIUDADES[c.key] || [];
+                return (
+                  <button key={c.key} onClick={() => setEmpresaSel(c.key)}
+                    className={`text-left rounded-xl border overflow-hidden hover:-translate-y-0.5 transition ${t.panel} ${t.border}`}>
+                    <div className="h-2" style={{ background: c.gradient }} />
+                    <div className="p-5">
+                      <div className="text-sm font-bold" style={{ color: c.color }}>{c.key}</div>
+                      <div className={`text-2xs mt-1 ${t.muted}`}>{ciudades.length} ciudad{ciudades.length !== 1 ? 'es' : ''}/departamento{ciudades.length !== 1 ? 's' : ''}</div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -3027,13 +3041,13 @@ function TecnovigilanciaPage({ transversal, reportes, t, accent, onUpdateTransve
           <div>
             <button onClick={resetEmpresa} className={`text-2xs font-mono uppercase mb-3 hover:underline ${t.muted}`}>← Cambiar empresa</button>
             <div className="text-sm font-bold mb-3" style={{ color: empresa.color }}>{empresa.key}</div>
-            <p className={`text-2xs mb-3 ${t.muted}`}>Selecciona una sede.</p>
+            <p className={`text-2xs mb-3 ${t.muted}`}>Selecciona una ciudad/departamento.</p>
             <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
-              {empresa.sedes.map(sede => (
-                <button key={sede} onClick={() => setSedeSel(sede)}
+              {(TECNO_CIUDADES[empresaSel] || []).map(ciudad => (
+                <button key={ciudad} onClick={() => setSedeSel(ciudad)}
                   className={`flex items-center gap-2 rounded-xl border p-3 text-left hover:-translate-y-0.5 transition ${t.panel} ${t.border}`}>
                   <MapPin size={15} style={{ color: empresa.color }} />
-                  <span className="text-xs font-semibold">{sede}</span>
+                  <span className="text-xs font-semibold">{ciudad}</span>
                 </button>
               ))}
             </div>
