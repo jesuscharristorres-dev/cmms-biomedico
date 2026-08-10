@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X,
+  Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X, Menu,
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, Mail, AlertTriangle, Lock,
   User, Eye, EyeOff, Image as ImageIcon
@@ -102,8 +102,13 @@ const MENU = [
   { key: 'reportes', label: 'Reportes', icon: FileBarChart },
   { key: 'configuracion', label: 'Configuración', icon: Settings },
 ];
-const STATUS_HEX = { realizado: '#22C55E', programado: '#F59E0B', vencido: '#EF4444', no_aplica: '#475569' };
-const CAL_HEX = { vigente: '#22C55E', proximo: '#F59E0B', vencido: '#EF4444', sin_dato: '#475569' };
+// Semáforo semántico compartido — mantenimientos y calibraciones usan el mismo
+// significado de color (verde=bien, ámbar=próximo, rojo=vencido, gris=sin dato),
+// antes duplicado como dos mapas hex idénticos con llaves distintas.
+const SEMANTIC_HEX = { ok: '#22C55E', warn: '#F59E0B', danger: '#EF4444', neutral: '#475569' };
+const STATUS_HEX = { realizado: SEMANTIC_HEX.ok, programado: SEMANTIC_HEX.warn, vencido: SEMANTIC_HEX.danger, no_aplica: SEMANTIC_HEX.neutral };
+const STATUS_LABEL = { realizado: 'Realizado', programado: 'Programado', vencido: 'Vencido', no_aplica: 'No aplica' };
+const CAL_HEX = { vigente: SEMANTIC_HEX.ok, proximo: SEMANTIC_HEX.warn, vencido: SEMANTIC_HEX.danger, sin_dato: SEMANTIC_HEX.neutral };
 
 const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -352,21 +357,21 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className={`relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-xl border p-5 ${t.panel} ${t.border}`}>
+      <div className="animate-fade-in absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className={`animate-modal-in relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-xl border p-5 ${t.panel} ${t.border}`}>
         <div className="flex justify-between items-start mb-1">
           <div>
-            <div className="text-[10px] uppercase tracking-wide" style={{ color: accent }}>Reporte de mantenimiento — {docControl.codigo}</div>
+            <div className="text-3xs uppercase tracking-wide" style={{ color: accent }}>Reporte de mantenimiento — {docControl.codigo}</div>
             <div className="text-sm font-bold">{equipo.equipo || 'Equipo sin nombre'}</div>
           </div>
-          <button onClick={onClose}><X size={18} /></button>
+          <button onClick={onClose} aria-label="Cerrar" className="flex items-center justify-center w-11 h-11 -mr-2 -mt-2"><X size={18} /></button>
         </div>
-        <div className={`text-[10px] mb-4 ${t.muted}`}>
+        <div className={`text-3xs mb-4 ${t.muted}`}>
           Versión {docControl.version} · Vigencia {docControl.vigencia} · Tipo: {TIPO_INTERVENCION_MAP[tipoKey]}
           {readOnly && <span className="ml-2 inline-flex items-center gap-1"><Lock size={9} /> solo lectura</span>}
         </div>
 
-        <div className={`rounded-lg border p-3 mb-4 grid grid-cols-3 gap-x-3 gap-y-1 text-[11px] ${t.panel3} ${t.border}`}>
+        <div className={`rounded-lg border p-3 mb-4 grid grid-cols-3 gap-x-3 gap-y-1 text-2xs ${t.panel3} ${t.border}`}>
           <div><span className={t.muted}>Equipo: </span>{equipo.equipo}</div>
           <div><span className={t.muted}>Marca: </span>{equipo.marca || '—'}</div>
           <div><span className={t.muted}>N° activo: </span>{equipo.inventario || '—'}</div>
@@ -378,7 +383,7 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
         <div className="grid grid-cols-2 gap-3 mb-1">
           <div>
             <Field label="Fecha de mantenimiento"><TextInput t={t} type="date" value={fecha} disabled onChange={() => {}} /></Field>
-            <p className={`text-[10px] mt-1 ${t.muted}`}>Definida al registrar el mantenimiento — no se puede modificar aquí.</p>
+            <p className={`text-3xs mt-1 ${t.muted}`}>Definida al registrar el mantenimiento — no se puede modificar aquí.</p>
           </div>
           <Field label="Fecha de próximo mantenimiento"><TextInput t={t} type="month" value={fechaProximo} disabled={readOnly} onChange={setFechaProximo} /></Field>
         </div>
@@ -388,16 +393,16 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
         </Field>
 
         <div className="mt-4 mb-1">
-          <label className="text-[10px] uppercase tracking-wide text-slate-400">Características a inspeccionar</label>
+          <label className="text-3xs uppercase tracking-wide text-slate-400">Características a inspeccionar</label>
         </div>
         <div className={`rounded-lg border divide-y ${t.panel3} ${t.border}`} style={{ borderColor: 'inherit' }}>
           {CHECKLIST_ITEMS.map(item => (
             <div key={item} className="p-2 flex flex-wrap items-center gap-2" style={{ borderColor: 'inherit' }}>
-              <span className="text-[11px] flex-1 min-w-[150px]">{item}</span>
+              <span className="text-2xs flex-1 min-w-[150px]">{item}</span>
               <div className="flex gap-1">
                 {CHECK_ESTADOS.map(ce => (
                   <button key={ce.key} type="button" disabled={readOnly} onClick={() => setItemEstado(item, ce.key)}
-                    className="text-[9.5px] font-semibold px-2 py-1 rounded border"
+                    className="text-3xs font-semibold px-2 py-1 rounded border"
                     style={checklist[item]?.estado === ce.key ? { background: ce.color + '22', borderColor: ce.color, color: ce.color } : { borderColor: '#475569', color: '#64748b' }}>
                     {ce.label}
                   </button>
@@ -413,13 +418,13 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
           </Field>
         </div>
 
-        <label className="text-[10px] uppercase tracking-wide text-slate-400 mt-3 block">Repuestos utilizados en el servicio</label>
+        <label className="text-3xs uppercase tracking-wide text-slate-400 mt-3 block">Repuestos utilizados en el servicio</label>
         <div className="space-y-1.5 my-1.5">
           {repuestos.map((r, i) => (
             <div key={i} className={`flex items-center gap-2 rounded-md border px-2 py-1.5 ${t.panel3} ${t.border}`}>
               <span className="text-xs flex-1">{r.item}</span>
               <span className="text-xs w-16 text-right">{r.cantidad}</span>
-              {!readOnly && <button type="button" onClick={() => setRepuestos(repuestos.filter((_, idx) => idx !== i))} className="text-red-400"><Trash2 size={12} /></button>}
+              {!readOnly && <button type="button" onClick={() => setRepuestos(repuestos.filter((_, idx) => idx !== i))} aria-label="Quitar repuesto" className="text-red-400"><Trash2 size={12} /></button>}
             </div>
           ))}
           {repuestos.length === 0 && <div className={`text-xs text-center py-2 ${t.muted}`}>Sin repuestos registrados</div>}
@@ -434,22 +439,22 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
 
         <div className="grid grid-cols-2 gap-4 mt-2">
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">Nombre de quien realiza</div>
+            <div className="text-3xs uppercase tracking-wide text-slate-400 mb-1">Nombre de quien realiza</div>
             <TextInput t={t} value={quienRealizaNombre} disabled={readOnly} onChange={setQuienRealizaNombre} />
-            <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-2 mb-1">Firma</div>
+            <div className="text-3xs uppercase tracking-wide text-slate-400 mt-2 mb-1">Firma</div>
             <FirmaInput t={t} value={firmaRealiza} onChange={setFirmaRealiza} readOnly={readOnly} alt="Firma de quien realiza" />
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">Nombre de quien recibe</div>
+            <div className="text-3xs uppercase tracking-wide text-slate-400 mb-1">Nombre de quien recibe</div>
             <TextInput t={t} value={quienRecibeNombre} disabled={readOnly} onChange={setQuienRecibeNombre} />
-            <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-2 mb-1">Firma</div>
+            <div className="text-3xs uppercase tracking-wide text-slate-400 mt-2 mb-1">Firma</div>
             <FirmaInput t={t} value={firmaRecibe} onChange={setFirmaRecibe} readOnly={readOnly} alt="Firma de quien recibe" />
           </div>
         </div>
 
         <div className="flex gap-2 mt-5">
-          {!readOnly && <button onClick={() => onSave(buildReport())} className="rounded-md px-4 py-2 text-xs font-semibold" style={{ background: accent, color: '#fff' }}>Guardar reporte</button>}
-          <button onClick={() => generarReportePDF(equipo, tipoKey, buildReport())} className={`rounded-md px-4 py-2 text-xs font-semibold border flex items-center gap-1.5 ${t.border}`}><FileText size={13} /> Exportar PDF</button>
+          {!readOnly && <Button variant="primary" size="lg" accent={accent} onClick={() => onSave(buildReport())}>Guardar reporte</Button>}
+          <Button variant="outline" size="lg" t={t} icon={FileText} onClick={() => generarReportePDF(equipo, tipoKey, buildReport())}>Exportar PDF</Button>
         </div>
       </div>
     </div>
@@ -463,7 +468,7 @@ function ReporteTecnicoButton({ equipo, record, tipoKey, onSave, accent, t, read
   return (
     <>
       <button type="button" onClick={() => setOpen(true)}
-        className="text-[10px] font-semibold px-2.5 py-1.5 rounded-md border flex items-center gap-1.5"
+        className="text-3xs font-semibold px-2.5 py-1.5 rounded-md border flex items-center gap-1.5"
         style={hasReport ? { borderColor: accent, color: accent } : { borderColor: '#475569', color: '#94a3b8' }}>
         <FileBarChart size={12} /> {hasReport ? (readOnly ? 'Ver reporte' : 'Ver / editar reporte') : 'Generar reporte'}
       </button>
@@ -532,10 +537,43 @@ const REPORTE_ESTADO_HEX = { Reportado: '#EF4444', 'En revisión': '#F59E0B', 'E
 /* COMPONENTES REUTILIZABLES                                         */
 /* ---------------------------------------------------------------- */
 
+// Botón compartido — variantes primary/outline/danger/ghost. Reemplaza las
+// reimplementaciones inline de className+style repetidas por toda la app.
+// Incluye active:scale-[0.97] (feedback de presión) por defecto en todas las variantes.
+const BUTTON_SIZE_CLS = {
+  sm: 'px-2.5 py-1.5 text-2xs',
+  md: 'px-3 py-1.5 text-xs',
+  lg: 'px-4 py-2 text-xs',
+};
+function Button({ variant = 'outline', size = 'md', accent, t, icon: Icon, iconSize = 13, className = '', style, children, ...props }) {
+  const sizeCls = BUTTON_SIZE_CLS[size] || BUTTON_SIZE_CLS.md;
+  const base = `inline-flex items-center justify-center gap-1.5 rounded-md font-semibold transition active:scale-[0.97] disabled:opacity-60 disabled:active:scale-100 ${sizeCls}`;
+  let variantCls = '';
+  let variantStyle = style;
+  if (variant === 'primary') variantStyle = { background: accent, color: '#fff', ...style };
+  else if (variant === 'danger') variantStyle = { background: '#EF4444', color: '#fff', ...style };
+  else if (variant === 'outline') variantCls = `border ${t ? t.border : 'border-slate-300'}`;
+  else if (variant === 'ghost') variantCls = `border ${t ? t.border : 'border-slate-300'} ${t ? t.muted : 'text-slate-500'} hover:opacity-80`;
+  return (
+    <button className={`${base} ${variantCls} ${className}`} style={variantStyle} {...props}>
+      {Icon && <Icon size={iconSize} />} {children}
+    </button>
+  );
+}
+
+// Badge compartido — pill de estado con fondo translúcido del mismo color del texto.
+function Badge({ color, mono = true, children }) {
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-3xs ${mono ? 'font-mono uppercase' : ''}`} style={{ background: color + '22', color }}>
+      {children}
+    </span>
+  );
+}
+
 function Field({ label, children }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[10px] uppercase tracking-wide text-slate-400">{label}</label>
+      <label className="text-3xs uppercase tracking-wide text-slate-400">{label}</label>
       {children}
     </div>
   );
@@ -596,12 +634,12 @@ function FirmaInput({ value, onChange, readOnly, alt, t }) {
       <div className={`w-20 h-11 rounded-md border overflow-hidden flex items-center justify-center shrink-0 bg-white ${t.border}`}>
         {value
           ? <img src={value} alt={alt} className="w-full h-full object-contain" />
-          : <span className={`text-[8px] px-1 text-center leading-tight ${t.muted}`}>Sin firma</span>}
+          : <span className={`text-3xs px-1 text-center leading-tight ${t.muted}`}>Sin firma</span>}
       </div>
       {!readOnly && (
         <div className="flex-1 min-w-0">
-          <input type="file" accept="image/png" onChange={handleFile} className={`w-full text-[10px] ${t.muted}`} />
-          {value && <button type="button" onClick={() => onChange('')} className="text-[10px] text-red-400 mt-0.5">Quitar firma</button>}
+          <input type="file" accept="image/png" onChange={handleFile} className={`w-full text-3xs ${t.muted}`} />
+          {value && <button type="button" onClick={() => onChange('')} className="text-3xs text-red-400 mt-0.5">Quitar firma</button>}
         </div>
       )}
     </div>
@@ -620,7 +658,7 @@ function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, renderExtra
             <div className="flex flex-wrap gap-2">
               {fields.map(f => (
                 <div key={f.key} className="flex-1 min-w-[120px]">
-                  <label className="text-[9px] uppercase text-slate-400">{f.label}</label>
+                  <label className="text-3xs uppercase text-slate-400">{f.label}</label>
                   {f.type === 'select'
                     ? <SelectInput t={t} value={r[f.key]} options={f.options} disabled={readOnly} onChange={v => onUpdate(i, f.key, v)} />
                     : f.type === 'url'
@@ -633,7 +671,7 @@ function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, renderExtra
                       : <TextInput t={t} type={f.type || 'text'} value={r[f.key]} disabled={readOnly} onChange={v => onUpdate(i, f.key, v)} />}
                 </div>
               ))}
-              {!readOnly && <button onClick={() => onRemove(i)} className="self-end text-red-400 hover:text-red-300 p-1"><Trash2 size={14} /></button>}
+              {!readOnly && <button onClick={() => onRemove(i)} aria-label="Eliminar registro" className="self-end text-red-400 hover:text-red-300 p-1"><Trash2 size={14} /></button>}
             </div>
             {renderExtra && <div className="mt-2 pt-2 border-t border-dashed border-slate-700/40">{renderExtra(r, i)}</div>}
           </div>
@@ -644,7 +682,7 @@ function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, renderExtra
           <div className="flex flex-wrap gap-2">
             {fields.map(f => (
               <div key={f.key} className="flex-1 min-w-[120px]">
-                <label className="text-[9px] uppercase text-slate-400">{f.label}</label>
+                <label className="text-3xs uppercase text-slate-400">{f.label}</label>
                 {f.type === 'select'
                   ? <SelectInput t={t} value={draft[f.key] || f.options[0]} options={f.options} onChange={v => setDraft({ ...draft, [f.key]: v })} />
                   : <TextInput t={t} type={f.type || 'text'} value={draft[f.key]} onChange={v => setDraft({ ...draft, [f.key]: v })} />}
@@ -682,22 +720,22 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className={`relative w-full sm:w-[640px] h-full overflow-y-auto ${t.panel} border-l ${t.border}`}>
+      <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className={`animate-drawer-in relative w-full sm:w-[640px] h-full overflow-y-auto ${t.panel} border-l ${t.border}`}>
         <div className="sticky top-0 z-10 px-5 py-4 border-b flex items-center justify-between" style={{ background: accentBg, borderColor: accent }}>
           <div>
-            <div className="text-white/70 text-[10px] uppercase tracking-wide flex items-center gap-1.5">
+            <div className="text-white/70 text-3xs uppercase tracking-wide flex items-center gap-1.5">
               {equipo.empresa} · {equipo.sede} {readOnly && <span className="inline-flex items-center gap-1 bg-black/25 rounded-full px-1.5 py-0.5"><Lock size={9} /> solo lectura</span>}
             </div>
             <div className="text-white text-lg font-bold">{equipo.equipo || 'Equipo sin nombre'}</div>
           </div>
-          <button onClick={onClose} className="text-white/80 hover:text-white"><X size={20} /></button>
+          <button onClick={onClose} aria-label="Cerrar" className="flex items-center justify-center w-11 h-11 -mr-2 text-white/80 hover:text-white"><X size={20} /></button>
         </div>
 
         <div className="flex overflow-x-auto border-b sticky top-[60px] z-10 bg-inherit" style={{ borderColor: 'inherit' }}>
           {DRAWER_TABS.map(tb => (
             <button key={tb} onClick={() => setTab(tb)}
-              className={`px-3 py-2.5 text-xs whitespace-nowrap border-b-2 transition ${tab === tb ? 'font-semibold' : `${t.muted} border-transparent`}`}
+              className={`px-3 min-h-11 flex items-center whitespace-nowrap text-xs border-b-2 transition ${tab === tb ? 'font-semibold' : `${t.muted} border-transparent`}`}
               style={tab === tb ? { borderColor: accent, color: accent } : {}}>
               {tb}
             </button>
@@ -709,20 +747,20 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
             <div className="relative pr-36">
               {/* Fotografía — flotante en la esquina superior derecha, fuera del flujo de la grilla
                   para que los campos de la izquierda no dependan de su altura. */}
-              <div className="absolute top-0 right-0 w-32.5">
-                <div className={`w-32.5 h-32.5 rounded-lg border overflow-hidden flex items-center justify-center ${t.panel3} ${t.border}`}>
+              <div className="absolute top-0 right-0 w-32">
+                <div className={`w-32 h-32 rounded-lg border overflow-hidden flex items-center justify-center ${t.panel3} ${t.border}`}>
                   {equipo.fotografiaUrl
                     ? <img src={equipo.fotografiaUrl} alt="Equipo" className="w-full h-full object-contain" />
                     : (
                       <div className={`flex flex-col items-center gap-1 text-center px-2 ${t.muted}`}>
                         <ImageIcon size={20} />
-                        <span className="text-[9px] leading-tight">Sin fotografía</span>
+                        <span className="text-3xs leading-tight">Sin fotografía</span>
                       </div>
                     )}
                 </div>
                 {!readOnly && (
                   <input value={equipo.fotografiaUrl || ''} placeholder="URL de la foto" onChange={e => patch('fotografiaUrl', e.target.value)}
-                    className={`mt-1.5 w-32.5 rounded-md px-1.5 py-1 text-[10px] border ${t.input}`} />
+                    className={`mt-1.5 w-32 rounded-md px-1.5 py-1 text-3xs border ${t.input}`} />
                 )}
               </div>
 
@@ -749,7 +787,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
                       <PdfLink url={equipo.actaEntregaUrl} title="Ver acta de entrega" t={t} />
                     </div>
                   </Field>
-                  {!readOnly && <p className={`text-[10px] mt-1 ${t.muted}`}>Sube el acta firmada a Drive/OneDrive/SharePoint y pega aquí el enlace.</p>}
+                  {!readOnly && <p className={`text-3xs mt-1 ${t.muted}`}>Sube el acta firmada a Drive/OneDrive/SharePoint y pega aquí el enlace.</p>}
                 </div>
                 <div>
                   <Field label="Hoja de vida (URL)">
@@ -758,7 +796,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
                       <PdfLink url={equipo.hojaVidaUrl} title="Ver hoja de vida" t={t} />
                     </div>
                   </Field>
-                  {!readOnly && <p className={`text-[10px] mt-1 ${t.muted}`}>Sube la hoja de vida a Drive/OneDrive/SharePoint y pega aquí el enlace.</p>}
+                  {!readOnly && <p className={`text-3xs mt-1 ${t.muted}`}>Sube la hoja de vida a Drive/OneDrive/SharePoint y pega aquí el enlace.</p>}
                 </div>
 
                 <div className="col-span-2 flex gap-4 mt-1">
@@ -777,13 +815,13 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
                   const st = getMonthStatus(equipo, m.idx, year);
                   return (
                     <div key={m.k} className={`rounded-lg border p-3 text-center ${t.panel3} ${t.border}`}>
-                      <div className="w-3 h-3 rounded-full mx-auto mb-1.5" style={{ background: STATUS_HEX[st] }} />
-                      <div className="text-[11px] font-mono uppercase" translate="no" lang="es">{m.full}</div>
+                      <div className="w-3 h-3 rounded-full mx-auto mb-1.5" style={{ background: STATUS_HEX[st] }} role="img" aria-label={STATUS_LABEL[st]} title={STATUS_LABEL[st]} />
+                      <div className="text-2xs font-mono uppercase" translate="no" lang="es">{m.full}</div>
                     </div>
                   );
                 })}
               </div>
-              <div className="flex gap-3 mt-3 flex-wrap text-[11px]">
+              <div className="flex gap-3 mt-3 flex-wrap text-2xs">
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: STATUS_HEX.realizado }} />Realizado</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: STATUS_HEX.programado }} />Programado</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: STATUS_HEX.vencido }} />Vencido</span>
@@ -838,7 +876,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
                 <span className="w-3 h-3 rounded-full" style={{ background: CAL_HEX[c.status] }} />
                 <div>
                   <div className="text-sm font-semibold capitalize">{c.status.replace('_', ' ')}</div>
-                  <div className={`text-[11px] ${t.muted}`}>
+                  <div className={`text-2xs ${t.muted}`}>
                     {c.status === 'sin_dato' ? 'Aún no hay fecha de última calibración' :
                       c.status === 'vencido' ? `Vencida hace ${Math.abs(c.diffDays)} días` : `Próxima calibración en ${c.diffDays} días`}
                   </div>
@@ -914,9 +952,9 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
               {historialDe(equipo).length === 0 && <div className={`text-xs text-center py-6 ${t.muted}`}>Sin eventos registrados todavía</div>}
               {historialDe(equipo).map((r, i) => (
                 <div key={i} className={`rounded-lg border p-2.5 flex gap-3 items-start ${t.panel3} ${t.border}`}>
-                  <div className="text-[11px] font-mono w-20 shrink-0 pt-0.5">{r.fecha}</div>
+                  <div className="text-2xs font-mono w-20 shrink-0 pt-0.5">{r.fecha}</div>
                   <div className="flex-1">
-                    <div className="text-[11px] font-semibold uppercase" style={{ color: accent }}>{r.tipo}</div>
+                    <div className="text-2xs font-semibold uppercase" style={{ color: accent }}>{r.tipo}</div>
                     <div className="text-xs">{r.detalle}</div>
                   </div>
                   {r.reporte && <FileBarChart size={13} style={{ color: accent }} title="Con reporte técnico" />}
@@ -937,14 +975,14 @@ function ObsModal({ equipo, onClose, onSave, t, accent, readOnly }) {
   const [val, setVal] = useState(equipo.observaciones || '');
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className={`relative w-full max-w-md rounded-xl border p-4 ${t.panel} ${t.border}`}>
+      <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className={`animate-modal-in relative w-full max-w-md rounded-xl border p-4 ${t.panel} ${t.border}`}>
         <div className="flex justify-between items-center mb-3">
           <div className="text-sm font-semibold">Observaciones — {equipo.equipo}</div>
-          <button onClick={onClose}><X size={16} /></button>
+          <button onClick={onClose} aria-label="Cerrar" className="flex items-center justify-center w-11 h-11 -mr-2 -mt-2"><X size={16} /></button>
         </div>
         <textarea rows={5} value={val} disabled={readOnly} onChange={e => setVal(e.target.value)} className={`w-full rounded-md px-2.5 py-2 text-xs border ${t.input} ${readOnly ? 'opacity-60' : ''}`} />
-        {!readOnly && <button onClick={() => { onSave(val); onClose(); }} className="mt-3 rounded-md px-4 py-1.5 text-xs font-semibold" style={{ background: accent, color: '#fff' }}>Guardar</button>}
+        {!readOnly && <Button variant="primary" accent={accent} className="mt-3" onClick={() => { onSave(val); onClose(); }}>Guardar</Button>}
       </div>
     </div>
   );
@@ -1091,7 +1129,7 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
         .login-btn-primary { background: linear-gradient(135deg, #173B6C 0%, #2F8FD1 100%); transition: filter 250ms ease, transform 250ms ease; }
         .login-btn-primary:hover { filter: brightness(1.08); }
         .login-btn-primary:active { transform: scale(0.98); }
-        .login-fast { transition: all 250ms ease; }
+        .login-fast { transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease, background-color 200ms ease, color 200ms ease; }
       `}</style>
 
       <div className="login-card-wrap flex flex-col lg:flex-row bg-white overflow-hidden" style={{ borderRadius: 28, boxShadow: '0 30px 70px -20px rgba(15,23,42,0.25)' }}>
@@ -1142,8 +1180,8 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-2" style={{ background: '#E7F4FB' }}>
                   <Icon size={15} style={{ color: '#2F8FD1' }} />
                 </div>
-                <div className="text-[12.5px] font-bold text-slate-800 leading-tight">{label}</div>
-                <div className="text-[10.5px] text-slate-400 mt-1 leading-snug">{desc}</div>
+                <div className="text-xs font-bold text-slate-800 leading-tight">{label}</div>
+                <div className="text-2xs text-slate-400 mt-1 leading-snug">{desc}</div>
               </div>
             ))}
           </div>
@@ -1154,12 +1192,12 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
           <div className="w-full max-w-sm mx-auto">
             <div className="mb-4"><LogoMark size={56} withWordmark={false} /></div>
             <div className="text-xl font-bold tracking-wide" style={{ color: '#173B6C' }}>CMMS BIOMÉDICA</div>
-            <div className="text-[10px] uppercase font-semibold" style={{ color: '#3CAA55', letterSpacing: '0.18em' }}>Ingeniería Clínica</div>
+            <div className="text-3xs uppercase font-semibold" style={{ color: '#3CAA55', letterSpacing: '0.18em' }}>Ingeniería Clínica</div>
             <p className="text-xs text-slate-400 mt-1 mb-7">Inicie sesión para continuar.</p>
 
             <form onSubmit={submit} className="space-y-4">
               <div>
-                <label className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Usuario</label>
+                <label className="text-3xs uppercase tracking-wide text-slate-500 font-semibold">Usuario</label>
                 <div className="relative mt-1">
                   <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
@@ -1170,14 +1208,14 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
               </div>
 
               <div>
-                <label className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Contraseña</label>
+                <label className="text-3xs uppercase tracking-wide text-slate-500 font-semibold">Contraseña</label>
                 <div className="relative mt-1">
                   <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type={showPass ? 'text' : 'password'} value={pass} onChange={e => { setPass(e.target.value); setError(''); }}
                     className="login-input login-fast w-full rounded-lg pl-9 pr-9 py-2.5 text-sm bg-slate-50 border border-slate-200 text-slate-800 outline-none"
                   />
-                  <button type="button" onClick={() => setShowPass(s => !s)}
+                  <button type="button" onClick={() => setShowPass(s => !s)} aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                     {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
@@ -1208,7 +1246,7 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
 
             <div className="flex items-center gap-2 mt-5 mb-1">
               <div className="flex-1 h-px bg-slate-200" />
-              <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">¿Eres coordinador de sede?</span>
+              <span className="text-3xs uppercase tracking-wide text-slate-400 font-semibold">¿Eres coordinador de sede?</span>
               <div className="flex-1 h-px bg-slate-200" />
             </div>
 
@@ -1218,10 +1256,10 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
               <Wrench size={16} /> Reportar una falla de equipo
             </button>
 
-            <div className="flex items-center gap-1.5 justify-center text-[11px] text-slate-400 mt-6">
+            <div className="flex items-center gap-1.5 justify-center text-2xs text-slate-400 mt-6">
               <Lock size={11} /> Conexión segura — Los datos están protegidos.
             </div>
-            <div className="text-center text-[10px] text-slate-300 mt-2">Versión 2.0</div>
+            <div className="text-center text-3xs text-slate-300 mt-2">Versión 2.0</div>
           </div>
         </div>
       </div>
@@ -1251,6 +1289,14 @@ function ReporteFallaForm({ onBack }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (!equipoId) {
+      setError('Selecciona el equipo biomédico afectado.');
+      return;
+    }
+    if (!descripcion.trim()) {
+      setError('Describe el daño o la novedad detectada.');
+      return;
+    }
     if (!persona.trim()) {
       setError('Debe ingresar el nombre de la persona que reporta la falla.');
       return;
@@ -1294,13 +1340,11 @@ function ReporteFallaForm({ onBack }) {
       <div className="max-w-lg mx-auto relative">
         <div className="flex items-center justify-between mb-4">
           <button onClick={onBack} className={`text-xs ${t.muted}`}>&larr; Volver</button>
-          <button type="button" onClick={() => setDark(d => !d)} className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] border ${t.border} ${t.muted}`}>
-            {dark ? <Sun size={12} /> : <Moon size={12} />} {dark ? 'Modo claro' : 'Modo oscuro'}
-          </button>
+          <Button variant="outline" size="sm" t={t} icon={dark ? Sun : Moon} iconSize={12} onClick={() => setDark(d => !d)}>{dark ? 'Modo claro' : 'Modo oscuro'}</Button>
         </div>
 
         <div className={`rounded-xl border p-6 ${t.panel} ${t.border}`}>
-          <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: '#2F8FD1' }}>CMMS Biomédico</div>
+          <div className="text-3xs uppercase tracking-widest mb-1" style={{ color: '#2F8FD1' }}>CMMS Biomédico</div>
           <h1 className="text-lg font-bold mb-1">Reportar falla de equipo</h1>
           <p className={`text-xs mb-5 ${t.muted}`}>Diligencia este formulario si detectas una novedad o daño en un equipo.</p>
 
@@ -1317,12 +1361,12 @@ function ReporteFallaForm({ onBack }) {
             </div>
 
             <Field label="Equipo biomédico">
-              <select required value={equipoId} onChange={e => setEquipoId(e.target.value)}
+              <select value={equipoId} onChange={e => setEquipoId(e.target.value)}
                 className={`w-full rounded-md px-2.5 py-1.5 text-xs border ${t.input}`}>
                 <option value="">Selecciona un equipo…</option>
                 {equiposFiltrados.map(e => <option key={e.id} value={e.id}>{e.equipo}{e.inventario ? ` (${e.inventario})` : ''}</option>)}
               </select>
-              {equiposFiltrados.length === 0 && <p className="text-[11px] mt-1" style={{ color: '#D97706' }}>No hay equipos cargados para esta sede todavía en este dispositivo.</p>}
+              {equiposFiltrados.length === 0 && <p className="text-2xs mt-1" style={{ color: '#D97706' }}>No hay equipos cargados para esta sede todavía en este dispositivo.</p>}
             </Field>
 
             <Field label="Fecha del reporte"><TextInput t={t} disabled value={todayISO()} onChange={() => {}} /></Field>
@@ -1332,7 +1376,7 @@ function ReporteFallaForm({ onBack }) {
             </Field>
 
             <Field label="Descripción del daño o novedad">
-              <textarea required rows={4} value={descripcion} onChange={e => setDescripcion(e.target.value)}
+              <textarea rows={4} value={descripcion} onChange={e => setDescripcion(e.target.value)}
                 className={`w-full rounded-md px-2.5 py-2 text-xs border ${t.input}`} />
             </Field>
 
@@ -1390,6 +1434,53 @@ function AmbientBackground({ theme, dark }) {
 }
 
 /* ---------------------------------------------------------------- */
+/* NAVEGACIÓN LATERAL — compartida entre el sidebar de escritorio    */
+/* (columna fija) y el drawer móvil (superpuesto con backdrop)       */
+/* ---------------------------------------------------------------- */
+function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dark, setDark, onLogout, readOnly, onCloseMobile }) {
+  return (
+    <>
+      <div className="h-1" style={{ background: accentBg }} />
+      <div className="px-4 py-5 border-b flex items-center justify-between" style={{ borderColor: 'inherit' }}>
+        <div>
+          <div className="text-3xs uppercase tracking-widest" style={{ color: accent }}>CMMS Biomédico</div>
+          <div className="text-sm font-bold mt-0.5">Gestión de equipos</div>
+        </div>
+        {onCloseMobile && (
+          <button onClick={onCloseMobile} aria-label="Cerrar menú" className={`flex items-center justify-center w-11 h-11 -mr-2 ${t.muted}`}>
+            <X size={18} />
+          </button>
+        )}
+      </div>
+      <div className="flex-1 py-3 overflow-y-auto">
+        {MENU.map(m => {
+          const Icon = m.icon;
+          const active = menu === m.key;
+          return (
+            <button key={m.key} onClick={() => onNavigate(m.key)}
+              className={`w-full flex items-center gap-2.5 px-4 min-h-11 text-xs text-left transition ${active ? 'font-semibold' : t.muted}`}
+              style={active ? { background: accent + '1A', color: accent, borderRight: `2px solid ${accent}` } : {}}>
+              <Icon size={15} /> {m.label}
+              {m.key === 'fallas' && nuevosReportes > 0 && (
+                <span className="ml-auto rounded-full text-3xs font-mono px-1.5 py-0.5" style={{ background: '#EF4444', color: '#fff' }}>{nuevosReportes}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <div className="p-4 border-t space-y-2" style={{ borderColor: 'inherit' }}>
+        <button onClick={() => setDark(!dark)} className={`w-full flex items-center justify-center gap-2 rounded-md min-h-11 text-xs border ${t.border}`}>
+          {dark ? <Sun size={14} /> : <Moon size={14} />} {dark ? 'Modo claro' : 'Modo oscuro'}
+        </button>
+        <button onClick={onLogout} className={`w-full flex items-center justify-center rounded-md min-h-11 text-xs border ${t.border} ${t.muted}`}>
+          {readOnly ? 'Salir del modo invitado' : 'Cerrar sesión'}
+        </button>
+      </div>
+    </>
+  );
+}
+
+/* ---------------------------------------------------------------- */
 /* APP PRINCIPAL                                                     */
 /* ---------------------------------------------------------------- */
 
@@ -1409,6 +1500,7 @@ function MainApp({ onLogout, readOnly }) {
   });
   const [reportesFalla, setReportesFalla] = useState([]);
   const [reportesLoaded, setReportesLoaded] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => { loadEquipos().then(d => { setEquipos(d); setLoaded(true); }); }, []);
   useEffect(() => { if (loaded) saveEquipos(equipos); }, [equipos, loaded]);
@@ -1571,42 +1663,37 @@ function MainApp({ onLogout, readOnly }) {
   return (
     <div className={`flex flex-col min-h-dvh font-sans ${t.bg} ${t.text}`} style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
       {readOnly && (
-        <div className="shrink-0 flex items-center justify-center gap-2 py-1.5 text-[11px] font-semibold text-white" style={{ background: '#B45309' }}>
+        <div className="shrink-0 flex items-center justify-center gap-2 py-1.5 text-2xs font-semibold text-white" style={{ background: '#B45309' }}>
           <Lock size={12} /> Modo invitado — solo lectura, no se pueden guardar cambios
         </div>
       )}
-      <div className="flex flex-1 min-h-0">
-      {/* SIDEBAR */}
-      <div className={`w-56 shrink-0 border-r flex flex-col ${t.panel} ${t.border}`}>
-        <div className="h-1" style={{ background: accentBg }} />
-        <div className="px-4 py-5 border-b" style={{ borderColor: 'inherit' }}>
-          <div className="text-[10px] uppercase tracking-widest" style={{ color: accent }}>CMMS Biomédico</div>
-          <div className="text-sm font-bold mt-0.5">Gestión de equipos</div>
-        </div>
-        <div className="flex-1 py-3">
-          {MENU.map(m => {
-            const Icon = m.icon;
-            const active = menu === m.key;
-            return (
-              <button key={m.key} onClick={() => setMenu(m.key)}
-                className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-xs text-left transition ${active ? 'font-semibold' : t.muted}`}
-                style={active ? { background: accent + '1A', color: accent, borderRight: `2px solid ${accent}` } : {}}>
-                <Icon size={15} /> {m.label}
-                {m.key === 'fallas' && nuevosReportes > 0 && (
-                  <span className="ml-auto rounded-full text-[10px] font-mono px-1.5 py-0.5" style={{ background: '#EF4444', color: '#fff' }}>{nuevosReportes}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <div className="p-4 border-t space-y-2" style={{ borderColor: 'inherit' }}>
-          <button onClick={() => setDark(!dark)} className={`w-full flex items-center justify-center gap-2 rounded-md py-2 text-xs border ${t.border}`}>
-            {dark ? <Sun size={14} /> : <Moon size={14} />} {dark ? 'Modo claro' : 'Modo oscuro'}
-          </button>
-          <button onClick={onLogout} className={`w-full rounded-md py-2 text-xs border ${t.border} ${t.muted}`}>
-            {readOnly ? 'Salir del modo invitado' : 'Cerrar sesión'}
-          </button>
-        </div>
+      {/* BARRA SUPERIOR MÓVIL — solo <lg, abre el sidebar como drawer */}
+      <div className={`lg:hidden shrink-0 flex items-center justify-between px-2 border-b ${t.panel} ${t.border}`} style={{ minHeight: 52 }}>
+        <button onClick={() => setMobileNavOpen(true)} aria-label="Abrir menú"
+          className={`flex items-center justify-center w-11 h-11 rounded-md ${t.muted}`}>
+          <Menu size={20} />
+        </button>
+        <div className="text-sm font-bold">Gestión de equipos</div>
+        <div className="w-11 h-11" aria-hidden="true" />
+      </div>
+
+      <div className="flex flex-1 min-h-0 relative">
+      {/* BACKDROP — solo mientras el drawer móvil está abierto */}
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setMobileNavOpen(false)} aria-hidden="true" />
+      )}
+
+      {/* SIDEBAR — escritorio: columna fija en el flujo normal, oculta en <lg */}
+      <div className={`hidden lg:flex lg:w-56 lg:shrink-0 border-r flex-col ${t.panel} ${t.border}`}>
+        <SidebarNav menu={menu} onNavigate={setMenu} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
+          t={t} dark={dark} setDark={setDark} onLogout={onLogout} readOnly={readOnly} />
+      </div>
+
+      {/* SIDEBAR — móvil: drawer superpuesto, invisible por completo en lg+ */}
+      <div className={`lg:hidden fixed inset-y-0 left-0 z-50 w-64 border-r flex flex-col ${t.panel} ${t.border}`}
+        style={{ transform: mobileNavOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 300ms cubic-bezier(0.23,1,0.32,1)' }}>
+        <SidebarNav menu={menu} onNavigate={(k) => { setMenu(k); setMobileNavOpen(false); }} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
+          t={t} dark={dark} setDark={setDark} onLogout={onLogout} readOnly={readOnly} onCloseMobile={() => setMobileNavOpen(false)} />
       </div>
 
       {/* MAIN */}
@@ -1616,20 +1703,20 @@ function MainApp({ onLogout, readOnly }) {
         {/* Empresa pills */}
         <div className="flex gap-2 flex-wrap mb-5">
           <button onClick={() => setActiveCompany('TODAS')}
-            className={`px-3 py-1.5 rounded-full text-[11px] font-mono border transition ${t.border}`}
+            className={`px-3 min-h-11 flex items-center rounded-full text-2xs font-mono border transition ${t.border}`}
             style={activeCompany === 'TODAS' ? { background: NEUTRAL_ACCENT + '1A', borderColor: NEUTRAL_ACCENT, color: NEUTRAL_ACCENT } : {}}>
             Todas las empresas
           </button>
           {COMPANIES.map(c => (
             <button key={c.key} onClick={() => setActiveCompany(c.key)}
-              className={`px-3 py-1.5 rounded-full text-[11px] font-mono border transition ${activeCompany === c.key ? 'text-white font-semibold' : t.border}`}
+              className={`px-3 min-h-11 flex items-center rounded-full text-2xs font-mono border transition ${activeCompany === c.key ? 'text-white font-semibold' : t.border}`}
               style={activeCompany === c.key ? { background: c.gradient, borderColor: c.color } : {}}>
               {c.key}
             </button>
           ))}
         </div>
 
-        {menu === 'dashboard' && <Dashboard equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} accent={accent} theme={theme} t={t} onGoAlerts={() => setMenu('alertas')} onGoFallas={() => setMenu('fallas')} />}
+        {menu === 'dashboard' && <Dashboard equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} accent={accent} theme={theme} t={t} readOnly={readOnly} onGoAlerts={() => setMenu('alertas')} onGoFallas={() => setMenu('fallas')} onGoInventario={() => setMenu('inventario')} />}
         {menu === 'alertas' && <AlertasPage equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} alertEmails={alertEmails} onOpen={setDrawerId} readOnly={readOnly} />}
         {menu === 'empresas' && <EmpresasPage equipos={equipos} t={t} onSelect={(k) => { setActiveCompany(k); setMenu('inventario'); }} />}
         {(menu === 'inventario' || menu === 'mantenimientos' || menu === 'calibraciones' || menu === 'correctivos') && (
@@ -1664,7 +1751,22 @@ function MainApp({ onLogout, readOnly }) {
 /* ---------------------------------------------------------------- */
 /* PÁGINA: DASHBOARD                                                  */
 /* ---------------------------------------------------------------- */
-function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, onGoAlerts, onGoFallas }) {
+function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, readOnly, onGoAlerts, onGoFallas, onGoInventario }) {
+  if (equipos.length === 0) {
+    return (
+      <div className={`rounded-xl border p-10 text-center ${t.panel} ${t.border}`}>
+        <ListTree size={32} className={`mx-auto mb-3 ${t.muted}`} />
+        <h2 className="text-sm font-bold mb-1">Todavía no hay equipos cargados</h2>
+        <p className={`text-xs mb-5 max-w-sm mx-auto ${t.muted}`}>
+          {readOnly
+            ? 'En modo invitado puedes explorar el CMMS, pero necesitas iniciar sesión para agregar equipos.'
+            : 'Agrega tu primer equipo biomédico al inventario para empezar a ver el dashboard con datos reales.'}
+        </p>
+        {!readOnly && <Button variant="primary" accent={accent} icon={Plus} onClick={onGoInventario}>Agregar equipo</Button>}
+      </div>
+    );
+  }
+
   const scoped = activeCompany === 'TODAS' ? equipos : equipos.filter(e => e.empresa === activeCompany);
   const alertCount = buildAlerts(scoped).length;
   const year = new Date().getFullYear(); const month = new Date().getMonth();
@@ -1763,22 +1865,22 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, on
           <span className="text-xs font-semibold" style={{ color: '#F59E0B' }}>
             {alertCount} alerta{alertCount !== 1 ? 's' : ''} activa{alertCount !== 1 ? 's' : ''} — preventivos a {PREVENTIVO_ALERTA_DIAS / 30} meses de vencer o calibraciones próximas/vencidas.
           </span>
-          <span className="ml-auto text-[11px] underline" style={{ color: '#F59E0B' }}>Ver alertas</span>
+          <span className="ml-auto text-2xs underline" style={{ color: '#F59E0B' }}>Ver alertas</span>
         </button>
       )}
 
       {isCompanyView && (
-        <div className={`rounded-xl border p-4 mb-5 ${t.panel} ${t.border}`}>
+        <div className={`rounded-xl border p-5 mb-5 ${t.panel} ${t.border}`}>
           <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Desglose por sede — {activeCompany}</div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs whitespace-nowrap">
               <thead>
                 <tr className={`border-b ${t.border}`}>
-                  <th className={`text-left px-2 py-2 font-mono text-[10px] uppercase ${t.muted}`}>Sede</th>
-                  <th className={`text-right px-2 py-2 font-mono text-[10px] uppercase ${t.muted}`}>Equipos</th>
-                  <th className={`text-right px-2 py-2 font-mono text-[10px] uppercase ${t.muted}`}>Alertas</th>
-                  <th className={`text-right px-2 py-2 font-mono text-[10px] uppercase ${t.muted}`}>Fallas abiertas</th>
-                  <th className={`text-right px-2 py-2 font-mono text-[10px] uppercase ${t.muted}`}>Calib. vencidas</th>
+                  <th className={`text-left px-2 py-2 font-mono text-3xs uppercase ${t.muted}`}>Sede</th>
+                  <th className={`text-right px-2 py-2 font-mono text-3xs uppercase ${t.muted}`}>Equipos</th>
+                  <th className={`text-right px-2 py-2 font-mono text-3xs uppercase ${t.muted}`}>Alertas</th>
+                  <th className={`text-right px-2 py-2 font-mono text-3xs uppercase ${t.muted}`}>Fallas abiertas</th>
+                  <th className={`text-right px-2 py-2 font-mono text-3xs uppercase ${t.muted}`}>Calib. vencidas</th>
                 </tr>
               </thead>
               <tbody>
@@ -1813,7 +1915,7 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, on
         <ClusterCard t={t} title="Preventivos del mes" color="#F59E0B" brandBg={theme.bg}>
           <div className="flex items-baseline gap-2 mb-2">
             <span className="text-xl font-bold font-mono">{pctPreventivo}%</span>
-            <span className={`text-[11px] ${t.muted}`}>ejecutados</span>
+            <span className={`text-2xs ${t.muted}`}>ejecutados</span>
           </div>
           <div className={`h-2 rounded-full overflow-hidden mb-3 ${t.panel3}`}>
             <div className="h-full rounded-full" style={{ width: `${pctPreventivo}%`, background: '#22C55E' }} />
@@ -1841,7 +1943,7 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, on
         <ClusterCard t={t} title="Fallas reportadas" color="#EF4444" onClick={onGoFallas} brandBg={theme.bg}>
           <div className="flex items-baseline gap-2 mb-3">
             <span className="text-xl font-bold font-mono">{fallasReportadas}</span>
-            <span className={`text-[11px] ${t.muted}`}>reportadas en total</span>
+            <span className={`text-2xs ${t.muted}`}>reportadas en total</span>
           </div>
           {REPORTE_ESTADOS.map(s => (
             <MiniRow key={s} label={s} value={reportesScoped.filter(r => r.estado === s).length} t={t} color={REPORTE_ESTADO_HEX[s]} />
@@ -1857,18 +1959,18 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, on
             <div key={company.key} className={`rounded-lg border p-3 min-w-0 ${t.panel3} ${t.border}`}>
               <div className="flex items-center gap-1.5 mb-2 min-w-0">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: company.color }} />
-                <span className="text-[10px] font-semibold uppercase tracking-wide truncate" title={company.key}>{company.key}</span>
+                <span className="text-3xs font-semibold uppercase tracking-wide truncate" title={company.key}>{company.key}</span>
               </div>
               {next ? (
                 <>
                   <div className="text-xs font-medium truncate" title={next.equipo}>{next.equipo}</div>
-                  <div className={`text-[10px] font-mono mt-0.5 ${t.muted}`}>{formatFechaCorta(next.fecha)}</div>
-                  <div className="text-[11px] font-mono font-semibold mt-1.5" style={{ color: next.diffDays <= PREVENTIVO_ALERTA_DIAS ? '#F59E0B' : '#22C55E' }}>
+                  <div className={`text-3xs font-mono mt-0.5 ${t.muted}`}>{formatFechaCorta(next.fecha)}</div>
+                  <div className="text-2xs font-mono font-semibold mt-1.5" style={{ color: next.diffDays <= PREVENTIVO_ALERTA_DIAS ? '#F59E0B' : '#22C55E' }}>
                     {next.diffDays === 0 ? 'Hoy' : `En ${next.diffDays} día${next.diffDays !== 1 ? 's' : ''}`}
                   </div>
                 </>
               ) : (
-                <div className={`text-[11px] italic ${t.muted}`}>Sin mantenimientos próximos</div>
+                <div className={`text-2xs italic ${t.muted}`}>Sin mantenimientos próximos</div>
               )}
             </div>
           ))}
@@ -1882,11 +1984,11 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, on
           <div className="space-y-3">
             {porGrupoOrdenado.map(p => (
               <div key={p.name} className="flex items-center gap-3">
-                <div className={`w-28 text-[11px] font-mono shrink-0 truncate ${t.muted}`} title={p.name}>{p.name}</div>
+                <div className={`w-28 text-2xs font-mono shrink-0 truncate ${t.muted}`} title={p.name}>{p.name}</div>
                 <div className={`flex-1 h-3 rounded-full overflow-hidden ${t.panel3}`}>
                   <div className="h-full rounded-full" style={{ width: `${(p.preventivos / maxPorGrupo) * 100}%`, background: p.fill }} />
                 </div>
-                <div className="w-8 text-right text-[11px] font-mono font-semibold">{p.preventivos}</div>
+                <div className="w-8 text-right text-2xs font-mono font-semibold">{p.preventivos}</div>
               </div>
             ))}
           </div>
@@ -1904,12 +2006,12 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, on
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ top: -10 }}>
               <div className="text-xl font-bold font-mono">{scoped.length}</div>
-              <div className={`text-[9px] uppercase ${t.muted}`}>equipos</div>
+              <div className={`text-3xs uppercase ${t.muted}`}>equipos</div>
             </div>
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center mt-2">
             {estadoPie.map((e, i) => (
-              <span key={i} className="flex items-center gap-1 text-[10px]">
+              <span key={i} className="flex items-center gap-1 text-3xs">
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: e.fill }} />
                 <span className={t.muted}>{e.name}</span>
                 <span className="font-mono font-semibold">{e.value}</span>
@@ -1934,12 +2036,12 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, on
           <div className="space-y-2.5">
             {topCorrectivos.map((c, i) => (
               <div key={i} className="flex items-center gap-2.5">
-                <span className="text-[10px] font-mono w-4 shrink-0" style={{ color: accent }}>{i + 1}</span>
+                <span className="text-3xs font-mono w-4 shrink-0" style={{ color: accent }}>{i + 1}</span>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-medium truncate">{c.nombre}</div>
-                  <div className={`text-[10px] ${t.muted}`}>{c.empresa} · {c.sede}</div>
+                  <div className={`text-3xs ${t.muted}`}>{c.empresa} · {c.sede}</div>
                 </div>
-                <span className="text-[11px] font-mono font-semibold shrink-0" style={{ color: '#EF4444' }}>{c.count}</span>
+                <span className="text-2xs font-mono font-semibold shrink-0" style={{ color: '#EF4444' }}>{c.count}</span>
               </div>
             ))}
           </div>
@@ -1947,7 +2049,7 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, on
         <div className={`lg:col-span-2 rounded-xl border p-5 cursor-pointer ${t.panel} ${t.border}`} onClick={onGoFallas}>
           <div className="flex items-center justify-between mb-4">
             <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Fallas por estado</div>
-            {fallasReportadas > 0 && <span className="text-[11px] font-mono" style={{ color: accent }}>{fallasSolucionadas}/{fallasReportadas} cerradas</span>}
+            {fallasReportadas > 0 && <span className="text-2xs font-mono" style={{ color: accent }}>{fallasSolucionadas}/{fallasReportadas} cerradas</span>}
           </div>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={fallasPorEstado} layout="vertical" margin={{ left: 10 }}>
@@ -2022,20 +2124,20 @@ function HeatmapMantenimientos({ scoped, activeCompany, t, accent }) {
         <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Mapa de calor — mantenimientos ejecutados</div>
         <div className="flex gap-2">
           {activeCompany !== 'TODAS' && (
-            <select value={sede} onChange={e => setSede(e.target.value)} className={`rounded-md px-2 py-1 text-[11px] border ${t.input}`}>
+            <select value={sede} onChange={e => setSede(e.target.value)} className={`rounded-md px-2 py-1 text-2xs border ${t.input}`}>
               <option value="TODAS">Todas las sedes</option>
               {sedesDisponibles.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
-          <select value={year} onChange={e => setYear(Number(e.target.value))} className={`rounded-md px-2 py-1 text-[11px] border ${t.input}`}>
+          <select value={year} onChange={e => setYear(Number(e.target.value))} className={`rounded-md px-2 py-1 text-2xs border ${t.input}`}>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
       </div>
-      <p className={`text-[11px] mb-3 ${t.muted}`}>{totalAnio} intervenciones en {year}{sede !== 'TODAS' ? ` · ${sede}` : ''}</p>
+      <p className={`text-2xs mb-3 ${t.muted}`}>{totalAnio} intervenciones en {year}{sede !== 'TODAS' ? ` · ${sede}` : ''}</p>
 
       <div className="overflow-x-auto">
-        <table className="text-[10px]" style={{ borderSpacing: 4, borderCollapse: 'separate' }}>
+        <table className="text-3xs" style={{ borderSpacing: 4, borderCollapse: 'separate' }}>
           <thead>
             <tr>
               <th className="w-20"></th>
@@ -2108,17 +2210,17 @@ function EvolucionAnual({ scoped, activeCompany, theme, t, accent }) {
         <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Evolución anual de mantenimientos</div>
         <div className="flex gap-2">
           {isCompanyView && (
-            <select value={sede} onChange={e => setSede(e.target.value)} className={`rounded-md px-2 py-1 text-[11px] border ${t.input}`}>
+            <select value={sede} onChange={e => setSede(e.target.value)} className={`rounded-md px-2 py-1 text-2xs border ${t.input}`}>
               <option value="TODAS">Todas las sedes</option>
               {sedesDisponibles.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
-          <select value={year} onChange={e => setYear(Number(e.target.value))} className={`rounded-md px-2 py-1 text-[11px] border ${t.input}`}>
+          <select value={year} onChange={e => setYear(Number(e.target.value))} className={`rounded-md px-2 py-1 text-2xs border ${t.input}`}>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
       </div>
-      <p className={`text-[11px] mb-3 ${t.muted}`}>{totalAnio} intervenciones en {year}{sede !== 'TODAS' ? ` · ${sede}` : ''} — eje X: meses, eje Y: intervenciones realizadas</p>
+      <p className={`text-2xs mb-3 ${t.muted}`}>{totalAnio} intervenciones en {year}{sede !== 'TODAS' ? ` · ${sede}` : ''} — eje X: meses, eje Y: intervenciones realizadas</p>
 
       <ResponsiveContainer width="100%" height={260}>
         <LineChart data={data} margin={{ left: -10 }}>
@@ -2141,11 +2243,11 @@ function HeroStat({ t, label, value, sub, color, onClick, brandBg }) {
     <div onClick={onClick} className={`rounded-xl p-4 border relative overflow-hidden ${t.panel} ${t.border} ${onClick ? 'cursor-pointer' : ''}`}>
       {brandBg && <div className="absolute top-0 left-0 w-full h-[3px]" style={{ background: brandBg }} />}
       <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full opacity-[0.07]" style={{ background: color }} />
-      <div className={`text-[10px] uppercase tracking-wide mb-1 ${t.muted}`}>{label}</div>
+      <div className={`text-3xs uppercase tracking-wide mb-1 ${t.muted}`}>{label}</div>
       <div className="flex items-end gap-2">
         <span className="text-3xl font-bold font-mono" style={{ color }}>{value}</span>
       </div>
-      <div className={`text-[11px] mt-1 ${t.muted}`}>{sub}</div>
+      <div className={`text-2xs mt-1 ${t.muted}`}>{sub}</div>
     </div>
   );
 }
@@ -2165,7 +2267,7 @@ function ClusterCard({ t, title, color, children, onClick, brandBg }) {
 
 function MiniRow({ label, value, t, color }) {
   return (
-    <div className="flex items-center justify-between py-1 text-[11px]">
+    <div className="flex items-center justify-between py-1 text-2xs">
       <span className={t.muted}>{label}</span>
       <span className="font-mono font-semibold" style={color ? { color } : {}}>{value}</span>
     </div>
@@ -2199,14 +2301,13 @@ function AlertasPage({ equipos, activeCompany, t, accent, alertEmails, onOpen, r
         {!readOnly && alerts.length > 0 && (
           alertEmails.length > 0
             ? (
-              <button onClick={handleSendAlerts} disabled={sendState === 'sending'}
-                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold disabled:opacity-60"
-                style={{ background: sendState === 'error' ? '#EF4444' : accent, color: '#fff' }}>
-                <Mail size={13} />
+              <Button variant="primary" accent={accent} icon={Mail} disabled={sendState === 'sending'}
+                style={sendState === 'error' ? { background: '#EF4444' } : undefined}
+                onClick={handleSendAlerts}>
                 {sendState === 'sending' ? 'Enviando…' : sendState === 'sent' ? 'Enviado ✓' : sendState === 'error' ? 'Error al enviar' : 'Enviar alertas por correo'}
-              </button>
+              </Button>
             )
-            : <span className={`text-[11px] ${t.muted}`}>Agrega correos en Configuración para poder enviarlas</span>
+            : <span className={`text-2xs ${t.muted}`}>Agrega correos en Configuración para poder enviarlas</span>
         )}
       </div>
       <p className={`text-xs mb-5 ${t.muted}`}>
@@ -2217,16 +2318,16 @@ function AlertasPage({ equipos, activeCompany, t, accent, alertEmails, onOpen, r
 
       {vencidas.length > 0 && (
         <div className="mb-6">
-          <div className="text-[11px] font-mono uppercase tracking-wide mb-2 text-red-400">Vencidas ({vencidas.length})</div>
+          <div className="text-2xs font-mono uppercase tracking-wide mb-2 text-red-400">Vencidas ({vencidas.length})</div>
           <div className="space-y-2">
             {vencidas.map((a, i) => (
               <div key={i} onClick={() => onOpen(a.equipoId)} className={`rounded-lg border p-3 flex items-center gap-3 cursor-pointer ${t.panel} ${t.border}`} style={{ borderLeftColor: badgeColor(a), borderLeftWidth: 3 }}>
-                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full" style={{ background: badgeColor(a) + '22', color: badgeColor(a) }}>{a.tipo}</span>
+                <Badge color={badgeColor(a)}>{a.tipo}</Badge>
                 <div className="flex-1">
                   <div className="text-xs font-semibold">{a.equipo}</div>
-                  <div className={`text-[11px] ${t.muted}`}>{a.empresa} · {a.sede}</div>
+                  <div className={`text-2xs ${t.muted}`}>{a.empresa} · {a.sede}</div>
                 </div>
-                <div className="text-[11px] font-mono" style={{ color: badgeColor(a) }}>{daysTxt(a)}</div>
+                <div className="text-2xs font-mono" style={{ color: badgeColor(a) }}>{daysTxt(a)}</div>
               </div>
             ))}
           </div>
@@ -2235,16 +2336,16 @@ function AlertasPage({ equipos, activeCompany, t, accent, alertEmails, onOpen, r
 
       {proximas.length > 0 && (
         <div>
-          <div className="text-[11px] font-mono uppercase tracking-wide mb-2 text-amber-400">Próximas a vencer ({proximas.length})</div>
+          <div className="text-2xs font-mono uppercase tracking-wide mb-2 text-amber-400">Próximas a vencer ({proximas.length})</div>
           <div className="space-y-2">
             {proximas.map((a, i) => (
               <div key={i} onClick={() => onOpen(a.equipoId)} className={`rounded-lg border p-3 flex items-center gap-3 cursor-pointer ${t.panel} ${t.border}`} style={{ borderLeftColor: badgeColor(a), borderLeftWidth: 3 }}>
-                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full" style={{ background: badgeColor(a) + '22', color: badgeColor(a) }}>{a.tipo}</span>
+                <Badge color={badgeColor(a)}>{a.tipo}</Badge>
                 <div className="flex-1">
                   <div className="text-xs font-semibold">{a.equipo}</div>
-                  <div className={`text-[11px] ${t.muted}`}>{a.empresa} · {a.sede}</div>
+                  <div className={`text-2xs ${t.muted}`}>{a.empresa} · {a.sede}</div>
                 </div>
-                <div className="text-[11px] font-mono" style={{ color: badgeColor(a) }}>{daysTxt(a)}</div>
+                <div className="text-2xs font-mono" style={{ color: badgeColor(a) }}>{daysTxt(a)}</div>
               </div>
             ))}
           </div>
@@ -2266,12 +2367,12 @@ function EmpresasPage({ equipos, t, onSelect }) {
             <div className="h-2" style={{ background: c.gradient }} />
             <div className="p-5">
               <div className="text-sm font-bold mb-1" style={{ color: c.color }}>{c.key}</div>
-              <div className={`text-[11px] ${t.muted} mb-3`}>{c.sedes.length} sede{c.sedes.length !== 1 ? 's' : ''}</div>
+              <div className={`text-2xs ${t.muted} mb-3`}>{c.sedes.length} sede{c.sedes.length !== 1 ? 's' : ''}</div>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-bold font-mono">{list.length}</span>
-                <span className={`text-[11px] ${t.muted}`}>equipos</span>
+                <span className={`text-2xs ${t.muted}`}>equipos</span>
               </div>
-              {vencidas > 0 && <div className="text-[11px] mt-2 text-red-400">{vencidas} calibración(es) vencida(s)</div>}
+              {vencidas > 0 && <div className="text-2xs mt-2 text-red-400">{vencidas} calibración(es) vencida(s)</div>}
             </div>
           </button>
         );
@@ -2305,8 +2406,8 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
         <h1 className="text-lg font-bold">{title}</h1>
         {mode === 'inventario' && (
           <div className="flex gap-2 flex-wrap">
-            {!readOnly && <button onClick={onAdd} className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold" style={{ background: accentBg, color: '#fff' }}><Plus size={13} /> Agregar equipo</button>}
-            <button onClick={onExport} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs border ${t.border}`}><Download size={13} /> Exportar Excel</button>
+            {!readOnly && <Button variant="primary" accent={accentBg} icon={Plus} onClick={onAdd}>Agregar equipo</Button>}
+            <Button variant="outline" t={t} icon={Download} onClick={onExport}>Exportar Excel</Button>
             {!readOnly && (
               <label className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs border cursor-pointer ${t.border}`}>
                 <Upload size={13} /> Importar Excel
@@ -2321,7 +2422,7 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
       <div className="flex flex-wrap gap-2 mb-4">
         <div className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 border ${t.border} ${t.panel}`}>
           <Search size={13} className={t.muted} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar equipo, marca, serie…" className={`bg-transparent text-xs outline-none w-40 ${t.text}`} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar equipo, marca, serie…" className={`bg-transparent text-xs w-40 ${t.text}`} />
         </div>
         <select value={filters.sede} onChange={e => setFilters({ ...filters, sede: e.target.value })} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
           <option value="">Todas las sedes</option>
@@ -2344,9 +2445,7 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
           {CLASIFICACIONES.map(v => <option key={v} value={v}>{v}</option>)}
         </select>
         {hayFiltrosActivos && (
-          <button onClick={onClearFilters} className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs border ${t.border} ${t.muted} hover:opacity-80`}>
-            <X size={12} /> Limpiar filtros
-          </button>
+          <Button variant="ghost" t={t} icon={X} iconSize={12} onClick={onClearFilters}>Limpiar filtros</Button>
         )}
       </div>
 
@@ -2356,19 +2455,19 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
             <thead>
               <tr className={`border-b ${t.border}`}>
                 {INVENTORY_HEAD.map(h => (
-                  <th key={h.key} onClick={() => toggleSort(h.key)} className={`text-left px-3 py-2.5 font-mono text-[10px] uppercase cursor-pointer select-none ${t.muted}`}>
+                  <th key={h.key} onClick={() => toggleSort(h.key)} className={`text-left px-3 py-2.5 font-mono text-3xs uppercase cursor-pointer select-none ${t.muted}`}>
                     <span className="inline-flex items-center gap-1">{h.label}<ArrowUpDown size={10} /></span>
                   </th>
                 ))}
-                {MONTHS.map(m => <th key={m.k} className={`px-2 py-2.5 font-mono text-[10px] ${t.muted}`} translate="no" lang="es">{m.l}</th>)}
-                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>CALIB.</th>
-                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PREV.</th>
-                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PERIODICIDAD DE MANTENIMIENTO</th>
-                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PERIODICIDAD DE CALIBRACIÓN</th>
-                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>UBICACIÓN</th>
-                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>PRÓX. CALIB.</th>
-                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>ESTADO</th>
-                <th className={`px-3 py-2.5 font-mono text-[10px] uppercase ${t.muted}`}>ACCIONES</th>
+                {MONTHS.map(m => <th key={m.k} className={`px-2 py-2.5 font-mono text-3xs ${t.muted}`} translate="no" lang="es">{m.l}</th>)}
+                <th className={`px-3 py-2.5 font-mono text-3xs uppercase ${t.muted}`}>CALIB.</th>
+                <th className={`px-3 py-2.5 font-mono text-3xs uppercase ${t.muted}`}>PREV.</th>
+                <th className={`px-3 py-2.5 font-mono text-3xs uppercase ${t.muted}`}>PERIODICIDAD DE MANTENIMIENTO</th>
+                <th className={`px-3 py-2.5 font-mono text-3xs uppercase ${t.muted}`}>PERIODICIDAD DE CALIBRACIÓN</th>
+                <th className={`px-3 py-2.5 font-mono text-3xs uppercase ${t.muted}`}>UBICACIÓN</th>
+                <th className={`px-3 py-2.5 font-mono text-3xs uppercase ${t.muted}`}>PRÓX. CALIB.</th>
+                <th className={`px-3 py-2.5 font-mono text-3xs uppercase ${t.muted}`}>ESTADO</th>
+                <th className={`px-3 py-2.5 font-mono text-3xs uppercase ${t.muted}`}>ACCIONES</th>
               </tr>
             </thead>
             <tbody>
@@ -2390,8 +2489,8 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                     {MONTHS.map(m => {
                       const st = getMonthStatus(e, m.idx, year);
                       const items = (e.preventivos || []).filter(p => p.fecha && new Date(p.fecha + 'T00:00:00').getMonth() === m.idx && new Date(p.fecha + 'T00:00:00').getFullYear() === year);
-                      const tip = items.map(p => p.fecha).join(', ') || 'Sin fecha';
-                      return <td key={m.k} className="px-2 py-2 text-center" title={tip}><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: STATUS_HEX[st] }} /></td>;
+                      const tip = `${STATUS_LABEL[st]}${items.length ? ' — ' + items.map(p => p.fecha).join(', ') : ''}`;
+                      return <td key={m.k} className="px-2 py-2 text-center" title={tip}><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: STATUS_HEX[st] }} role="img" aria-label={tip} /></td>;
                     })}
                     <td className="px-3 py-2 text-center">{e.aplicaCalibracion ? '✓' : '—'}</td>
                     <td className="px-3 py-2 text-center">{e.aplicaPreventivo ? '✓' : '—'}</td>
@@ -2400,17 +2499,17 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                     <td className="px-3 py-2">{e.ubicacion || '—'}</td>
                     <td className="px-3 py-2">{cs.next ? cs.next.toISOString().slice(0, 10) : '—'}</td>
                     <td className="px-3 py-2">
-                      <span className="px-2 py-0.5 rounded-full text-[10px]" style={{ background: (e.estado === 'Operativo' ? '#22C55E' : e.estado === 'Dado de baja' ? '#EF4444' : '#F59E0B') + '22', color: e.estado === 'Operativo' ? '#22C55E' : e.estado === 'Dado de baja' ? '#EF4444' : '#F59E0B' }}>{e.estado}</span>
+                      <Badge mono={false} color={e.estado === 'Operativo' ? '#22C55E' : e.estado === 'Dado de baja' ? '#EF4444' : '#F59E0B'}>{e.estado}</Badge>
                     </td>
                     <td className="px-3 py-2" onClick={ev => ev.stopPropagation()}>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => onObs(e.id)} title="Observaciones">
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => onObs(e.id)} title="Observaciones" aria-label="Observaciones" className="p-2.5 -m-1.5 flex items-center justify-center">
                           <MessageCircle size={14} className={e.observaciones ? '' : t.muted} style={e.observaciones ? { color: accent } : {}} />
                         </button>
                         {!readOnly && (
                           <>
-                            <button onClick={() => onDuplicate(e)} title="Duplicar"><Copy size={13} className={t.muted} /></button>
-                            <button onClick={() => onRemove(e.id)} title="Eliminar"><Trash2 size={13} className="text-red-400" /></button>
+                            <button onClick={() => onDuplicate(e)} title="Duplicar" aria-label="Duplicar" className="p-2.5 -m-1.5 flex items-center justify-center"><Copy size={13} className={t.muted} /></button>
+                            <button onClick={() => onRemove(e.id)} title="Eliminar" aria-label="Eliminar" className="p-2.5 -m-1.5 flex items-center justify-center"><Trash2 size={13} className="text-red-400" /></button>
                           </>
                         )}
                       </div>
@@ -2432,9 +2531,9 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: CAL_HEX[cs.status] }} />
                 <div className="flex-1">
                   <div className="text-xs font-semibold">{e.equipo}</div>
-                  <div className={`text-[11px] ${t.muted}`}>{e.empresa} · {e.sede}</div>
+                  <div className={`text-2xs ${t.muted}`}>{e.empresa} · {e.sede}</div>
                 </div>
-                <div className="text-[11px] font-mono capitalize" style={{ color: CAL_HEX[cs.status] }}>{cs.status.replace('_', ' ')}</div>
+                <div className="text-2xs font-mono capitalize" style={{ color: CAL_HEX[cs.status] }}>{cs.status.replace('_', ' ')}</div>
               </div>
             );
           })}
@@ -2450,9 +2549,9 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: p.estado === 'Ejecutado' ? '#22C55E' : '#F59E0B' }} />
                 <div className="flex-1">
                   <div className="text-xs font-semibold">{p.equipoNombre}</div>
-                  <div className={`text-[11px] ${t.muted}`}>{p.empresa} · {p.sede} · {p.responsable || 'sin responsable'}</div>
+                  <div className={`text-2xs ${t.muted}`}>{p.empresa} · {p.sede} · {p.responsable || 'sin responsable'}</div>
                 </div>
-                <div className="text-[11px] font-mono">{p.fecha}</div>
+                <div className="text-2xs font-mono">{p.fecha}</div>
               </div>
             ))}
         </div>
@@ -2467,9 +2566,9 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.estado === 'Ejecutado' ? '#22C55E' : '#F59E0B' }} />
                 <div className="flex-1">
                   <div className="text-xs font-semibold">{c.equipoNombre}</div>
-                  <div className={`text-[11px] ${t.muted}`}>{c.empresa} · {c.sede} · {c.responsable || 'sin responsable'}</div>
+                  <div className={`text-2xs ${t.muted}`}>{c.empresa} · {c.sede} · {c.responsable || 'sin responsable'}</div>
                 </div>
-                <div className="text-[11px] font-mono">{c.fecha}</div>
+                <div className="text-2xs font-mono">{c.fecha}</div>
               </div>
             ))}
         </div>
@@ -2521,18 +2620,18 @@ function ReportesFallaPage({ reportes, t, onUpdate, readOnly }) {
           <div key={r.id} className={`rounded-lg border overflow-hidden ${t.panel} ${t.border}`}>
             <div onClick={() => openReport(r)} className="p-3 flex items-center gap-3 cursor-pointer flex-wrap">
               {!r.visto && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title="Nuevo" />}
-              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full" style={{ background: PRIORIDAD_HEX[r.prioridad] + '22', color: PRIORIDAD_HEX[r.prioridad] }}>{r.prioridad}</span>
+              <Badge color={PRIORIDAD_HEX[r.prioridad]}>{r.prioridad}</Badge>
               <div className="flex-1 min-w-[160px]">
                 <div className="text-xs font-semibold">{r.equipoNombre || 'Equipo sin especificar'}</div>
-                <div className={`text-[11px] ${t.muted}`}>{r.empresa} · {r.sede} · reportó {r.personaReporta || 'sin nombre'}</div>
+                <div className={`text-2xs ${t.muted}`}>{r.empresa} · {r.sede} · reportó {r.personaReporta || 'sin nombre'}</div>
               </div>
-              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full" style={{ background: REPORTE_ESTADO_HEX[r.estado] + '22', color: REPORTE_ESTADO_HEX[r.estado] }}>{r.estado}</span>
-              <span className="text-[11px] font-mono">{r.fecha}</span>
+              <Badge color={REPORTE_ESTADO_HEX[r.estado]}>{r.estado}</Badge>
+              <span className="text-2xs font-mono">{r.fecha}</span>
             </div>
             {openId === r.id && (
               <div className={`p-3 border-t space-y-3 ${t.border} ${t.panel3}`}>
                 <div>
-                  <div className="text-[10px] uppercase text-slate-400 mb-1">Descripción</div>
+                  <div className="text-3xs uppercase text-slate-400 mb-1">Descripción</div>
                   <div className="text-xs">{r.descripcion}</div>
                 </div>
                 {r.adjuntos && r.adjuntos.length > 0 && (
@@ -2579,7 +2678,7 @@ function ReportesPage({ t, accent, onExport }) {
         {reportes.map(r => (
           <div key={r} className={`rounded-lg border p-4 flex items-center justify-between ${t.panel} ${t.border}`}>
             <span className="text-xs font-semibold">{r}</span>
-            <button onClick={onExport} className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold" style={{ background: accent, color: '#fff' }}><Download size={12} /> Excel</button>
+            <Button variant="primary" size="sm" accent={accent} icon={Download} iconSize={12} onClick={onExport}>Excel</Button>
           </div>
         ))}
       </div>
@@ -2604,17 +2703,17 @@ function ConfigPage({ t, accent, onReset, onLogout, alertEmails, setAlertEmails,
   return (
     <div>
       <h1 className="text-lg font-bold mb-1">Configuración</h1>
-      <p className={`text-[11px] mb-4 font-mono ${t.muted}`}>Versión del panel: {APP_BUILD}</p>
+      <p className={`text-2xs mb-4 font-mono ${t.muted}`}>Versión del panel: {APP_BUILD}</p>
 
       <div className={`rounded-lg border p-4 max-w-md mb-4 ${t.panel} ${t.border}`}>
         <div className="text-xs font-semibold mb-1">Correos para alertas</div>
-        <p className={`text-[11px] mb-3 ${t.muted}`}>
+        <p className={`text-2xs mb-3 ${t.muted}`}>
           Se usan en el botón "Enviar alertas por correo" dentro de la sección Alertas. Abre tu programa de correo con estos destinatarios y el resumen ya redactado — no se envían solos.
         </p>
         <div className="flex flex-wrap gap-1.5 mb-2">
-          {alertEmails.length === 0 && <span className={`text-[11px] ${t.muted}`}>Sin correos agregados todavía</span>}
+          {alertEmails.length === 0 && <span className={`text-2xs ${t.muted}`}>Sin correos agregados todavía</span>}
           {alertEmails.map(email => (
-            <span key={email} className="flex items-center gap-1.5 rounded-full pl-2.5 pr-1.5 py-1 text-[11px]" style={{ background: accent + '1A', color: accent }}>
+            <span key={email} className="flex items-center gap-1.5 rounded-full pl-2.5 pr-1.5 py-1 text-2xs" style={{ background: accent + '1A', color: accent }}>
               {email}
               {!readOnly && <button onClick={() => setAlertEmails(alertEmails.filter(e => e !== email))} className="hover:opacity-70"><X size={11} /></button>}
             </span>
@@ -2628,7 +2727,7 @@ function ConfigPage({ t, accent, onReset, onLogout, alertEmails, setAlertEmails,
               placeholder="correo@empresa.com" type="email"
               className={`flex-1 rounded-md px-2.5 py-1.5 text-xs border ${t.input}`}
             />
-            <button onClick={addEmail} className="rounded-md px-3 py-1.5 text-xs font-semibold" style={{ background: accent, color: '#fff' }}>Agregar</button>
+            <Button variant="primary" accent={accent} onClick={addEmail}>Agregar</Button>
           </div>
         )}
       </div>
@@ -2636,14 +2735,14 @@ function ConfigPage({ t, accent, onReset, onLogout, alertEmails, setAlertEmails,
       {!readOnly && (
         <div className={`rounded-lg border p-4 max-w-md mb-4 ${t.panel} ${t.border}`}>
           <div className="text-xs font-semibold mb-1">Restablecer datos</div>
-          <p className={`text-[11px] mb-3 ${t.muted}`}>Elimina todos los equipos guardados en este panel. Esta acción no se puede deshacer.</p>
-          <button onClick={onReset} className="rounded-md px-3 py-1.5 text-xs font-semibold text-white" style={{ background: '#EF4444' }}>Borrar todos los datos</button>
+          <p className={`text-2xs mb-3 ${t.muted}`}>Elimina todos los equipos guardados en este panel. Esta acción no se puede deshacer.</p>
+          <Button variant="danger" onClick={onReset}>Borrar todos los datos</Button>
         </div>
       )}
       <div className={`rounded-lg border p-4 max-w-md ${t.panel} ${t.border}`}>
         <div className="text-xs font-semibold mb-1">Sesión</div>
-        <p className={`text-[11px] mb-3 ${t.muted}`}>{readOnly ? 'Sales del modo invitado en este navegador.' : 'Cierra tu sesión en este navegador. Te pedirá usuario y contraseña de nuevo.'}</p>
-        <button onClick={onLogout} className={`rounded-md px-3 py-1.5 text-xs font-semibold border ${t.border}`}>{readOnly ? 'Salir del modo invitado' : 'Cerrar sesión'}</button>
+        <p className={`text-2xs mb-3 ${t.muted}`}>{readOnly ? 'Sales del modo invitado en este navegador.' : 'Cierra tu sesión en este navegador. Te pedirá usuario y contraseña de nuevo.'}</p>
+        <Button variant="outline" t={t} onClick={onLogout}>{readOnly ? 'Salir del modo invitado' : 'Cerrar sesión'}</Button>
       </div>
     </div>
   );
