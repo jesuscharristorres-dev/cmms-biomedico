@@ -655,7 +655,7 @@ function newPersonal(empresa) {
   return {
     id: uid('per'),
     nombreCompleto: '', tipoDocumento: 'CC', numeroDocumento: '',
-    cargo: '', profesion: '', empresa, fechaIngreso: todayISO(),
+    cargo: '', profesion: '', registroInvima: '', empresa, fechaIngreso: todayISO(),
     estado: 'Activo', hojaVidaUrl: '',
   };
 }
@@ -3270,6 +3270,7 @@ function PersonalPage({ personal, t, accent, onAdd, onUpdate, readOnly }) {
                     <Field label="Nombre completo"><TextInput t={t} value={p.nombreCompleto} disabled={readOnly} onChange={v => onUpdate({ ...p, nombreCompleto: v })} /></Field>
                     <Field label="Cargo"><TextInput t={t} value={p.cargo} disabled={readOnly} onChange={v => onUpdate({ ...p, cargo: v })} /></Field>
                     <Field label="Profesión"><TextInput t={t} value={p.profesion} disabled={readOnly} onChange={v => onUpdate({ ...p, profesion: v })} /></Field>
+                    <Field label="Registro INVIMA"><TextInput t={t} value={p.registroInvima} disabled={readOnly} placeholder="Si aplica" onChange={v => onUpdate({ ...p, registroInvima: v })} /></Field>
                     <Field label="Empresa">
                       <SelectInput t={t} value={p.empresa} disabled={readOnly} options={COMPANIES.map(c => c.key)} onChange={v => onUpdate({ ...p, empresa: v })} />
                     </Field>
@@ -3328,6 +3329,7 @@ function PersonalFormModal({ t, accent, onClose, onSave }) {
           <Field label="Número de documento"><TextInput t={t} value={form.numeroDocumento} onChange={v => patch('numeroDocumento', v)} /></Field>
           <Field label="Cargo"><TextInput t={t} value={form.cargo} placeholder="Ej. Ingeniero Biomédico" onChange={v => patch('cargo', v)} /></Field>
           <Field label="Profesión"><TextInput t={t} value={form.profesion} placeholder="Ej. Ingeniería Biomédica" onChange={v => patch('profesion', v)} /></Field>
+          <Field label="Registro INVIMA"><TextInput t={t} value={form.registroInvima} placeholder="Si aplica" onChange={v => patch('registroInvima', v)} /></Field>
           <Field label="Empresa"><SelectInput t={t} value={form.empresa} options={COMPANIES.map(c => c.key)} onChange={v => patch('empresa', v)} /></Field>
           <Field label="Fecha de ingreso"><TextInput t={t} type="date" value={form.fechaIngreso} onChange={v => patch('fechaIngreso', v)} /></Field>
           <Field label="Estado"><SelectInput t={t} value={form.estado} options={ESTADOS_PERSONAL} onChange={v => patch('estado', v)} /></Field>
