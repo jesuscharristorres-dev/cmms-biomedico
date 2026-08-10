@@ -628,6 +628,601 @@ function generarInformeMensualPDF(empresaKey, monthIdx, year, equipos, reportesF
   setTimeout(() => win.print(), 350);
 }
 
+/* ---------------------------------------------------------------- */
+/* FORMATO OFICIAL F140 — "INFORME DE GESTIÓN" (piloto MACROMED)      */
+/* Documento maestro: PDF proporcionado por el usuario (F140 3.0 —    */
+/* Vig. 25/06/2027 — COPIA CONTROLADA). Se conserva su estructura de  */
+/* 8 secciones tal como está impresa; solo se diligencian los campos  */
+/* dinámicos con datos reales del CMMS. Distinto del F432 (reporte de */
+/* mantenimiento de equipo) y del "Informe mensual de gestión"        */
+/* genérico ya existente — ninguno de los dos se modifica.            */
+/* ---------------------------------------------------------------- */
+// Los valores documentales vienen impresos en el propio PDF maestro que compartió el
+// usuario. Nota: difieren de los que se mencionaron en texto (F432 / v1.0 / 24-06-2027,
+// que corresponden al F432 de mantenimiento de equipo) — aquí se respeta el documento
+// maestro real, que es la fuente de verdad según sus propias instrucciones.
+const F140_DOC_CONTROL = { codigo: 'F140', version: '3.0', tipoCopia: 'COPIA CONTROLADA', vigencia: '25/06/2027' };
+
+// Sección 3 del F140 — "Cronograma de actividades del mes": una fila real por
+// preventivo/correctivo/calibración con fecha dentro del periodo. El CMMS solo guarda
+// una fecha por actividad (no distingue "planeada" de "ejecutada" como campos separados
+// editables): si aún no se ejecutó, esa fecha es la planeada; si ya se ejecutó, es la
+// fecha real y se muestra también como planeada por ser el único dato disponible — nunca
+// se inventa una segunda fecha.
+function buildCronogramaF140(equiposEmpresa, enPeriodo) {
+  const filas = [];
+  equiposEmpresa.forEach(e => {
+    (e.preventivos || []).forEach(p => {
+      if (!enPeriodo(p.fecha)) return;
+      const ejecutado = p.estado === 'Ejecutado';
+      filas.push({ actividad: `Mantenimiento preventivo — ${e.equipo || 'Equipo sin nombre'}`, fechaPlaneada: p.fecha, fechaEjecutada: ejecutado ? p.fecha : '', resultado: ejecutado ? 'Ejecutado' : 'Pendiente', fecha: p.fecha });
+    });
+    (e.correctivos || []).forEach(c => {
+      if (!enPeriodo(c.fecha)) return;
+      const ejecutado = c.estado === 'Ejecutado';
+      filas.push({ actividad: `Mantenimiento correctivo — ${e.equipo || 'Equipo sin nombre'}`, fechaPlaneada: c.fecha, fechaEjecutada: ejecutado ? c.fecha : '', resultado: ejecutado ? 'Ejecutado' : 'Pendiente', fecha: c.fecha });
+    });
+    (e.calibraciones || []).forEach(c => {
+      if (!enPeriodo(c.fecha)) return;
+      filas.push({ actividad: `Calibración — ${e.equipo || 'Equipo sin nombre'}`, fechaPlaneada: c.fecha, fechaEjecutada: c.fecha, resultado: c.certificadoUrl ? 'Ejecutado — con certificado' : 'Ejecutado — sin certificado', fecha: c.fecha });
+    });
+  });
+  return filas.sort((a, b) => new Date(a.fecha) - new Date(b.fecha)).map((f, i) => ({ id: i + 1, ...f }));
+}
+
+// Calcula todo lo que el F140 necesita para una empresa · mes · año: cronograma real
+// (Sección 3), los 3-4 indicadores con numerador/denominador/resultado/gráfica/
+// interpretación (Sección 4), la planeación real del mes siguiente (Sección 7) y un
+// borrador de conclusión (Sección 6) — todo estrictamente filtrado por empresa y periodo.
+function computeInformeF140(empresaKey, monthIdx, year, equipos, reportesFalla) {
+  const equiposEmpresa = (equipos || []).filter(e => e.empresa === empresaKey);
+  const enPeriodo = (fecha) => {
+    if (!fecha) return false;
+    const d = new Date(fecha + 'T00:00:00');
+    return !isNaN(d.getTime()) && d.getFullYear() === year && d.getMonth() === monthIdx;
+  };
+  const mesLabel = `${MONTHS[monthIdx].full} de ${year}`;
+  const cronograma = buildCronogramaF140(equiposEmpresa, enPeriodo);
+
+  // A) Cumplimiento de mantenimiento preventivo
+  let prevProgramados = 0, prevEjecutados = 0;
+  equiposEmpresa.forEach(e => (e.preventivos || []).forEach(p => {
+    if (!enPeriodo(p.fecha)) return;
+    prevProgramados++;
+    if (p.estado === 'Ejecutado') prevEjecutados++;
+  }));
+  const preventivo = {
+    nombre: 'Cumplimiento de mantenimiento preventivo',
+    numerador: prevEjecutados, denominador: prevProgramados,
+    resultadoPct: prevProgramados ? Math.round((prevEjecutados / prevProgramados) * 100) : null,
+    insufficient: prevProgramados === 0,
+    chart: svgStackedBar([
+      { label: 'Ejecutados', value: prevEjecutados, color: '#22C55E' },
+      { label: 'Pendientes', value: prevProgramados - prevEjecutados, color: '#F59E0B' },
+    ]),
+    interpretacion: prevProgramados === 0 ? '' :
+      `Durante ${mesLabel} se programaron ${prevProgramados} mantenimiento${prevProgramados !== 1 ? 's' : ''} preventivo${prevProgramados !== 1 ? 's' : ''}, de los cuales ${prevEjecutados} fueron ejecutados, alcanzando un cumplimiento del ${Math.round((prevEjecutados / prevProgramados) * 100)}%.`,
+  };
+
+  // B) Mantenimientos correctivos
+  const correctivosPeriodo = [];
+  equiposEmpresa.forEach(e => (e.correctivos || []).forEach(c => { if (enPeriodo(c.fecha)) correctivosPeriodo.push(c); }));
+  const corrTotal = correctivosPeriodo.length;
+  const corrEjecutados = correctivosPeriodo.filter(c => c.estado === 'Ejecutado').length;
+  const correctivo = {
+    nombre: 'Ejecución de mantenimientos correctivos',
+    numerador: corrEjecutados, denominador: corrTotal,
+    resultadoPct: corrTotal ? Math.round((corrEjecutados / corrTotal) * 100) : null,
+    insufficient: corrTotal === 0,
+    chart: svgStackedBar([
+      { label: 'Ejecutados', value: corrEjecutados, color: '#22C55E' },
+      { label: 'Pendientes', value: corrTotal - corrEjecutados, color: '#F59E0B' },
+    ]),
+    interpretacion: corrTotal === 0 ? '' :
+      `Durante ${mesLabel} se registraron ${corrTotal} mantenimiento${corrTotal !== 1 ? 's' : ''} correctivo${corrTotal !== 1 ? 's' : ''}, de los cuales ${corrEjecutados} fueron ejecutados.`,
+  };
+
+  // C) Calibraciones — "realizadas" es histórico real; vencidas/próximas son siempre
+  // relativas a hoy, así que solo se muestran cuando el periodo elegido es el mes actual.
+  const calibracionesPeriodo = [];
+  equiposEmpresa.forEach(e => (e.calibraciones || []).forEach(c => { if (enPeriodo(c.fecha)) calibracionesPeriodo.push(c); }));
+  const calRealizadas = calibracionesPeriodo.length;
+  const equiposAplicanCal = equiposEmpresa.filter(e => e.aplicaCalibracion).length;
+  const hoy = new Date();
+  const esMesActual = hoy.getFullYear() === year && hoy.getMonth() === monthIdx;
+  let calVencidas = 0, calProximas = 0;
+  if (esMesActual) {
+    equiposEmpresa.forEach(e => {
+      const cs = calibStatus(e);
+      if (cs.status === 'vencido') calVencidas++; else if (cs.status === 'proximo') calProximas++;
+    });
+  }
+  const calibracion = {
+    nombre: 'Cumplimiento de calibraciones',
+    numerador: calRealizadas, denominador: equiposAplicanCal,
+    resultadoPct: equiposAplicanCal ? Math.round((calRealizadas / equiposAplicanCal) * 100) : null,
+    insufficient: equiposAplicanCal === 0,
+    chart: esMesActual
+      ? svgStackedBar([
+          { label: 'Realizadas', value: calRealizadas, color: '#22C55E' },
+          { label: 'Próximas a vencer', value: calProximas, color: '#F59E0B' },
+          { label: 'Vencidas', value: calVencidas, color: '#EF4444' },
+        ])
+      : svgStackedBar([{ label: 'Realizadas', value: calRealizadas, color: '#22C55E' }]),
+    interpretacion: equiposAplicanCal === 0 ? '' : (
+      esMesActual
+        ? `Durante ${mesLabel} se realizaron ${calRealizadas} de ${equiposAplicanCal} calibraciones aplicables. A la fecha de generación hay ${calVencidas} equipo${calVencidas !== 1 ? 's' : ''} con calibración vencida y ${calProximas} próximo${calProximas !== 1 ? 's' : ''} a vencer.`
+        : `Durante ${mesLabel} se realizaron ${calRealizadas} de ${equiposAplicanCal} calibraciones aplicables registradas en el sistema.`
+    ),
+  };
+
+  // D) Fallas — solo se incluye como indicador cuando hay datos suficientes.
+  const fallasPeriodo = (reportesFalla || []).filter(r => r.empresa === empresaKey && enPeriodo(r.fecha));
+  let falla = null;
+  if (fallasPeriodo.length > 0) {
+    const fallasSolucionadas = fallasPeriodo.filter(r => r.estado === 'Finalizado').length;
+    const tiempos = fallasPeriodo.map(r => tiempoRespuestaMs(r)).filter(ms => ms !== null);
+    const promedioMs = tiempos.length ? tiempos.reduce((a, ms) => a + ms, 0) / tiempos.length : null;
+    falla = {
+      nombre: 'Resolución de fallas reportadas',
+      numerador: fallasSolucionadas, denominador: fallasPeriodo.length,
+      resultadoPct: Math.round((fallasSolucionadas / fallasPeriodo.length) * 100),
+      insufficient: false,
+      chart: svgStackedBar([
+        { label: 'Solucionadas', value: fallasSolucionadas, color: '#22C55E' },
+        { label: 'Pendientes', value: fallasPeriodo.length - fallasSolucionadas, color: '#F59E0B' },
+      ]),
+      interpretacion: `Durante ${mesLabel} se reportaron ${fallasPeriodo.length} falla${fallasPeriodo.length !== 1 ? 's' : ''}, de las cuales ${fallasSolucionadas} fueron solucionadas.` +
+        (promedioMs !== null ? ` El tiempo promedio de solución fue de ${formatDuracion(promedioMs)}.` : ' Aún no hay fallas solucionadas en el periodo para calcular un tiempo promedio.'),
+    };
+  }
+
+  // Sección 7 — planeación real del mes siguiente: preventivos/correctivos aún
+  // "Programado" con fecha dentro de ese mes (nunca se inventan actividades futuras).
+  let nextMonth = monthIdx + 1, nextYear = year;
+  if (nextMonth > 11) { nextMonth = 0; nextYear += 1; }
+  const enSiguiente = (fecha) => {
+    if (!fecha) return false;
+    const d = new Date(fecha + 'T00:00:00');
+    return !isNaN(d.getTime()) && d.getFullYear() === nextYear && d.getMonth() === nextMonth;
+  };
+  const planeacion = [];
+  equiposEmpresa.forEach(e => {
+    (e.preventivos || []).forEach(p => { if (p.estado !== 'Ejecutado' && enSiguiente(p.fecha)) planeacion.push({ actividad: `Mantenimiento preventivo — ${e.equipo || 'Equipo sin nombre'}`, fecha: p.fecha, responsable: p.responsable || '' }); });
+    (e.correctivos || []).forEach(c => { if (c.estado !== 'Ejecutado' && enSiguiente(c.fecha)) planeacion.push({ actividad: `Mantenimiento correctivo — ${e.equipo || 'Equipo sin nombre'}`, fecha: c.fecha, responsable: c.responsable || '' }); });
+  });
+  planeacion.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+  // Sección 6 — borrador de conclusión, solo con los datos ya calculados arriba;
+  // el usuario la revisa y edita antes de generar el PDF definitivo.
+  const partes = [];
+  if (!preventivo.insufficient) partes.push(`se ejecutaron ${preventivo.numerador} de ${preventivo.denominador} mantenimientos preventivos programados (${preventivo.resultadoPct}% de cumplimiento)`);
+  if (!correctivo.insufficient) partes.push(`se registraron ${correctivo.denominador} mantenimientos correctivos, de los cuales ${correctivo.numerador} fueron ejecutados`);
+  if (!calibracion.insufficient) partes.push(`se realizaron ${calibracion.numerador} de ${calibracion.denominador} calibraciones aplicables`);
+  if (falla) partes.push(`se reportaron ${falla.denominador} fallas, de las cuales ${falla.numerador} fueron solucionadas`);
+  const conclusionSugerida = partes.length
+    ? `Durante ${mesLabel}, en ${empresaKey} ${partes.join('; ')}.`
+    : `No se registró actividad de mantenimientos, calibraciones o fallas para ${empresaKey} durante ${mesLabel}.`;
+
+  return { mesLabel, monthIdx, year, nextMonth, nextYear, cronograma, indicadores: { preventivo, correctivo, calibracion, falla }, planeacion, conclusionSugerida };
+}
+
+// Sección 5 — sugiere (nunca impone) una acción de mejora por cada indicador cuyo
+// resultado quede por debajo de la meta que el usuario haya ingresado. Sin meta, no hay
+// nada que comparar, así que no se sugiere nada para ese indicador.
+function sugerirAccionesMejora(indicadores, metas) {
+  const items = [
+    ['preventivo', indicadores.preventivo], ['correctivo', indicadores.correctivo],
+    ['calibracion', indicadores.calibracion], ['falla', indicadores.falla],
+  ];
+  const sugerencias = [];
+  items.forEach(([key, ind]) => {
+    if (!ind || ind.insufficient) return;
+    const meta = parseFloat(metas[key]);
+    if (isNaN(meta) || ind.resultadoPct === null || ind.resultadoPct >= meta) return;
+    sugerencias.push({
+      indicador: ind.nombre, resultado: `${ind.resultadoPct}%`, meta: `${meta}%`,
+      accion: 'Revisar causas del incumplimiento y reforzar el seguimiento del indicador.',
+      fechaMax: '', responsable: '', origen: 'sugerencia',
+    });
+  });
+  return sugerencias;
+}
+
+// Construye el documento final del F140 (ventana nueva + impresión, igual que los demás
+// documentos del CMMS) a partir de los datos ya calculados y de lo que el usuario haya
+// revisado/editado en la vista previa. DATOS reales → GRÁFICA → INTERPRETACIÓN por
+// indicador, respetando el orden y la numeración de las 8 secciones del F140 real.
+function generarF140PDF(empresaKey, datos, form) {
+  const co = companyOf(empresaKey);
+  if (!co) return;
+  const win = window.open('', '_blank');
+  if (!win) { alert('El navegador bloqueó la ventana emergente. Habilítala para generar el PDF.'); return; }
+  const esc = (v) => (v && String(v).trim()) || '—';
+
+  const filaIndicador = (id, ind, metaKey) => !ind ? '' : `<tr>
+      <td>${id}</td><td>${esc(ind.nombre)}</td>
+      <td>${ind.insufficient ? '—' : ind.numerador}</td>
+      <td>${ind.insufficient ? '—' : ind.denominador}</td>
+      <td>${esc(form.metas[metaKey] ? form.metas[metaKey] + '%' : '')}</td>
+      <td>${ind.insufficient ? SIN_DATOS_INFORME_MSG : ind.resultadoPct + '%'}</td>
+    </tr>`;
+
+  const graficaBlock = (ind) => !ind ? '' : `<div class="chart-block">
+      <div class="chart-title">${esc(ind.nombre)}</div>
+      ${ind.insufficient ? `<p class="sin-datos">${SIN_DATOS_INFORME_MSG}</p>` : `${ind.chart}<p class="interpretacion">${ind.interpretacion}</p>`}
+    </div>`;
+
+  const cronogramaRows = datos.cronograma.length
+    ? datos.cronograma.map(f => `<tr><td>${f.id}</td><td>${esc(f.actividad)}</td><td>${esc(f.fechaPlaneada)}</td><td>${esc(f.fechaEjecutada)}</td><td>${esc(f.resultado)}</td></tr>`).join('')
+    : `<tr><td colspan="5" class="sin-datos">Sin actividades registradas durante el periodo.</td></tr>`;
+
+  const accionesRows = form.acciones.length
+    ? form.acciones.map(a => `<tr>
+        <td>${esc(a.indicador)}</td><td>${esc(a.accion)}${a.origen === 'sugerencia' ? ' <em>(sugerencia generada por el sistema)</em>' : ''}</td>
+        <td>${esc(a.meta)}</td><td>${esc(a.fechaMax)}</td><td>${esc(a.responsable)}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="5" class="sin-datos">Indicadores en zona aceptable y estable — no se registran acciones de mejora para este periodo.</td></tr>`;
+
+  const planeacionRows = datos.planeacion.length
+    ? datos.planeacion.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.actividad)}</td><td>${esc(p.fecha)}</td><td>${esc(p.responsable)}</td></tr>`).join('')
+    : `<tr><td colspan="4" class="sin-datos">Sin actividades programadas para el siguiente mes registradas en el sistema.</td></tr>`;
+
+  const nextMesLabel = `${MONTHS[datos.nextMonth].full} de ${datos.nextYear}`;
+
+  win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>F140 — Informe de Gestión — ${empresaKey} — ${datos.mesLabel}</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { font-family: Arial, Helvetica, sans-serif; color:#1e293b; padding:30px; font-size:11px; }
+      table { border-collapse: collapse; width:100%; }
+      .headwrap { display:flex; align-items:center; gap:16px; border-bottom:2px solid #1e293b; padding-bottom:10px; margin-bottom:4px; }
+      .headwrap img { max-height:46px; max-width:150px; object-fit:contain; }
+      .headwrap h1 { flex:1; text-align:center; font-size:17px; margin:0; text-transform:uppercase; }
+      .docinfo { text-align:right; font-size:9px; color:#334155; line-height:1.5; white-space:nowrap; }
+      table.info td { border:1px solid #1e293b; padding:5px 8px; font-size:10.5px; }
+      table.info td.label { background:#f1f5f9; font-weight:bold; width:26%; }
+      h2.section { font-size:11px; margin:16px 0 2px; }
+      p.hint { font-size:9.5px; font-style:italic; color:#64748b; margin:0 0 6px; }
+      .field-box { border:1px solid #1e293b; padding:6px 8px; min-height:28px; white-space:pre-wrap; font-size:10.5px; margin-bottom:2px; }
+      h3.subsection { font-size:10.5px; font-style:italic; margin:10px 0 4px; text-transform:uppercase; }
+      table.grid th, table.grid td { border:1px solid #1e293b; padding:4px 6px; font-size:9.5px; }
+      table.grid th { background:#dbeafe; text-align:center; }
+      .sin-datos { font-size:9.5px; color:#64748b; font-style:italic; text-align:center; padding:6px; }
+      .chart-block { border:1px solid #1e293b; padding:10px 12px; margin:8px 0; break-inside: avoid; }
+      .chart-title { font-size:10.5px; font-weight:bold; margin-bottom:4px; }
+      .interpretacion { font-size:10px; line-height:1.5; color:#334155; margin:8px 0 0; }
+      .firmas-grid { display:grid; grid-template-columns:1fr 1fr; border:1px solid #1e293b; margin-top:6px; }
+      .firmas-grid > div { border-right:1px solid #1e293b; padding:8px; font-size:10px; }
+      .firmas-grid > div:last-child { border-right:none; }
+      .firma-slot { height:44px; border-bottom:1px solid #94a3b8; margin-bottom:6px; }
+      .footer { margin-top:22px; font-size:9px; color:#64748b; text-align:center; border-top:1px solid #cbd5e1; padding-top:6px; }
+      .page-break { break-before: page; }
+      @media print { body { padding:16px; } }
+    </style></head>
+    <body>
+      <div class="headwrap">
+        ${co.logo ? `<img src="${co.logo}" alt="${empresaKey}" />` : '<div></div>'}
+        <h1>Informe de Gestión</h1>
+        <div class="docinfo">${F140_DOC_CONTROL.codigo} ${F140_DOC_CONTROL.version} – Vig. ${F140_DOC_CONTROL.vigencia}<br/>${F140_DOC_CONTROL.tipoCopia}</div>
+      </div>
+
+      <table class="info">
+        <tr><td class="label">NOMBRE DEL PROCESO</td><td>${esc(form.proceso)}</td></tr>
+        <tr><td class="label">NOMBRE DEL SUBPROCESO</td><td>${esc(form.subproceso)}</td></tr>
+        <tr><td class="label">RESPONSABLE DEL PROCESO</td><td>${esc(form.responsableProceso)}</td></tr>
+        <tr><td class="label">CARGO</td><td>${esc(form.cargoProceso)}</td></tr>
+        <tr><td class="label">PERIODO INFORMADO</td><td>${empresaKey} — ${datos.mesLabel}</td></tr>
+      </table>
+
+      <h2 class="section">1) Introducción</h2>
+      <p class="hint">Describa un breve resumen del enfoque del proceso durante el mes informado.</p>
+      <div class="field-box">${esc(form.introduccion)}</div>
+
+      <h2 class="section">2) Objetivos del periodo informado</h2>
+      <p class="hint">Indique los objetivos específicos establecidos para el mes que se reporta.</p>
+      <div class="field-box">${esc(form.objetivos)}</div>
+
+      <h2 class="section">3) Reporte ejecución de etapas del proceso</h2>
+      <p class="hint">Describa las actividades desarrolladas y su cumplimiento.</p>
+      <h3 class="subsection">Cronograma de actividades del mes</h3>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Actividad programada</th><th>Fecha planeada</th><th>Fecha ejecutada</th><th>Resultado</th></tr></thead>
+        <tbody>${cronogramaRows}</tbody>
+      </table>
+
+      <h2 class="section">4) Reporte de indicadores y seguimiento</h2>
+      <p class="hint">Presente los resultados de los indicadores establecidos para su proceso.</p>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Nombre de indicador</th><th>Numerador</th><th>Denominador</th><th>Meta</th><th>Resultado</th></tr></thead>
+        <tbody>
+          ${filaIndicador(1, datos.indicadores.preventivo, 'preventivo')}
+          ${filaIndicador(2, datos.indicadores.correctivo, 'correctivo')}
+          ${filaIndicador(3, datos.indicadores.calibracion, 'calibracion')}
+          ${datos.indicadores.falla ? filaIndicador(4, datos.indicadores.falla, 'falla') : ''}
+        </tbody>
+      </table>
+      <h3 class="subsection">Gráficas de indicadores</h3>
+      ${graficaBlock(datos.indicadores.preventivo)}
+      ${graficaBlock(datos.indicadores.correctivo)}
+      ${graficaBlock(datos.indicadores.calibracion)}
+      ${datos.indicadores.falla ? graficaBlock(datos.indicadores.falla) : ''}
+
+      <div class="page-break"></div>
+
+      <h2 class="section">5) Acciones de mejora a indicadores</h2>
+      <p class="hint">Registre las acciones de mejora propuestas cuando el indicador se encuentre en zona deficiente, o si presenta tendencia negativa durante dos periodos consecutivos.</p>
+      <table class="grid">
+        <thead><tr><th>Indicador</th><th>Acciones de mejora</th><th>Meta</th><th>Fecha máx. implementación</th><th>Responsable implementación</th></tr></thead>
+        <tbody>${accionesRows}</tbody>
+      </table>
+
+      <h2 class="section">6) Conclusiones</h2>
+      <p class="hint">Indique los principales hallazgos del periodo y análisis del comportamiento del proceso.</p>
+      <div class="field-box">${esc(form.conclusion)}</div>
+
+      <h2 class="section">7) Planeación del siguiente mes</h2>
+      <p class="hint">Actividades programadas para ${nextMesLabel}.</p>
+      <table class="grid">
+        <thead><tr><th>ID</th><th>Actividad programada</th><th>Fecha planeada</th><th>Responsable</th></tr></thead>
+        <tbody>${planeacionRows}</tbody>
+      </table>
+
+      <h2 class="section">8) Entrega del informe</h2>
+      <div class="firmas-grid">
+        <div>
+          <div style="font-weight:bold;">FIRMA ELABORÓ</div>
+          <div class="firma-slot"></div>
+          <div>NOMBRE: ${esc(form.elaboroNombre)}</div>
+          <div>CARGO: ${esc(form.elaboroCargo)}</div>
+        </div>
+        <div>
+          <div style="font-weight:bold;">FIRMA RECIBIDO CALIDAD</div>
+          <div class="firma-slot"></div>
+          <div>RESPONSABLE: ${esc(form.recibioNombre)}</div>
+          <div>CARGO: ${esc(form.recibioCargo)}</div>
+          <div>FECHA DE RECEPCIÓN DEL INFORME: ${esc(form.fechaEntrega)}</div>
+        </div>
+      </div>
+
+      <div class="footer">${F140_DOC_CONTROL.codigo} ${F140_DOC_CONTROL.version} – Vig. ${F140_DOC_CONTROL.vigencia} · ${F140_DOC_CONTROL.tipoCopia} · ${empresaKey} · ${datos.mesLabel}</div>
+    </body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 350);
+}
+
+// Tarjeta de un indicador dentro de la vista previa del F140 — misma gráfica SVG que irá
+// al PDF (dangerouslySetInnerHTML sobre HTML generado por nuestro propio código, no por
+// el usuario) más el campo de meta editable que alimenta las sugerencias de la Sección 5.
+function F140IndicadorCard({ ind, meta, onMetaChange, label, t }) {
+  return (
+    <div className={`rounded-lg border p-3 ${t.panel3} ${t.border}`}>
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="text-xs font-semibold">{label}</div>
+        {ind.insufficient
+          ? <span className="flex items-center gap-1 text-2xs" style={{ color: '#94A3B8' }}><AlertCircle size={12} /> Sin datos</span>
+          : <span className="flex items-center gap-1 text-2xs font-mono font-bold" style={{ color: '#22C55E' }}><CheckCircle2 size={12} /> {ind.resultadoPct}%</span>}
+      </div>
+      {ind.insufficient ? (
+        <p className={`text-2xs italic ${t.muted}`}>{SIN_DATOS_INFORME_MSG}</p>
+      ) : (
+        <>
+          <div dangerouslySetInnerHTML={{ __html: ind.chart }} />
+          <p className={`text-2xs mt-1 ${t.muted}`}>{ind.interpretacion}</p>
+        </>
+      )}
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-3xs uppercase text-slate-400">Meta (%)</span>
+        <input type="number" value={meta} onChange={e => onMetaChange(e.target.value)}
+          className={`w-20 rounded-md px-2 py-1 text-xs border ${t.input}`} placeholder="—" />
+      </div>
+    </div>
+  );
+}
+
+// Vista previa editable del F140 (Sección 15 del pedido): calcula los datos reales una
+// sola vez (computeInformeF140), los muestra tal cual se verán en el PDF (mismas gráficas
+// SVG, vía dangerouslySetInnerHTML — contenido generado por nuestro propio código, no por
+// el usuario) y deja editables únicamente los campos narrativos/documentales que el CMMS
+// no puede calcular por sí solo. "Generar PDF" reutiliza exactamente estos mismos datos.
+function InformeF140Modal({ empresaKey, monthIdx, year, equipos, reportesFalla, t, accent, onClose }) {
+  const datos = useMemo(() => computeInformeF140(empresaKey, monthIdx, year, equipos, reportesFalla), [empresaKey, monthIdx, year, equipos, reportesFalla]);
+  const co = companyOf(empresaKey);
+
+  const [proceso, setProceso] = useState('Ingeniería Clínica');
+  const [subproceso, setSubproceso] = useState('Mantenimiento y Calibración de Equipos Biomédicos');
+  const [responsableProceso, setResponsableProceso] = useState('');
+  const [cargoProceso, setCargoProceso] = useState('');
+  const [introduccion, setIntroduccion] = useState('');
+  const [objetivos, setObjetivos] = useState('');
+  const [metas, setMetas] = useState({ preventivo: '', correctivo: '', calibracion: '', falla: '' });
+  const [acciones, setAcciones] = useState([]);
+  const [conclusion, setConclusion] = useState(datos.conclusionSugerida);
+  const [elaboroNombre, setElaboroNombre] = useState('Paula Andrea Cárdenas');
+  const [elaboroCargo, setElaboroCargo] = useState('Analista de Calidad');
+  const [recibioNombre, setRecibioNombre] = useState('Gustavo Adolfo Medellín Cáceres');
+  const [recibioCargo, setRecibioCargo] = useState('Director de Aseguramiento de la Calidad');
+  const [fechaEntrega, setFechaEntrega] = useState(todayISO());
+
+  const setMeta = (k, v) => setMetas(prev => ({ ...prev, [k]: v }));
+
+  const agregarSugerencias = () => {
+    const nuevas = sugerirAccionesMejora(datos.indicadores, metas).map(s => ({ ...s, id: uid('am') }));
+    if (nuevas.length === 0) { alert('No hay indicadores por debajo de la meta ingresada (o falta ingresar alguna meta) para sugerir acciones.'); return; }
+    setAcciones(prev => [...prev, ...nuevas]);
+  };
+  const agregarAccionManual = () => setAcciones(prev => [...prev, { id: uid('am'), indicador: '', accion: '', meta: '', fechaMax: '', responsable: '', origen: 'manual' }]);
+  const actualizarAccion = (id, campo, valor) => setAcciones(prev => prev.map(a => a.id === id ? { ...a, [campo]: valor } : a));
+  const eliminarAccion = (id) => setAcciones(prev => prev.filter(a => a.id !== id));
+
+  const generar = () => {
+    generarF140PDF(empresaKey, datos, {
+      proceso, subproceso, responsableProceso, cargoProceso, introduccion, objetivos,
+      metas, acciones, conclusion, elaboroNombre, elaboroCargo, recibioNombre, recibioCargo, fechaEntrega,
+    });
+  };
+
+
+  return (
+    <div className="fixed inset-0 z-70 flex items-center justify-center p-4">
+      <div className="animate-fade-in absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className={`animate-modal-in relative w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-xl border p-5 ${t.panel} ${t.border}`}>
+        <div className="flex justify-between items-start mb-1">
+          <div>
+            <div className="text-3xs uppercase tracking-wide" style={{ color: co.color }}>{F140_DOC_CONTROL.codigo} {F140_DOC_CONTROL.version} · {empresaKey}</div>
+            <div className="text-sm font-bold">Informe de Gestión — {datos.mesLabel}</div>
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" className="flex items-center justify-center w-11 h-11 -mr-2 -mt-2"><X size={18} /></button>
+        </div>
+        <p className={`text-2xs mb-4 ${t.muted}`}>Vista previa editable del formato F140. Revisa y ajusta los campos narrativos antes de generar el PDF definitivo.</p>
+
+        <div className="grid sm:grid-cols-2 gap-3 mb-4">
+          <Field label="Nombre del proceso"><TextInput t={t} value={proceso} onChange={setProceso} /></Field>
+          <Field label="Nombre del subproceso"><TextInput t={t} value={subproceso} onChange={setSubproceso} /></Field>
+          <Field label="Responsable del proceso"><TextInput t={t} value={responsableProceso} onChange={setResponsableProceso} placeholder="Nombre" /></Field>
+          <Field label="Cargo"><TextInput t={t} value={cargoProceso} onChange={setCargoProceso} placeholder="Cargo" /></Field>
+        </div>
+
+        <div className="space-y-3 mb-4">
+          <Field label="1) Introducción">
+            <textarea rows={2} value={introduccion} onChange={e => setIntroduccion(e.target.value)} placeholder="Resumen del enfoque del proceso durante el mes informado…"
+              className={`w-full rounded-md px-2.5 py-2 text-xs border ${t.input}`} />
+          </Field>
+          <Field label="2) Objetivos del periodo informado">
+            <textarea rows={2} value={objetivos} onChange={e => setObjetivos(e.target.value)} placeholder="Objetivos específicos establecidos para el mes…"
+              className={`w-full rounded-md px-2.5 py-2 text-xs border ${t.input}`} />
+          </Field>
+        </div>
+
+        <div className="mb-4">
+          <div className="text-xs font-semibold mb-1">3) Reporte ejecución de etapas del proceso</div>
+          {datos.cronograma.length === 0 ? (
+            <p className={`text-2xs italic ${t.muted}`}>Sin actividades registradas durante el periodo.</p>
+          ) : (
+            <div className={`overflow-x-auto rounded-lg border ${t.border}`}>
+              <table className="w-full text-2xs">
+                <thead>
+                  <tr className={t.panel3}>
+                    <th className="px-2 py-1.5 text-left">Actividad</th>
+                    <th className="px-2 py-1.5 text-left">F. planeada</th>
+                    <th className="px-2 py-1.5 text-left">F. ejecutada</th>
+                    <th className="px-2 py-1.5 text-left">Resultado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {datos.cronograma.map(f => (
+                    <tr key={f.id} className={`border-t ${t.border}`}>
+                      <td className="px-2 py-1.5">{f.actividad}</td>
+                      <td className="px-2 py-1.5 font-mono">{f.fechaPlaneada || '—'}</td>
+                      <td className="px-2 py-1.5 font-mono">{f.fechaEjecutada || '—'}</td>
+                      <td className="px-2 py-1.5">{f.resultado}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="mb-4">
+          <div className="text-xs font-semibold mb-2">4) Reporte de indicadores y seguimiento</div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <F140IndicadorCard ind={datos.indicadores.preventivo} meta={metas.preventivo} onMetaChange={v => setMeta('preventivo', v)} label="A. Cumplimiento de preventivo" t={t} />
+            <F140IndicadorCard ind={datos.indicadores.correctivo} meta={metas.correctivo} onMetaChange={v => setMeta('correctivo', v)} label="B. Mantenimientos correctivos" t={t} />
+            <F140IndicadorCard ind={datos.indicadores.calibracion} meta={metas.calibracion} onMetaChange={v => setMeta('calibracion', v)} label="C. Calibraciones" t={t} />
+            {datos.indicadores.falla && <F140IndicadorCard ind={datos.indicadores.falla} meta={metas.falla} onMetaChange={v => setMeta('falla', v)} label="D. Fallas reportadas" t={t} />}
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-semibold">5) Acciones de mejora a indicadores</div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" t={t} onClick={agregarSugerencias}>Sugerir automáticamente</Button>
+              <Button variant="outline" size="sm" t={t} icon={Plus} iconSize={11} onClick={agregarAccionManual}>Agregar fila</Button>
+            </div>
+          </div>
+          {acciones.length === 0 ? (
+            <p className={`text-2xs italic ${t.muted}`}>Indicadores en zona aceptable y estable — no hay acciones de mejora registradas para este periodo.</p>
+          ) : (
+            <div className="space-y-2">
+              {acciones.map(a => (
+                <div key={a.id} className={`rounded-lg border p-2.5 ${t.panel3} ${t.border}`}>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <input value={a.indicador} onChange={e => actualizarAccion(a.id, 'indicador', e.target.value)} placeholder="Indicador"
+                      className={`flex-1 rounded-md px-2 py-1 text-2xs border ${t.input}`} />
+                    {a.origen === 'sugerencia' && <Badge color="#2F8FD1">Sugerencia del sistema</Badge>}
+                    <button onClick={() => eliminarAccion(a.id)} className="text-red-500 hover:opacity-70"><Trash2 size={13} /></button>
+                  </div>
+                  <textarea rows={2} value={a.accion} onChange={e => actualizarAccion(a.id, 'accion', e.target.value)} placeholder="Acción de mejora"
+                    className={`w-full rounded-md px-2 py-1.5 text-2xs border mb-1.5 ${t.input}`} />
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <input value={a.meta} onChange={e => actualizarAccion(a.id, 'meta', e.target.value)} placeholder="Meta" className={`rounded-md px-2 py-1 text-2xs border ${t.input}`} />
+                    <input type="date" value={a.fechaMax} onChange={e => actualizarAccion(a.id, 'fechaMax', e.target.value)} className={`rounded-md px-2 py-1 text-2xs border ${t.input}`} />
+                    <input value={a.responsable} onChange={e => actualizarAccion(a.id, 'responsable', e.target.value)} placeholder="Responsable" className={`rounded-md px-2 py-1 text-2xs border ${t.input}`} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mb-4">
+          <Field label="6) Conclusiones (borrador generado — edítalo libremente)">
+            <textarea rows={3} value={conclusion} onChange={e => setConclusion(e.target.value)}
+              className={`w-full rounded-md px-2.5 py-2 text-xs border ${t.input}`} />
+          </Field>
+        </div>
+
+        <div className="mb-4">
+          <div className="text-xs font-semibold mb-1">7) Planeación del siguiente mes ({MONTHS[datos.nextMonth].full} de {datos.nextYear})</div>
+          {datos.planeacion.length === 0 ? (
+            <p className={`text-2xs italic ${t.muted}`}>Sin actividades programadas para el siguiente mes registradas en el sistema.</p>
+          ) : (
+            <div className={`overflow-x-auto rounded-lg border ${t.border}`}>
+              <table className="w-full text-2xs">
+                <thead><tr className={t.panel3}><th className="px-2 py-1.5 text-left">Actividad</th><th className="px-2 py-1.5 text-left">Fecha planeada</th><th className="px-2 py-1.5 text-left">Responsable</th></tr></thead>
+                <tbody>
+                  {datos.planeacion.map((p, i) => (
+                    <tr key={i} className={`border-t ${t.border}`}>
+                      <td className="px-2 py-1.5">{p.actividad}</td>
+                      <td className="px-2 py-1.5 font-mono">{p.fecha}</td>
+                      <td className="px-2 py-1.5">{p.responsable || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="mb-5">
+          <div className="text-xs font-semibold mb-2">8) Entrega del informe</div>
+          <p className={`text-3xs mb-2 ${t.muted}`}>Las firmas no se generan automáticamente — se firman sobre el documento impreso/PDF.</p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className={`rounded-lg border p-3 ${t.panel3} ${t.border}`}>
+              <div className="text-3xs uppercase text-slate-400 mb-2">Firma elaboró</div>
+              <Field label="Nombre"><TextInput t={t} value={elaboroNombre} onChange={setElaboroNombre} /></Field>
+              <div className="mt-2"><Field label="Cargo"><TextInput t={t} value={elaboroCargo} onChange={setElaboroCargo} /></Field></div>
+            </div>
+            <div className={`rounded-lg border p-3 ${t.panel3} ${t.border}`}>
+              <div className="text-3xs uppercase text-slate-400 mb-2">Firma recibido calidad</div>
+              <Field label="Responsable"><TextInput t={t} value={recibioNombre} onChange={setRecibioNombre} /></Field>
+              <div className="mt-2"><Field label="Cargo"><TextInput t={t} value={recibioCargo} onChange={setRecibioCargo} /></Field></div>
+              <div className="mt-2"><Field label="Fecha de recepción"><TextInput t={t} type="date" value={fechaEntrega} onChange={setFechaEntrega} /></Field></div>
+            </div>
+          </div>
+        </div>
+
+        <div className={`flex justify-end gap-2 pt-3 border-t ${t.border}`}>
+          <Button variant="outline" t={t} onClick={onClose}>Cerrar</Button>
+          <Button variant="primary" accent={accent} icon={Download} iconSize={13} onClick={generar}>Generar PDF</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent, t, readOnly }) {
   const existing = record.reporteTecnico || {};
   const docControl = docControlDe(equipo.empresa);
@@ -3636,10 +4231,47 @@ function ReportesPage({ t, accent, onExport, equipos, reportesFalla }) {
   const [informeMes, setInformeMes] = useState(hoy.getMonth());
   const [informeAnio, setInformeAnio] = useState(hoy.getFullYear());
 
+  const macromed = companyOf('MACROMED');
+  const [f140Mes, setF140Mes] = useState(hoy.getMonth());
+  const [f140Anio, setF140Anio] = useState(hoy.getFullYear());
+  const [showF140, setShowF140] = useState(false);
+
   return (
     <div>
       <h1 className="text-lg font-bold mb-4">Reportes</h1>
       <p className={`text-xs mb-5 ${t.muted}`}>Exporta el inventario completo con todos los datos actuales a Excel, o genera el informe mensual de gestión con gráficas por empresa.</p>
+
+      <div className={`rounded-xl border p-4 mb-5 overflow-hidden relative ${t.panel} ${t.border}`}>
+        <div className="h-1 absolute top-0 left-0 right-0" style={{ background: macromed.gradient }} />
+        <div className="flex items-center gap-2 mb-1 pt-1">
+          <IdCard size={16} style={{ color: macromed.color }} />
+          <span className="text-sm font-bold">F140 · Informe de Gestión — MACROMED</span>
+          <Badge color={macromed.color}>Piloto</Badge>
+        </div>
+        <p className={`text-2xs mb-3 ${t.muted}`}>
+          Diligencia el formato oficial F140 con los datos reales de MACROMED del mes seleccionado: cronograma de actividades, indicadores, gráficas, acciones de mejora, conclusiones y planeación del siguiente mes. Disponible por ahora únicamente para MACROMED.
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label="Empresa"><TextInput t={t} value="MACROMED" disabled onChange={() => {}} /></Field>
+          <Field label="Mes">
+            <select value={f140Mes} onChange={e => setF140Mes(+e.target.value)} className={`rounded-md px-2.5 py-1.5 text-xs border ${t.input}`}>
+              {MONTHS.map(m => <option key={m.idx} value={m.idx}>{m.full}</option>)}
+            </select>
+          </Field>
+          <Field label="Año">
+            <input type="number" value={f140Anio} onChange={e => setF140Anio(+e.target.value)}
+              className={`w-24 rounded-md px-2.5 py-1.5 text-xs border ${t.input}`} />
+          </Field>
+          <Button variant="primary" accent={macromed.color} icon={Eye} iconSize={13} onClick={() => setShowF140(true)}>
+            Vista previa del informe
+          </Button>
+        </div>
+      </div>
+
+      {showF140 && (
+        <InformeF140Modal empresaKey="MACROMED" monthIdx={f140Mes} year={f140Anio} equipos={equipos} reportesFalla={reportesFalla}
+          t={t} accent={macromed.color} onClose={() => setShowF140(false)} />
+      )}
 
       <div className={`rounded-xl border p-4 mb-5 ${t.panel} ${t.border}`}>
         <div className="flex items-center gap-2 mb-1">
