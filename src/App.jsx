@@ -373,6 +373,261 @@ function generarReportePDF(equipo, tipoKey, rep) {
   setTimeout(() => win.print(), 350);
 }
 
+/* ---------------------------------------------------------------- */
+/* INFORME MENSUAL DE GESTIÓN (PDF) — gráficas dinámicas por empresa  */
+/* Igual que generarReportePDF: se abre en una ventana nueva con HTML */
+/* propio y se imprime (Guardar como PDF). Las gráficas van como SVG  */
+/* embebido dentro de ese mismo documento — lo que se ve es lo que    */
+/* queda en el PDF, no una vista aparte que luego desaparece.         */
+/* ---------------------------------------------------------------- */
+const SIN_DATOS_INFORME_MSG = 'No existen datos suficientes para generar este indicador durante el periodo seleccionado.';
+
+// Barra horizontal apilada (proporción de un total en 2-3 estados) — Preventivos,
+// Calibraciones y Reportes de falla comparten esta misma gráfica.
+function svgStackedBar(segments, width = 520) {
+  const barHeight = 30;
+  const total = segments.reduce((a, s) => a + s.value, 0);
+  if (!total) return '';
+  let x = 0;
+  const rects = segments.filter(s => s.value > 0).map(s => {
+    const w = (s.value / total) * width;
+    const label = w > 30
+      ? `<text x="${(x + w / 2).toFixed(1)}" y="${barHeight / 2 + 4}" text-anchor="middle" font-size="12" fill="#fff" font-family="Arial,Helvetica,sans-serif" font-weight="bold">${s.value}</text>`
+      : '';
+    const rect = `<rect x="${x.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="${barHeight}" fill="${s.color}" />${label}`;
+    x += w;
+    return rect;
+  }).join('');
+  const legend = segments.map(s => `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:16px;">` +
+    `<span style="width:9px;height:9px;border-radius:2px;background:${s.color};display:inline-block;"></span>` +
+    `<span style="font-size:10.5px;color:#334155;">${s.label} (${s.value})</span></span>`).join('');
+  return `<div style="margin:8px 0 4px;">` +
+    `<svg width="100%" viewBox="0 0 ${width} ${barHeight}" style="max-width:${width}px; display:block; border-radius:5px; overflow:hidden;">${rects}</svg>` +
+    `<div style="margin-top:9px;">${legend}</div></div>`;
+}
+
+// Barras verticales agrupadas por categoría (clasificación de riesgo), con ejecutados
+// apilados sobre pendientes — usada por Correctivos. Usa el color de marca de la MISMA
+// empresa del informe (nunca el de otra empresa).
+function svgCategoryBars(groups, brandColor, width = 520) {
+  if (!groups.length) return '';
+  const height = 170, padBottom = 30, padTop = 22, gap = 22;
+  const chartH = height - padBottom - padTop;
+  const max = Math.max(...groups.map(g => g.ejecutados + g.pendientes), 1);
+  const bw = Math.min(70, (width - gap * (groups.length + 1)) / groups.length);
+  const usedWidth = gap * (groups.length + 1) + bw * groups.length;
+  const offsetX = Math.max(0, (width - usedWidth) / 2);
+  let bars = '';
+  groups.forEach((g, i) => {
+    const x = offsetX + gap + i * (bw + gap);
+    const total = g.ejecutados + g.pendientes;
+    const totalH = (total / max) * chartH;
+    const ejH = (g.ejecutados / max) * chartH;
+    const yTop = padTop + (chartH - totalH);
+    const yEjTop = padTop + (chartH - ejH);
+    bars += `<rect x="${x.toFixed(1)}" y="${yTop.toFixed(1)}" width="${bw.toFixed(1)}" height="${totalH.toFixed(1)}" fill="${brandColor}33" />`;
+    bars += `<rect x="${x.toFixed(1)}" y="${yEjTop.toFixed(1)}" width="${bw.toFixed(1)}" height="${ejH.toFixed(1)}" fill="${brandColor}" />`;
+    bars += `<text x="${(x + bw / 2).toFixed(1)}" y="${height - padBottom + 14}" text-anchor="middle" font-size="10.5px" fill="#334155" font-family="Arial,Helvetica,sans-serif">${g.label}</text>`;
+    if (total > 0) bars += `<text x="${(x + bw / 2).toFixed(1)}" y="${(yTop - 5).toFixed(1)}" text-anchor="middle" font-size="10.5px" fill="#1e293b" font-family="Arial,Helvetica,sans-serif" font-weight="bold">${total}</text>`;
+  });
+  const legend = `<div style="margin-top:6px;">` +
+    `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:16px;"><span style="width:9px;height:9px;border-radius:2px;background:${brandColor};display:inline-block;"></span><span style="font-size:10.5px;color:#334155;">Ejecutados</span></span>` +
+    `<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;border-radius:2px;background:${brandColor}33;display:inline-block;"></span><span style="font-size:10.5px;color:#334155;">Pendientes</span></span></div>`;
+  return `<div style="margin:8px 0 4px;"><svg width="100%" viewBox="0 0 ${width} ${height}" style="max-width:${width}px; display:block;">${bars}</svg>${legend}</div>`;
+}
+
+// Calcula los 4 indicadores del informe mensual a partir de datos reales — nunca mezcla
+// empresas (todo se filtra por empresaKey) ni meses (todo se filtra por monthIdx/year).
+function computeInformeMensual(empresaKey, monthIdx, year, equipos, reportesFalla) {
+  const equiposEmpresa = (equipos || []).filter(e => e.empresa === empresaKey);
+  const enPeriodo = (fecha) => {
+    if (!fecha) return false;
+    const d = new Date(fecha + 'T00:00:00');
+    return !isNaN(d.getTime()) && d.getFullYear() === year && d.getMonth() === monthIdx;
+  };
+  const mesLabel = `${MONTHS[monthIdx].full} de ${year}`;
+
+  // 1) Preventivos — "programado" = tiene fecha dentro del periodo; el estado ya
+  // guardado en cada registro (Programado/Ejecutado) determina cumplimiento.
+  let prevProgramados = 0, prevEjecutados = 0;
+  equiposEmpresa.forEach(e => (e.preventivos || []).forEach(p => {
+    if (!enPeriodo(p.fecha)) return;
+    prevProgramados++;
+    if (p.estado === 'Ejecutado') prevEjecutados++;
+  }));
+  const prevPendientes = prevProgramados - prevEjecutados;
+  const prevPct = prevProgramados ? Math.round((prevEjecutados / prevProgramados) * 100) : 0;
+  const preventivos = {
+    insufficient: prevProgramados === 0,
+    chart: svgStackedBar([
+      { label: 'Ejecutados', value: prevEjecutados, color: '#22C55E' },
+      { label: 'Pendientes', value: prevPendientes, color: '#F59E0B' },
+    ]),
+    descripcion: `Durante ${mesLabel} se programaron ${prevProgramados} mantenimiento${prevProgramados !== 1 ? 's' : ''} preventivo${prevProgramados !== 1 ? 's' : ''}, de los cuales ${prevEjecutados} fueron ejecutados y ${prevPendientes} quedaron pendientes, alcanzando un porcentaje de cumplimiento del ${prevPct}%.`,
+  };
+
+  // 2) Correctivos — distribución por categoría (clasificación de riesgo) solo cuando
+  // hay más de una categoría representada; si no, la misma barra ejecutados/pendientes.
+  const correctivosPeriodo = [];
+  equiposEmpresa.forEach(e => (e.correctivos || []).forEach(c => {
+    if (!enPeriodo(c.fecha)) return;
+    correctivosPeriodo.push({ ...c, clasificacion: e.clasificacionRiesgo });
+  }));
+  const corrTotal = correctivosPeriodo.length;
+  const corrEjecutados = correctivosPeriodo.filter(c => c.estado === 'Ejecutado').length;
+  const corrPendientes = corrTotal - corrEjecutados;
+  const corrPorCategoria = CLASIFICACIONES
+    .map(cat => ({
+      label: cat,
+      ejecutados: correctivosPeriodo.filter(c => c.clasificacion === cat && c.estado === 'Ejecutado').length,
+      pendientes: correctivosPeriodo.filter(c => c.clasificacion === cat && c.estado !== 'Ejecutado').length,
+    }))
+    .filter(g => g.ejecutados + g.pendientes > 0);
+  const topCategoria = [...corrPorCategoria].sort((a, b) => (b.ejecutados + b.pendientes) - (a.ejecutados + a.pendientes))[0];
+  const correctivos = {
+    insufficient: corrTotal === 0,
+    chart: corrPorCategoria.length > 1
+      ? svgCategoryBars(corrPorCategoria, companyOf(empresaKey).color)
+      : svgStackedBar([
+          { label: 'Ejecutados', value: corrEjecutados, color: '#22C55E' },
+          { label: 'Pendientes', value: corrPendientes, color: '#F59E0B' },
+        ]),
+    descripcion: corrTotal === 0 ? '' : (
+      `Durante ${mesLabel} se registraron ${corrTotal} mantenimiento${corrTotal !== 1 ? 's' : ''} correctivo${corrTotal !== 1 ? 's' : ''}, de los cuales ${corrEjecutados} fueron ejecutados y ${corrPendientes} permanecen pendientes de cierre.` +
+      (corrPorCategoria.length > 1 && topCategoria ? ` La mayor concentración se presentó en equipos de clasificación de riesgo ${topCategoria.label}, con ${topCategoria.ejecutados + topCategoria.pendientes} intervención${(topCategoria.ejecutados + topCategoria.pendientes) !== 1 ? 'es' : ''}.` : '')
+    ),
+  };
+
+  // 3) Calibraciones — "realizadas" es histórico real (fecha dentro del periodo). Las
+  // pendientes/próximas a vencer son SIEMPRE relativas a "hoy": solo tienen sentido
+  // mostrarse cuando el periodo elegido es el mes en curso; para meses pasados no hay
+  // forma honesta de reconstruir ese estado histórico, así que no se inventan.
+  const calibracionesPeriodo = [];
+  equiposEmpresa.forEach(e => (e.calibraciones || []).forEach(c => { if (enPeriodo(c.fecha)) calibracionesPeriodo.push(c); }));
+  const calRealizadas = calibracionesPeriodo.length;
+  const hoy = new Date();
+  const esMesActual = hoy.getFullYear() === year && hoy.getMonth() === monthIdx;
+  let calVencidas = 0, calProximas = 0;
+  if (esMesActual) {
+    equiposEmpresa.forEach(e => {
+      const cs = calibStatus(e);
+      if (cs.status === 'vencido') calVencidas++;
+      else if (cs.status === 'proximo') calProximas++;
+    });
+  }
+  const calibraciones = {
+    insufficient: calRealizadas === 0 && (!esMesActual || (calVencidas === 0 && calProximas === 0)),
+    chart: esMesActual
+      ? svgStackedBar([
+          { label: 'Realizadas', value: calRealizadas, color: '#22C55E' },
+          { label: 'Próximas a vencer', value: calProximas, color: '#F59E0B' },
+          { label: 'Vencidas', value: calVencidas, color: '#EF4444' },
+        ])
+      : svgStackedBar([{ label: 'Realizadas', value: calRealizadas, color: '#22C55E' }]),
+    descripcion: esMesActual
+      ? `Durante ${mesLabel} se realizaron ${calRealizadas} calibraci${calRealizadas !== 1 ? 'ones' : 'ón'}. A la fecha de generación de este informe hay ${calVencidas} equipo${calVencidas !== 1 ? 's' : ''} con calibración vencida y ${calProximas} próximo${calProximas !== 1 ? 's' : ''} a vencer (dentro de los próximos ${CALIBRACION_ALERTA_DIAS} días).`
+      : (calRealizadas > 0
+          ? `Durante ${mesLabel} se realizaron ${calRealizadas} calibraci${calRealizadas !== 1 ? 'ones' : 'ón'} registradas en el sistema. El estado de calibraciones pendientes o próximas a vencer solo puede consultarse para el mes en curso, ya que depende de la fecha vigente del sistema.`
+          : ''),
+  };
+
+  // 4) Reportes de falla — reutiliza exactamente el mismo cálculo de tiempo de
+  // atención que ya usa la página "Reportes de falla" (tiempoRespuestaMs/formatDuracion).
+  const fallasPeriodo = (reportesFalla || []).filter(r => r.empresa === empresaKey && enPeriodo(r.fecha));
+  const fallasReportadas = fallasPeriodo.length;
+  const fallasSolucionadas = fallasPeriodo.filter(r => r.estado === 'Finalizado').length;
+  const fallasPendientes = fallasReportadas - fallasSolucionadas;
+  const resueltasConTiempo = fallasPeriodo.map(r => tiempoRespuestaMs(r)).filter(ms => ms !== null);
+  const promedioMs = resueltasConTiempo.length ? resueltasConTiempo.reduce((a, ms) => a + ms, 0) / resueltasConTiempo.length : null;
+  const fallas = {
+    insufficient: fallasReportadas === 0,
+    chart: svgStackedBar([
+      { label: 'Solucionadas', value: fallasSolucionadas, color: '#22C55E' },
+      { label: 'Pendientes', value: fallasPendientes, color: '#F59E0B' },
+    ]),
+    descripcion: fallasReportadas === 0 ? '' : (
+      `Durante ${mesLabel} se reportaron ${fallasReportadas} falla${fallasReportadas !== 1 ? 's' : ''}, de las cuales ${fallasSolucionadas} fueron solucionadas y ${fallasPendientes} permanecen pendientes.` +
+      (promedioMs !== null ? ` El tiempo promedio de solución fue de ${formatDuracion(promedioMs)}.` : ' Aún no hay fallas solucionadas en el periodo para calcular un tiempo promedio de atención.')
+    ),
+  };
+
+  return { mesLabel, preventivos, correctivos, calibraciones, fallas };
+}
+
+// Construye y abre el informe mensual (ventana nueva + impresión), con la misma
+// mecánica que generarReportePDF. DATOS (tabla superior) → GRÁFICA → INTERPRETACIÓN,
+// una sección por indicador, coherente con la identidad visual de la empresa elegida.
+function generarInformeMensualPDF(empresaKey, monthIdx, year, equipos, reportesFalla) {
+  const co = companyOf(empresaKey);
+  if (!co) return;
+  const datos = computeInformeMensual(empresaKey, monthIdx, year, equipos, reportesFalla);
+  const win = window.open('', '_blank');
+  if (!win) { alert('El navegador bloqueó la ventana emergente. Habilítala para generar el PDF.'); return; }
+
+  const seccion = (titulo, info) => `
+    <h2 class="section">${titulo}</h2>
+    <div class="chart-box">
+      ${info.insufficient ? `<p class="sin-datos">${SIN_DATOS_INFORME_MSG}</p>` : `${info.chart}<p class="interpretacion">${info.descripcion}</p>`}
+    </div>`;
+
+  const totalEquipos = (equipos || []).filter(e => e.empresa === empresaKey).length;
+  const fechaGeneracion = formatFechaHora(new Date().toISOString());
+
+  win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe mensual — ${empresaKey} — ${datos.mesLabel}</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { font-family: Arial, Helvetica, sans-serif; color:#1e293b; padding:30px; font-size:11.5px; }
+      .headwrap { display:flex; justify-content:space-between; align-items:center; border:1.5px solid #1e293b; padding:10px 14px; margin-bottom:14px; gap:12px; }
+      .headleft { display:flex; align-items:center; gap:12px; }
+      .headleft img { max-height:42px; max-width:130px; object-fit:contain; }
+      .headleft .brand { font-size:10px; letter-spacing:.06em; color:${co.color}; font-weight:bold; text-transform:uppercase; }
+      .headleft h1 { font-size:16px; margin:4px 0 2px; text-transform:uppercase; }
+      .headleft .sub { font-size:10.5px; color:#64748b; }
+      .headright { text-align:right; font-size:10.5px; color:#334155; }
+      .headright .periodo { font-size:13px; font-weight:bold; color:${co.color}; text-transform:uppercase; }
+      table.info { width:100%; border-collapse:collapse; margin-bottom:18px; }
+      table.info td { border:1px solid #1e293b; padding:5px 8px; font-size:11px; }
+      table.info td.label { background:#f1f5f9; font-weight:bold; width:20%; }
+      h2.section { font-size:11px; text-transform:uppercase; background:${co.color}; color:#fff; padding:5px 10px; margin:16px 0 0; letter-spacing:.03em; }
+      .chart-box { border:1px solid #1e293b; border-top:none; padding:12px 14px 14px; }
+      .interpretacion { font-size:11px; line-height:1.55; color:#334155; margin:10px 0 0; }
+      .sin-datos { font-size:11px; color:#64748b; font-style:italic; margin:4px 0; }
+      .footer { margin-top:26px; font-size:9.5px; color:#94a3b8; text-align:center; }
+      @media print { body { padding:14px; } h2.section { break-after: avoid; } .chart-box { break-inside: avoid; } }
+    </style></head>
+    <body>
+      <div class="headwrap">
+        <div class="headleft">
+          ${co.logo ? `<img src="${co.logo}" alt="${empresaKey}" />` : ''}
+          <div>
+            <div class="brand">${empresaKey}</div>
+            <h1>Informe mensual de gestión</h1>
+            <div class="sub">GESTIÓN DE EQUIPOS BIOMÉDICOS</div>
+          </div>
+        </div>
+        <div class="headright">
+          <div class="periodo">${datos.mesLabel}</div>
+          <div>Generado el ${fechaGeneracion}</div>
+        </div>
+      </div>
+
+      <table class="info">
+        <tr><td class="label">EMPRESA</td><td>${empresaKey}</td><td class="label">PERIODO</td><td>${datos.mesLabel}</td></tr>
+        <tr><td class="label">EQUIPOS EN INVENTARIO</td><td>${totalEquipos}</td><td class="label">SEDES</td><td>${co.sedes.length}</td></tr>
+      </table>
+
+      ${seccion('1. Mantenimientos preventivos', datos.preventivos)}
+      ${seccion('2. Mantenimientos correctivos', datos.correctivos)}
+      ${seccion('3. Calibraciones', datos.calibraciones)}
+      ${seccion('4. Reportes de falla', datos.fallas)}
+
+      <div class="footer">Informe generado automáticamente por CMMS Biomédico — Ingeniería Clínica · ${empresaKey} · ${datos.mesLabel}</div>
+    </body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 350);
+}
+
 function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent, t, readOnly }) {
   const existing = record.reporteTecnico || {};
   const docControl = docControlDe(equipo.empresa);
@@ -1952,7 +2207,7 @@ function MainApp({ onLogout, readOnly }) {
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
-        {menu === 'reportes' && <ReportesPage equipos={equipos} t={t} accent={accent} onExport={exportExcel} />}
+        {menu === 'reportes' && <ReportesPage equipos={equipos} reportesFalla={reportesFalla} t={t} accent={accent} onExport={exportExcel} />}
         {menu === 'configuracion' && <ConfigPage t={t} accent={accent} onReset={() => { if (confirm('¿Borrar todos los equipos guardados?')) setEquipos([]); }} onLogout={onLogout} alertEmails={alertEmails} setAlertEmails={setAlertEmails} readOnly={readOnly} />}
         </div>
       </div>
@@ -3371,15 +3626,49 @@ function PersonalFormModal({ t, accent, onClose, onSave }) {
   );
 }
 
-function ReportesPage({ t, accent, onExport }) {
+function ReportesPage({ t, accent, onExport, equipos, reportesFalla }) {
   const reportes = [
-    'Reporte mensual', 'Reporte anual', 'Reporte por empresa', 'Reporte por sede',
+    'Reporte anual', 'Reporte por empresa', 'Reporte por sede',
     'Reporte por técnico', 'Reporte de calibraciones', 'Reporte de correctivos', 'Reporte de preventivos',
   ];
+  const hoy = new Date();
+  const [informeEmpresa, setInformeEmpresa] = useState('MACROMED');
+  const [informeMes, setInformeMes] = useState(hoy.getMonth());
+  const [informeAnio, setInformeAnio] = useState(hoy.getFullYear());
+
   return (
     <div>
       <h1 className="text-lg font-bold mb-4">Reportes</h1>
-      <p className={`text-xs mb-5 ${t.muted}`}>Exporta el inventario completo con todos los datos actuales a Excel.</p>
+      <p className={`text-xs mb-5 ${t.muted}`}>Exporta el inventario completo con todos los datos actuales a Excel, o genera el informe mensual de gestión con gráficas por empresa.</p>
+
+      <div className={`rounded-xl border p-4 mb-5 ${t.panel} ${t.border}`}>
+        <div className="flex items-center gap-2 mb-1">
+          <FileBarChart size={16} style={{ color: accent }} />
+          <span className="text-sm font-bold">Informe mensual de gestión</span>
+        </div>
+        <p className={`text-2xs mb-3 ${t.muted}`}>
+          Informe imprimible (PDF) con los datos reales del mes seleccionado — mantenimientos preventivos, correctivos, calibraciones y reportes de falla — cada uno con su gráfica e interpretación automática.
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label="Empresa">
+            <SelectInput t={t} value={informeEmpresa} options={COMPANIES.map(c => c.key)} onChange={setInformeEmpresa} />
+          </Field>
+          <Field label="Mes">
+            <select value={informeMes} onChange={e => setInformeMes(+e.target.value)} className={`rounded-md px-2.5 py-1.5 text-xs border ${t.input}`}>
+              {MONTHS.map(m => <option key={m.idx} value={m.idx}>{m.full}</option>)}
+            </select>
+          </Field>
+          <Field label="Año">
+            <input type="number" value={informeAnio} onChange={e => setInformeAnio(+e.target.value)}
+              className={`w-24 rounded-md px-2.5 py-1.5 text-xs border ${t.input}`} />
+          </Field>
+          <Button variant="primary" accent={accent} icon={FileBarChart} iconSize={13}
+            onClick={() => generarInformeMensualPDF(informeEmpresa, informeMes, informeAnio, equipos, reportesFalla)}>
+            Generar informe
+          </Button>
+        </div>
+      </div>
+
       <div className="grid md:grid-cols-2 gap-3">
         {reportes.map(r => (
           <div key={r} className={`rounded-lg border p-4 flex items-center justify-between ${t.panel} ${t.border}`}>
