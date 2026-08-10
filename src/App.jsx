@@ -3,7 +3,8 @@ import {
   Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X, Menu,
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, Mail, AlertTriangle, Lock,
-  User, Eye, EyeOff, Image as ImageIcon, FolderOpen
+  User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
+  CheckCircle2, AlertCircle, BookOpen, MapPin
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -131,6 +132,7 @@ const MENU = [
   { key: 'alertas', label: 'Alertas', icon: BellRing },
   { key: 'fallas', label: 'Reportes de falla', icon: AlertTriangle },
   { key: 'planes', label: 'Planes y programas', icon: FolderOpen },
+  { key: 'tecnovigilancia', label: 'Tecnovigilancia', icon: ShieldAlert },
   { key: 'empresas', label: 'Empresas', icon: Building2 },
   { key: 'inventario', label: 'Inventario', icon: ListTree },
   { key: 'mantenimientos', label: 'Mantenimientos', icon: CalendarClock },
@@ -579,6 +581,44 @@ const PLANES_CATEGORIAS = [
     { key: 'programaCapacitaciones', label: 'Programa de capacitaciones' },
     { key: 'planCapacitaciones', label: 'Plan de capacitaciones' },
   ] },
+];
+
+// Tecnovigilancia — documentación transversal (única, compartida por todas las empresas)
+// y reportes trimestrales que sí se organizan por empresa · sede · año.
+const TECNO_TRANSVERSAL_KEY = 'cmms-tecno-transversal';
+async function loadTecnoTransversal() {
+  try {
+    const raw = localStorage.getItem(TECNO_TRANSVERSAL_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* sin datos aún */ }
+  return {};
+}
+async function saveTecnoTransversal(data) {
+  try { localStorage.setItem(TECNO_TRANSVERSAL_KEY, JSON.stringify(data)); }
+  catch (e) { console.error('Error guardando documentación transversal de tecnovigilancia', e); }
+}
+const TECNO_DOCS = [
+  { key: 'invima', label: 'ABC-Tecnovigilancia-INVIMA', icon: FileText },
+  { key: 'manual', label: 'DLC-GEB-MN-01 — Manual de Tecnovigilancia', icon: BookOpen },
+];
+
+const TECNO_REPORTES_KEY = 'cmms-tecno-reportes';
+async function loadTecnoReportes() {
+  try {
+    const raw = localStorage.getItem(TECNO_REPORTES_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* sin datos aún */ }
+  return {};
+}
+async function saveTecnoReportes(data) {
+  try { localStorage.setItem(TECNO_REPORTES_KEY, JSON.stringify(data)); }
+  catch (e) { console.error('Error guardando reportes de tecnovigilancia', e); }
+}
+const TECNO_TRIMESTRES = [
+  { key: 't1', label: '1.er trimestre' },
+  { key: 't2', label: '2.º trimestre' },
+  { key: 't3', label: '3.er trimestre' },
+  { key: 't4', label: '4.º trimestre' },
 ];
 function newReporte(empresa, sede) {
   return {
@@ -1567,6 +1607,10 @@ function MainApp({ onLogout, readOnly }) {
   const [reportesLoaded, setReportesLoaded] = useState(false);
   const [planesProgramas, setPlanesProgramas] = useState({});
   const [planesLoaded, setPlanesLoaded] = useState(false);
+  const [tecnoTransversal, setTecnoTransversal] = useState({});
+  const [tecnoTransversalLoaded, setTecnoTransversalLoaded] = useState(false);
+  const [tecnoReportes, setTecnoReportes] = useState({});
+  const [tecnoReportesLoaded, setTecnoReportesLoaded] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => { loadEquipos().then(d => { setEquipos(d); setLoaded(true); }); }, []);
@@ -1600,6 +1644,20 @@ function MainApp({ onLogout, readOnly }) {
   useEffect(() => { if (planesLoaded) savePlanesProgramas(planesProgramas); }, [planesProgramas, planesLoaded]);
   const updatePlanPrograma = (empresaKey, campo, valor) =>
     setPlanesProgramas(prev => ({ ...prev, [empresaKey]: { ...(prev[empresaKey] || {}), [campo]: valor } }));
+
+  useEffect(() => { loadTecnoTransversal().then(d => { setTecnoTransversal(d); setTecnoTransversalLoaded(true); }); }, []);
+  useEffect(() => { if (tecnoTransversalLoaded) saveTecnoTransversal(tecnoTransversal); }, [tecnoTransversal, tecnoTransversalLoaded]);
+  const updateTecnoTransversal = (docKey, valor) => setTecnoTransversal(prev => ({ ...prev, [docKey]: valor }));
+
+  useEffect(() => { loadTecnoReportes().then(d => { setTecnoReportes(d); setTecnoReportesLoaded(true); }); }, []);
+  useEffect(() => { if (tecnoReportesLoaded) saveTecnoReportes(tecnoReportes); }, [tecnoReportes, tecnoReportesLoaded]);
+  const updateTecnoReporte = (empresaKey, sede, anio, trimestre, valor) =>
+    setTecnoReportes(prev => {
+      const emp = prev[empresaKey] || {};
+      const sedeObj = emp[sede] || {};
+      const anioObj = sedeObj[anio] || {};
+      return { ...prev, [empresaKey]: { ...emp, [sede]: { ...sedeObj, [anio]: { ...anioObj, [trimestre]: valor } } } };
+    });
 
   // Notificación automática de preventivos/calibraciones próximos a vencer o vencidos.
   // Corre cada vez que cambian los equipos o los correos configurados. No hay backend con
@@ -1809,6 +1867,7 @@ function MainApp({ onLogout, readOnly }) {
         )}
         {menu === 'fallas' && <ReportesFallaPage reportes={reportesFalla} t={t} accent={accent} onUpdate={updateReporte} readOnly={readOnly} />}
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
+        {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'reportes' && <ReportesPage equipos={equipos} t={t} accent={accent} onExport={exportExcel} />}
         {menu === 'configuracion' && <ConfigPage t={t} accent={accent} onReset={() => { if (confirm('¿Borrar todos los equipos guardados?')) setEquipos([]); }} onLogout={onLogout} alertEmails={alertEmails} setAlertEmails={setAlertEmails} readOnly={readOnly} />}
         </div>
@@ -2860,6 +2919,178 @@ function PlanesProgramasPage({ planesProgramas, t, onUpdate, readOnly }) {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// Tecnovigilancia: documentación transversal (compartida por todas las empresas) +
+// reportes trimestrales que se consultan empresa → sede → año → trimestre.
+function TecnovigilanciaPage({ transversal, reportes, t, accent, onUpdateTransversal, onUpdateReporte, readOnly }) {
+  const [empresaSel, setEmpresaSel] = useState(null);
+  const [sedeSel, setSedeSel] = useState(null);
+  const [anio, setAnio] = useState(new Date().getFullYear());
+  const [openTrimestre, setOpenTrimestre] = useState(null);
+
+  const cargadosTransversal = TECNO_DOCS.filter(d => transversal[d.key]).length;
+
+  const totalSedes = COMPANIES.reduce((acc, c) => acc + c.sedes.length, 0);
+  const anioActual = new Date().getFullYear();
+  let cargadosAnioActual = 0;
+  COMPANIES.forEach(c => {
+    c.sedes.forEach(sede => {
+      const anioData = reportes?.[c.key]?.[sede]?.[anioActual];
+      if (anioData) TECNO_TRIMESTRES.forEach(tr => { if (anioData[tr.key]) cargadosAnioActual++; });
+    });
+  });
+  const totalSlotsAnioActual = totalSedes * TECNO_TRIMESTRES.length;
+  const pendientesAnioActual = totalSlotsAnioActual - cargadosAnioActual;
+
+  const empresa = empresaSel ? companyOf(empresaSel) : null;
+  const anioData = (empresaSel && sedeSel) ? (reportes?.[empresaSel]?.[sedeSel]?.[anio] || {}) : {};
+
+  const resetSede = () => { setSedeSel(null); setOpenTrimestre(null); };
+  const resetEmpresa = () => { setEmpresaSel(null); setSedeSel(null); setOpenTrimestre(null); };
+
+  return (
+    <div>
+      <h1 className="text-lg font-bold mb-1 flex items-center gap-2">
+        <ShieldAlert size={19} style={{ color: accent }} /> Tecnovigilancia
+      </h1>
+      <p className={`text-xs mb-5 ${t.muted}`}>Documentación transversal y reportes trimestrales de tecnovigilancia por empresa y sede.</p>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <HeroStat t={t} label="Documentos transversales" color={accent}
+          value={`${cargadosTransversal}/${TECNO_DOCS.length}`} sub="cargados" />
+        <HeroStat t={t} label="Empresas" color={accent}
+          value={COMPANIES.length} sub="con módulo de tecnovigilancia" />
+        <HeroStat t={t} label="Reportes del año" color="#22C55E"
+          value={cargadosAnioActual} sub={`${anioActual} · de ${totalSlotsAnioActual} esperados`} />
+        <HeroStat t={t} label="Reportes pendientes" color="#F59E0B"
+          value={pendientesAnioActual} sub={`${anioActual} · trimestres sin cargar`} />
+      </div>
+
+      <div className="mb-6">
+        <div className="text-xs font-semibold uppercase tracking-wide mb-3">Documentación transversal</div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          {TECNO_DOCS.map(doc => {
+            const Icon = doc.icon;
+            return (
+              <div key={doc.key} className={`rounded-xl border overflow-hidden shadow-sm hover:shadow-md transition ${t.panel} ${t.border}`}>
+                <div className="h-1" style={{ background: accent }} />
+                <div className="p-4">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: accent + '1A', color: accent }}>
+                      <Icon size={18} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold wrap-break-word">{doc.label}</div>
+                      <div className={`text-2xs mt-0.5 ${t.muted}`}>Documento transversal</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex-1 min-w-40">
+                      <TextInput t={t} value={transversal[doc.key]} disabled={readOnly} placeholder="URL del documento"
+                        onChange={v => onUpdateTransversal(doc.key, v)} />
+                    </div>
+                    <PdfLink url={transversal[doc.key]} t={t} title={doc.label} emptyLabel="Documento no cargado" />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-wide mb-3">Reportes de tecnovigilancia</div>
+
+        {!empresaSel && (
+          <div>
+            <p className={`text-2xs mb-3 ${t.muted}`}>Selecciona una empresa para consultar sus reportes.</p>
+            <div className="grid md:grid-cols-3 gap-4">
+              {COMPANIES.map(c => (
+                <button key={c.key} onClick={() => setEmpresaSel(c.key)}
+                  className={`text-left rounded-xl border overflow-hidden hover:-translate-y-0.5 transition ${t.panel} ${t.border}`}>
+                  <div className="h-2" style={{ background: c.gradient }} />
+                  <div className="p-5">
+                    <div className="text-sm font-bold" style={{ color: c.color }}>{c.key}</div>
+                    <div className={`text-2xs mt-1 ${t.muted}`}>{c.sedes.length} sede{c.sedes.length !== 1 ? 's' : ''}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {empresaSel && !sedeSel && (
+          <div>
+            <button onClick={resetEmpresa} className={`text-2xs font-mono uppercase mb-3 hover:underline ${t.muted}`}>← Cambiar empresa</button>
+            <div className="text-sm font-bold mb-3" style={{ color: empresa.color }}>{empresa.key}</div>
+            <p className={`text-2xs mb-3 ${t.muted}`}>Selecciona una sede.</p>
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {empresa.sedes.map(sede => (
+                <button key={sede} onClick={() => setSedeSel(sede)}
+                  className={`flex items-center gap-2 rounded-xl border p-3 text-left hover:-translate-y-0.5 transition ${t.panel} ${t.border}`}>
+                  <MapPin size={15} style={{ color: empresa.color }} />
+                  <span className="text-xs font-semibold">{sede}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {empresaSel && sedeSel && (
+          <div>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-3 text-2xs font-mono uppercase">
+              <button onClick={resetEmpresa} className={`hover:underline ${t.muted}`}>Empresa</button>
+              <span className={t.muted}>/</span>
+              <button onClick={resetSede} className={`hover:underline ${t.muted}`}>{empresa.key}</button>
+              <span className={t.muted}>/</span>
+              <span style={{ color: empresa.color }}>{sedeSel}</span>
+            </div>
+
+            <div className="flex items-center gap-3 mb-4">
+              <button onClick={() => setAnio(a => a - 1)} className={`w-7 h-7 flex items-center justify-center rounded-md border ${t.border} ${t.muted} hover:opacity-70`}>
+                <ChevronLeft size={14} />
+              </button>
+              <span className="text-sm font-bold font-mono">{anio}</span>
+              <button onClick={() => setAnio(a => a + 1)} className={`w-7 h-7 flex items-center justify-center rounded-md border ${t.border} ${t.muted} hover:opacity-70`}>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {TECNO_TRIMESTRES.map(tr => {
+                const url = anioData[tr.key];
+                const cargado = !!url;
+                const open = openTrimestre === tr.key;
+                return (
+                  <div key={tr.key} className={`rounded-xl border overflow-hidden shadow-sm ${t.panel} ${t.border}`}>
+                    <button onClick={() => setOpenTrimestre(open ? null : tr.key)} className="w-full text-left p-4">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="text-xs font-semibold">{tr.label}</span>
+                        {cargado
+                          ? <CheckCircle2 size={16} style={{ color: '#22C55E' }} />
+                          : <AlertCircle size={16} style={{ color: '#F59E0B' }} />}
+                      </div>
+                      <span className="text-2xs font-medium" style={{ color: cargado ? '#22C55E' : '#F59E0B' }}>
+                        {cargado ? 'Cargado' : 'Pendiente'}
+                      </span>
+                    </button>
+                    {open && (
+                      <div className={`p-3 border-t space-y-2 ${t.border} ${t.panel3}`}>
+                        <TextInput t={t} value={url} disabled={readOnly} placeholder="URL del reporte"
+                          onChange={v => onUpdateReporte(empresaSel, sedeSel, anio, tr.key, v)} />
+                        <PdfLink url={url} t={t} title={`${tr.label} · ${sedeSel}`} emptyLabel="Documento no cargado" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
