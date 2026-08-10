@@ -4,7 +4,7 @@ import {
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, Mail, AlertTriangle, Lock,
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
-  CheckCircle2, AlertCircle, BookOpen, MapPin
+  CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -1225,34 +1225,65 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
     }
   };
 
-  const BENEFICIOS = [
-    { icon: ListTree, label: 'Inventario Inteligente', desc: 'Control total de tus equipos biomédicos.' },
-    { icon: Wrench, label: 'Mantenimientos Preventivos', desc: 'Programa y asegura el rendimiento.' },
-    { icon: ShieldCheck, label: 'Calibraciones', desc: 'Cumple con estándares y normativas.' },
-    { icon: FileBarChart, label: 'Reportes Técnicos', desc: 'Información clara para mejores decisiones.' },
+  // Constelación decorativa alrededor del logo — puramente visual (sin texto, sin
+  // datos), evoca ingeniería biomédica / tecnología / conectividad / equipos médicos /
+  // gestión de información. A propósito NO es una grilla de 4 tarjetas.
+  const DECOR_ICONS = [
+    { Icon: Activity, style: { top: '6%', left: '2%' }, size: 34, color: '#2F8FD1', delay: '0s' },
+    { Icon: Cpu, style: { top: '2%', right: '10%' }, size: 30, color: '#3CAA55', delay: '.7s' },
+    { Icon: HeartPulse, style: { bottom: '22%', left: '-2%' }, size: 32, color: '#F2994A', delay: '1.3s' },
+    { Icon: Share2, style: { bottom: '10%', right: '4%' }, size: 30, color: '#4FC3E7', delay: '.4s' },
+    { Icon: Database, style: { top: '46%', right: '-4%' }, size: 28, color: '#173B6C', delay: '1s' },
   ];
 
   return (
-    <div className="min-h-dvh flex items-center justify-center p-4 lg:p-8" style={{ fontFamily: "'IBM Plex Sans', sans-serif", background: 'linear-gradient(160deg, #EDF6FB 0%, #F3FAF6 55%, #FFFFFF 100%)' }}>
+    <div className="min-h-dvh flex items-center justify-center p-4 lg:p-8 relative overflow-hidden"
+      style={{ fontFamily: "'IBM Plex Sans', sans-serif", background: 'linear-gradient(160deg, #EAF5FB 0%, #F4FAF6 45%, #FFFFFF 75%, #EEF8F1 100%)' }}>
       <style>{`
         @keyframes login-card-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes login-field-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes illus-float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
+        @keyframes decor-float { 0%, 100% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-7px) scale(1.04); } }
+        @keyframes bg-drift { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(14px, -10px); } }
+        @keyframes glow-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.6; } }
         .login-card-wrap { width: 100%; animation: login-card-in .5s ease both; }
-        @media (min-width: 1024px) { .login-card-wrap { width: 80%; max-width: 1180px; } }
-        .login-illus { animation: illus-float 5s ease-in-out infinite; }
-        .login-benefit:hover { transform: translateY(-3px); box-shadow: 0 14px 28px -10px rgba(15,23,42,0.18); }
-        .login-input:focus { box-shadow: 0 0 0 3px rgba(47,143,209,0.22); border-color: #2F8FD1; }
-        .login-btn-primary { background: linear-gradient(135deg, #173B6C 0%, #2F8FD1 100%); transition: filter 250ms ease, transform 250ms ease; }
-        .login-btn-primary:hover { filter: brightness(1.08); }
+        @media (min-width: 1024px) { .login-card-wrap { width: 82%; max-width: 1180px; } }
+        .login-illus { animation: illus-float 5.5s ease-in-out infinite; }
+        .login-decor { animation: decor-float 6.5s ease-in-out infinite; }
+        .login-glow { animation: glow-pulse 5s ease-in-out infinite; }
+        .login-bg-blob { animation: bg-drift 16s ease-in-out infinite; }
+        .login-field-in { animation: login-field-in .5s ease both; }
+        .login-input { background: #F8FAFC; border-color: #E2E8F0; }
+        .login-input:hover { border-color: #CBD5E1; }
+        .login-input:focus { background: #FFFFFF; box-shadow: 0 0 0 3px rgba(47,143,209,0.16); border-color: #2F8FD1; }
+        .login-btn-primary { background: linear-gradient(135deg, #173B6C 0%, #2F8FD1 60%, #3CAA55 130%); box-shadow: 0 16px 32px -14px rgba(23,59,108,0.45); transition: filter 250ms ease, transform 250ms ease, box-shadow 250ms ease; }
+        .login-btn-primary:hover { filter: brightness(1.08); box-shadow: 0 20px 36px -14px rgba(23,59,108,0.55); }
+        .login-btn-primary:hover .login-btn-arrow { transform: translateX(3px); }
         .login-btn-primary:active { transform: scale(0.98); }
+        .login-btn-arrow { transition: transform 200ms ease; }
+        .login-btn-report { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); box-shadow: 0 12px 24px -10px rgba(217,119,6,0.4); }
+        .login-btn-report:hover { filter: brightness(1.06); box-shadow: 0 16px 28px -10px rgba(217,119,6,0.5); }
         .login-fast { transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease, background-color 200ms ease, color 200ms ease; }
+        .login-dotgrid { background-image: radial-gradient(circle, #17417a20 1px, transparent 1px); background-size: 26px 26px; }
+        @media (prefers-reduced-motion: reduce) {
+          .login-illus, .login-decor, .login-glow, .login-bg-blob, .login-card-wrap, .login-field-in { animation: none; }
+        }
       `}</style>
 
-      <div className="login-card-wrap flex flex-col lg:flex-row bg-white overflow-hidden" style={{ borderRadius: 28, boxShadow: '0 30px 70px -20px rgba(15,23,42,0.25)' }}>
+      {/* Fondo ambiental de toda la pantalla — degradado institucional + formas
+          translúcidas a la deriva + patrón de puntos muy discreto (profundidad sin ruido) */}
+      <div className="absolute inset-0 pointer-events-none login-dotgrid opacity-40" aria-hidden="true" />
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+        <div className="login-bg-blob absolute rounded-full" style={{ width: '30rem', height: '30rem', top: '-12rem', left: '-8rem', background: '#2F8FD1', opacity: 0.16, filter: 'blur(90px)' }} />
+        <div className="login-bg-blob absolute rounded-full" style={{ width: '26rem', height: '26rem', bottom: '-10rem', right: '-6rem', background: '#3CAA55', opacity: 0.14, filter: 'blur(90px)', animationDelay: '2s' }} />
+        <div className="login-bg-blob absolute rounded-full" style={{ width: '18rem', height: '18rem', bottom: '10%', left: '8%', background: '#6EC6EA', opacity: 0.12, filter: 'blur(80px)', animationDelay: '4s' }} />
+      </div>
+
+      <div className="login-card-wrap flex flex-col lg:flex-row bg-white overflow-hidden relative" style={{ borderRadius: 28, boxShadow: '0 30px 70px -20px rgba(15,23,42,0.25)' }}>
 
         {/* LADO IZQUIERDO — identidad institucional (logo Ingeniería Clínica) */}
         <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col justify-between gap-6 p-10"
-          style={{ background: 'linear-gradient(180deg, #F2F9FC 0%, #FFFFFF 50%)' }}>
+          style={{ background: 'linear-gradient(180deg, #F2F9FC 0%, #FFFFFF 55%, #F4FAF6 100%)' }}>
 
           {/* formas orgánicas de fondo — paleta institucional */}
           <div className="absolute -top-24 -left-28 w-96 h-96" style={{ background: 'linear-gradient(135deg, #4FC3E7 0%, #BFE6F5 100%)', opacity: 0.45, borderRadius: '62% 38% 55% 45% / 48% 42% 58% 52%' }} />
@@ -1278,28 +1309,28 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
             <h1 className="text-5xl font-extrabold tracking-tight" style={{ color: '#173B6C' }}>BIENVENIDO</h1>
             <div className="w-12 h-1 rounded-full mt-3 mb-4" style={{ background: 'linear-gradient(90deg, #173B6C 0%, #3CAA55 100%)' }} />
             <p className="text-lg leading-snug">
-              <span className="text-slate-700">Sistema Integral para la</span><br />
-              <span className="font-bold" style={{ color: '#3CAA55' }}>Gestión de Equipos Biomédicos</span>
+              <span className="font-bold" style={{ color: '#173B6C' }}>Sistema Integral para la Gestión</span><br />
+              <span className="font-bold" style={{ color: '#3CAA55' }}>de Equipos Biomédicos</span>
             </p>
             <p className="text-sm text-slate-500 mt-3 max-w-sm">Controla, gestiona y optimiza el ciclo de vida de tus equipos biomédicos de forma inteligente y eficiente.</p>
           </div>
 
-          {/* LOGO — elemento principal de la pantalla */}
-          <div className="login-illus relative flex-1 flex items-center justify-center min-h-[170px]">
-            <LogoMark size={168} />
-          </div>
-
-          {/* highlights de producto — sin cifras ficticias */}
-          <div className="relative grid grid-cols-2 gap-3 max-w-sm">
-            {BENEFICIOS.map(({ icon: Icon, label, desc }) => (
-              <div key={label} className="login-benefit login-fast rounded-2xl bg-white/85 p-3.5" style={{ boxShadow: '0 8px 20px -8px rgba(23,59,108,0.14)' }}>
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-2" style={{ background: '#E7F4FB' }}>
-                  <Icon size={15} style={{ color: '#2F8FD1' }} />
+          {/* LOGO — elemento principal de la pantalla, con halo y constelación decorativa.
+              Los íconos decorativos se anclan a una caja del mismo tamaño visual del logo
+              (no al alto completo del panel), para que la constelación quede pegada a la marca. */}
+          <div className="relative flex-1 flex items-center justify-center min-h-57.5">
+            <div className="relative" style={{ width: 320, height: 300 }}>
+              <div className="login-glow absolute rounded-full" style={{ width: 260, height: 260, left: '50%', top: '44%', transform: 'translate(-50%, -50%)', background: 'radial-gradient(circle, rgba(47,143,209,0.18) 0%, rgba(60,170,85,0.10) 55%, transparent 75%)' }} aria-hidden="true" />
+              {DECOR_ICONS.map(({ Icon, style, size, color, delay }, i) => (
+                <div key={i} className="login-decor absolute rounded-2xl flex items-center justify-center"
+                  style={{ ...style, width: size, height: size, background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)', boxShadow: '0 10px 22px -10px rgba(23,59,108,0.28)', animationDelay: delay }}>
+                  <Icon size={size * 0.5} style={{ color }} />
                 </div>
-                <div className="text-xs font-bold text-slate-800 leading-tight">{label}</div>
-                <div className="text-2xs text-slate-400 mt-1 leading-snug">{desc}</div>
+              ))}
+              <div className="login-illus absolute inset-0 flex items-center justify-center z-10">
+                <LogoMark size={190} />
               </div>
-            ))}
+            </div>
           </div>
         </div>
 
@@ -1312,27 +1343,27 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
             <p className="text-xs text-slate-400 mt-1 mb-7">Inicie sesión para continuar.</p>
 
             <form onSubmit={submit} className="space-y-4">
-              <div>
+              <div className="login-field-in">
                 <label className="text-3xs uppercase tracking-wide text-slate-500 font-semibold">Usuario</label>
-                <div className="relative mt-1">
-                  <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <div className="relative mt-1.5">
+                  <User size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     autoFocus value={user} onChange={e => { setUser(e.target.value); setError(''); }}
-                    className="login-input login-fast w-full rounded-lg pl-9 pr-3 py-2.5 text-sm bg-slate-50 border border-slate-200 text-slate-800 outline-none"
+                    className="login-input login-fast w-full rounded-xl pl-10 pr-3 py-3 text-sm border text-slate-800 outline-none"
                   />
                 </div>
               </div>
 
-              <div>
+              <div className="login-field-in" style={{ animationDelay: '.06s' }}>
                 <label className="text-3xs uppercase tracking-wide text-slate-500 font-semibold">Contraseña</label>
-                <div className="relative mt-1">
-                  <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <div className="relative mt-1.5">
+                  <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type={showPass ? 'text' : 'password'} value={pass} onChange={e => { setPass(e.target.value); setError(''); }}
-                    className="login-input login-fast w-full rounded-lg pl-9 pr-9 py-2.5 text-sm bg-slate-50 border border-slate-200 text-slate-800 outline-none"
+                    className="login-input login-fast w-full rounded-xl pl-10 pr-10 py-3 text-sm border text-slate-800 outline-none"
                   />
                   <button type="button" onClick={() => setShowPass(s => !s)} aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    className="login-fast absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                     {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
@@ -1345,18 +1376,18 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
               </label>
 
               {error && (
-                <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
                   <AlertTriangle size={13} className="shrink-0" /> {error}
                 </div>
               )}
 
-              <button type="submit" className="login-btn-primary w-full rounded-lg py-2.5 text-sm font-semibold text-white">
-                Iniciar sesión
+              <button type="submit" className="login-btn-primary w-full rounded-xl py-3 text-sm font-semibold text-white flex items-center justify-center gap-1.5">
+                Iniciar sesión <ArrowRight size={15} className="login-btn-arrow" />
               </button>
             </form>
 
             <button type="button" onClick={onGuest}
-              className="login-fast w-full mt-3 rounded-lg py-2.5 text-sm font-semibold border border-slate-200 text-slate-600 hover:border-sky-300 hover:text-sky-700 hover:bg-sky-50/50">
+              className="login-fast w-full mt-3 rounded-xl py-3 text-sm font-semibold border border-slate-200 text-slate-600 hover:border-sky-300 hover:text-sky-700 hover:bg-sky-50/50">
               Ingresar como Invitado
             </button>
 
@@ -1367,15 +1398,16 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
             </div>
 
             <button onClick={onReportarFalla} type="button"
-              className="login-fast w-full mt-2 rounded-lg py-3 text-sm font-bold text-white flex items-center justify-center gap-2 shadow-sm"
-              style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' }}>
+              className="login-fast login-btn-report w-full mt-2 rounded-xl py-3 text-sm font-bold text-white flex items-center justify-center gap-2">
               <Wrench size={16} /> Reportar una falla de equipo
             </button>
 
-            <div className="flex items-center gap-1.5 justify-center text-2xs text-slate-400 mt-6">
-              <Lock size={11} /> Conexión segura — Los datos están protegidos.
+            <div className="flex items-center justify-center gap-3 text-3xs text-slate-400 mt-6">
+              <span className="flex items-center gap-1"><Lock size={10} /> Conexión segura</span>
+              <span className="text-slate-300">·</span>
+              <span className="flex items-center gap-1"><ShieldCheck size={10} /> Datos protegidos</span>
             </div>
-            <div className="text-center text-3xs text-slate-300 mt-2">Versión 2.0</div>
+            <div className="text-center text-3xs text-slate-300 mt-1.5">Versión 2.0</div>
           </div>
         </div>
       </div>
