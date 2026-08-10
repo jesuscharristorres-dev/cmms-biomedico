@@ -655,7 +655,7 @@ function newPersonal(empresa) {
   return {
     id: uid('per'),
     nombreCompleto: '', tipoDocumento: 'CC', numeroDocumento: '',
-    cargo: '', profesion: '', registroInvima: '', empresa, fechaIngreso: todayISO(),
+    cargo: '', profesion: '', registroInvima: '', registroInvimaUrl: '', empresa, fechaIngreso: todayISO(),
     estado: 'Activo', hojaVidaUrl: '',
   };
 }
@@ -3291,6 +3291,14 @@ function PersonalPage({ personal, t, accent, onAdd, onUpdate, readOnly }) {
                       <PdfLink url={p.hojaVidaUrl} t={t} label="Ver hoja de vida" title={`Hoja de vida — ${p.nombreCompleto}`} emptyLabel="Pendiente de hoja de vida" />
                     </div>
                   </Field>
+                  <Field label="PDF del Registro INVIMA (opcional)">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex-1 min-w-55">
+                        <TextInput t={t} value={p.registroInvimaUrl} disabled={readOnly} placeholder="URL del PDF" onChange={v => onUpdate({ ...p, registroInvimaUrl: v })} />
+                      </div>
+                      <PdfLink url={p.registroInvimaUrl} t={t} label="Ver registro INVIMA" title={`Registro INVIMA — ${p.nombreCompleto}`} emptyLabel="Documento no cargado" />
+                    </div>
+                  </Field>
                 </div>
               )}
             </div>
@@ -3340,6 +3348,13 @@ function PersonalFormModal({ t, accent, onClose, onSave }) {
             <TextInput t={t} value={form.hojaVidaUrl} placeholder="https://…pdf" onChange={v => patch('hojaVidaUrl', v)} />
           </Field>
           <p className={`text-3xs mt-1 ${t.muted}`}>Pega el enlace del PDF de la hoja de vida. Puedes agregarlo después si aún no lo tienes.</p>
+        </div>
+
+        <div className="mt-3">
+          <Field label="Cargar PDF del Registro INVIMA (opcional)">
+            <TextInput t={t} value={form.registroInvimaUrl} placeholder="https://…pdf" onChange={v => patch('registroInvimaUrl', v)} />
+          </Field>
+          <p className={`text-3xs mt-1 ${t.muted}`}>Solo si el Registro INVIMA aplica a este profesional.</p>
         </div>
 
         <div className="flex justify-end gap-2 mt-5">
