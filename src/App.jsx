@@ -3,7 +3,7 @@ import {
   Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X, Menu,
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, Mail, AlertTriangle, Lock,
-  User, Eye, EyeOff, Image as ImageIcon
+  User, Eye, EyeOff, Image as ImageIcon, FolderOpen
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -130,6 +130,7 @@ const MENU = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'alertas', label: 'Alertas', icon: BellRing },
   { key: 'fallas', label: 'Reportes de falla', icon: AlertTriangle },
+  { key: 'planes', label: 'Planes y programas', icon: FolderOpen },
   { key: 'empresas', label: 'Empresas', icon: Building2 },
   { key: 'inventario', label: 'Inventario', icon: ListTree },
   { key: 'mantenimientos', label: 'Mantenimientos', icon: CalendarClock },
@@ -554,6 +555,31 @@ async function saveReportes(reportes) {
   try { localStorage.setItem(REPORTES_KEY, JSON.stringify(reportes)); }
   catch (e) { console.error('Error guardando reportes', e); }
 }
+
+// Documentación institucional por empresa (Planes y programas) — no transversal:
+// cada empresa tiene sus propios documentos, guardados por separado bajo su clave.
+const PLANES_KEY = 'cmms-planes-programas';
+async function loadPlanesProgramas() {
+  try {
+    const raw = localStorage.getItem(PLANES_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* sin datos aún */ }
+  return {};
+}
+async function savePlanesProgramas(data) {
+  try { localStorage.setItem(PLANES_KEY, JSON.stringify(data)); }
+  catch (e) { console.error('Error guardando planes y programas', e); }
+}
+const PLANES_CATEGORIAS = [
+  { key: 'mantenimiento', label: 'Mantenimiento', icon: '🔧', documentos: [
+    { key: 'programaMantenimiento', label: 'Programa de mantenimiento' },
+    { key: 'planMantenimiento', label: 'Plan de mantenimiento' },
+  ] },
+  { key: 'capacitaciones', label: 'Capacitaciones', icon: '🎓', documentos: [
+    { key: 'programaCapacitaciones', label: 'Programa de capacitaciones' },
+    { key: 'planCapacitaciones', label: 'Plan de capacitaciones' },
+  ] },
+];
 function newReporte(empresa, sede) {
   return {
     id: uid('rf'),
@@ -640,12 +666,12 @@ function SelectInput({ value, onChange, options, t, disabled }) {
 // solo un botón con ícono de PDF, o un estado "Sin documento" si está vacío. El enlace
 // real se conserva intacto en los datos — esto solo cambia la presentación visual.
 // Cualquier campo nuevo de documento debe reutilizar este mismo componente.
-function PdfLink({ url, label = 'Ver PDF', title, t }) {
+function PdfLink({ url, label = 'Ver PDF', title, t, emptyLabel = 'Sin documento' }) {
   if (!url) {
     return (
-      <span title="Sin documento"
+      <span title={emptyLabel}
         className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs shrink-0 cursor-default select-none ${t ? t.border : 'border-slate-300'} ${t ? t.muted : 'text-slate-400'}`}>
-        <FileText size={13} /> Sin documento
+        <FileText size={13} /> {emptyLabel}
       </span>
     );
   }
@@ -1539,6 +1565,8 @@ function MainApp({ onLogout, readOnly }) {
   });
   const [reportesFalla, setReportesFalla] = useState([]);
   const [reportesLoaded, setReportesLoaded] = useState(false);
+  const [planesProgramas, setPlanesProgramas] = useState({});
+  const [planesLoaded, setPlanesLoaded] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => { loadEquipos().then(d => { setEquipos(d); setLoaded(true); }); }, []);
@@ -1567,6 +1595,11 @@ function MainApp({ onLogout, readOnly }) {
   }, []);
   const updateReporte = (updated) => setReportesFalla(prev => prev.map(r => r.id === updated.id ? updated : r));
   const nuevosReportes = reportesFalla.filter(r => !r.visto).length;
+
+  useEffect(() => { loadPlanesProgramas().then(d => { setPlanesProgramas(d); setPlanesLoaded(true); }); }, []);
+  useEffect(() => { if (planesLoaded) savePlanesProgramas(planesProgramas); }, [planesProgramas, planesLoaded]);
+  const updatePlanPrograma = (empresaKey, campo, valor) =>
+    setPlanesProgramas(prev => ({ ...prev, [empresaKey]: { ...(prev[empresaKey] || {}), [campo]: valor } }));
 
   // Notificación automática de preventivos/calibraciones próximos a vencer o vencidos.
   // Corre cada vez que cambian los equipos o los correos configurados. No hay backend con
@@ -1775,6 +1808,7 @@ function MainApp({ onLogout, readOnly }) {
           />
         )}
         {menu === 'fallas' && <ReportesFallaPage reportes={reportesFalla} t={t} accent={accent} onUpdate={updateReporte} readOnly={readOnly} />}
+        {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'reportes' && <ReportesPage equipos={equipos} t={t} accent={accent} onExport={exportExcel} />}
         {menu === 'configuracion' && <ConfigPage t={t} accent={accent} onReset={() => { if (confirm('¿Borrar todos los equipos guardados?')) setEquipos([]); }} onLogout={onLogout} alertEmails={alertEmails} setAlertEmails={setAlertEmails} readOnly={readOnly} />}
         </div>
@@ -2760,6 +2794,70 @@ function ReportesFallaPage({ reportes, t, accent, onUpdate, readOnly }) {
                 </Field>
               </div>
             )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Documentación institucional que NO es transversal: cada empresa tiene sus propios
+// documentos de Mantenimiento y Capacitaciones, nunca mezclados entre sí. Distinta de
+// la pestaña "Documentos" de cada equipo (esa es por equipo; esta es por empresa).
+function PlanesProgramasPage({ planesProgramas, t, onUpdate, readOnly }) {
+  const [empresaSel, setEmpresaSel] = useState(null);
+
+  if (!empresaSel) {
+    return (
+      <div>
+        <h1 className="text-lg font-bold mb-1">Planes y programas</h1>
+        <p className={`text-xs mb-4 ${t.muted}`}>Documentación institucional de mantenimiento y capacitaciones, organizada por empresa. Selecciona una empresa para ver sus documentos.</p>
+        <div className="grid md:grid-cols-3 gap-4">
+          {COMPANIES.map(c => (
+            <button key={c.key} onClick={() => setEmpresaSel(c.key)}
+              className={`text-left rounded-xl border overflow-hidden hover:-translate-y-0.5 transition ${t.panel} ${t.border}`}>
+              <div className="h-2" style={{ background: c.gradient }} />
+              <div className="p-5">
+                <div className="text-sm font-bold" style={{ color: c.color }}>{c.key}</div>
+                <div className={`text-2xs mt-1 ${t.muted}`}>Ver documentación institucional</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const empresa = companyOf(empresaSel);
+  const datos = planesProgramas[empresaSel] || {};
+
+  return (
+    <div>
+      <button onClick={() => setEmpresaSel(null)} className={`text-2xs font-mono uppercase mb-3 hover:underline ${t.muted}`}>
+        ← Cambiar empresa
+      </button>
+      <h1 className="text-lg font-bold mb-1" style={{ color: empresa.color }}>{empresa.key}</h1>
+      <p className={`text-xs mb-4 ${t.muted}`}>Planes y programas — documentación institucional exclusiva de esta empresa.</p>
+
+      <div className="space-y-4">
+        {PLANES_CATEGORIAS.map(cat => (
+          <div key={cat.key} className={`rounded-xl border p-4 ${t.panel} ${t.border}`}>
+            <div className="text-xs font-semibold uppercase tracking-wide mb-3 flex items-center gap-2">
+              <span>{cat.icon}</span> {cat.label}
+            </div>
+            <div className="space-y-3">
+              {cat.documentos.map(doc => (
+                <div key={doc.key} className="flex items-end gap-2 flex-wrap">
+                  <div className="flex-1 min-w-55">
+                    <Field label={doc.label}>
+                      <TextInput t={t} value={datos[doc.key]} disabled={readOnly} placeholder="URL del documento"
+                        onChange={v => onUpdate(empresaSel, doc.key, v)} />
+                    </Field>
+                  </div>
+                  <PdfLink url={datos[doc.key]} t={t} title={doc.label} emptyLabel="Documento no cargado" />
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>
