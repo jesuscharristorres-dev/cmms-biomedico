@@ -14,7 +14,7 @@ import {
   notifyFallaReportada, notifyCorrectivoRegistrado, notifyPreventivoProximo, notifyCalibracionProxima,
   sendAlertsSummary, getNotifiedIds, markNotified,
 } from './services/emailService';
-import { PREVENTIVO_ALERTA_DIAS, calibStatus, buildAlerts } from './services/alertLogic';
+import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts } from './services/alertLogic';
 
 /* ---------------------------------------------------------------- */
 /* CONFIG                                                            */
@@ -82,6 +82,42 @@ function formatMesAnio(fechaStr) {
   const iso = fechaStr.length === 7 ? `${fechaStr}-01` : fechaStr;
   const d = new Date(iso + 'T00:00:00');
   return isNaN(d.getTime()) ? fechaStr : `${MONTHS[d.getMonth()].full} ${d.getFullYear()}`;
+}
+// Fecha y hora legibles (ej. "10/08/2026 15:45") a partir de un timestamp ISO completo.
+function formatFechaHora(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const fecha = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  const hora = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${fecha} ${hora}`;
+}
+// Duración legible (ej. "2d 5h 10min") a partir de una diferencia en milisegundos.
+function formatDuracion(ms) {
+  const totalMin = Math.max(0, Math.round(ms / 60000));
+  const d = Math.floor(totalMin / 1440);
+  const h = Math.floor((totalMin % 1440) / 60);
+  const m = totalMin % 60;
+  const partes = [];
+  if (d) partes.push(`${d}d`);
+  if (d || h) partes.push(`${h}h`);
+  partes.push(`${m}min`);
+  return partes.join(' ');
+}
+// Resuelve el inicio/fin de atención de un reporte de falla. Para reportes creados
+// antes de guardar hora exacta, cae a las fechas (solo día) que ya existían, así los
+// registros antiguos siguen mostrando información en vez de quedar vacíos.
+function reporteTimestamps(r) {
+  const inicio = r.fechaHoraReporte || (r.fecha ? `${r.fecha}T00:00:00` : null);
+  const fin = r.fechaHoraSolucion || (r.estado === 'Finalizado' && r.fechaCierre ? `${r.fechaCierre}T00:00:00` : null);
+  return { inicio, fin };
+}
+// Tiempo de respuesta en milisegundos, o null si la falla aún no tiene fecha de solución.
+function tiempoRespuestaMs(r) {
+  const { inicio, fin } = reporteTimestamps(r);
+  if (!inicio || !fin) return null;
+  const ms = new Date(fin) - new Date(inicio);
+  return isNaN(ms) ? null : Math.max(0, ms);
 }
 // Acceso simple — cámbialo por tus propios datos.
 const AUTH_USER = 'jesus.charris';
@@ -525,6 +561,9 @@ function newReporte(empresa, sede) {
     fecha: todayISO(), personaReporta: '', descripcion: '', prioridad: 'Media',
     adjuntos: [],
     estado: 'Reportado', tecnicoAsignado: '', fechaCierre: '', observacionesReparacion: '',
+    // Fecha y hora exactas de reporte y de solución — se generan automáticamente y
+    // nunca se exponen como campos editables (trazabilidad del tiempo de atención).
+    fechaHoraReporte: new Date().toISOString(), fechaHoraSolucion: '',
     visto: false,
   };
 }
@@ -1863,7 +1902,7 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, re
         <button onClick={onGoAlerts} className="w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-5 border text-left" style={{ background: '#F59E0B1A', borderColor: '#F59E0B' }}>
           <BellRing size={16} style={{ color: '#F59E0B' }} />
           <span className="text-xs font-semibold" style={{ color: '#F59E0B' }}>
-            {alertCount} alerta{alertCount !== 1 ? 's' : ''} activa{alertCount !== 1 ? 's' : ''} — preventivos a {PREVENTIVO_ALERTA_DIAS / 30} meses de vencer o calibraciones próximas/vencidas.
+            {alertCount} alerta{alertCount !== 1 ? 's' : ''} activa{alertCount !== 1 ? 's' : ''} — preventivos a {PREVENTIVO_ALERTA_DIAS} días de vencer o calibraciones próximas/vencidas.
           </span>
           <span className="ml-auto text-2xs underline" style={{ color: '#F59E0B' }}>Ver alertas</span>
         </button>
@@ -2311,7 +2350,7 @@ function AlertasPage({ equipos, activeCompany, t, accent, alertEmails, onOpen, r
         )}
       </div>
       <p className={`text-xs mb-5 ${t.muted}`}>
-        Preventivos pendientes a {PREVENTIVO_ALERTA_DIAS / 30} meses o menos de su fecha, y calibraciones próximas a vencer (≤30 días) o vencidas.
+        Preventivos pendientes a {PREVENTIVO_ALERTA_DIAS} días o menos de su fecha, y calibraciones próximas a vencer (≤{CALIBRACION_ALERTA_DIAS} días) o vencidas.
       </p>
 
       {alerts.length === 0 && <div className={`text-sm text-center py-10 ${t.muted}`}>No hay alertas activas en este momento 👍</div>}
@@ -2583,7 +2622,7 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
 /* ---------------------------------------------------------------- */
 /* PÁGINA: REPORTES DE FALLA (Ingeniería Biomédica)                   */
 /* ---------------------------------------------------------------- */
-function ReportesFallaPage({ reportes, t, onUpdate, readOnly }) {
+function ReportesFallaPage({ reportes, t, accent, onUpdate, readOnly }) {
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroPrioridad, setFiltroPrioridad] = useState('');
   const [openId, setOpenId] = useState(null);
@@ -2597,10 +2636,46 @@ function ReportesFallaPage({ reportes, t, onUpdate, readOnly }) {
     if (!r.visto && !readOnly) onUpdate({ ...r, visto: true });
   };
 
+  // KPI: tiempo promedio de solución (solo fallas con tiempo de respuesta calculable).
+  const resueltas = list.map(r => ({ r, ms: tiempoRespuestaMs(r) })).filter(x => x.ms !== null);
+  const promedioMs = resueltas.length ? resueltas.reduce((acc, x) => acc + x.ms, 0) / resueltas.length : null;
+
+  // Gráfica: tiempo de atención por falla (equipo · fecha del reporte · horas que tardó).
+  const datosTiempo = resueltas
+    .map(({ r, ms }) => ({
+      equipo: r.equipoNombre || 'Equipo sin especificar',
+      fechaTxt: formatFechaHora(reporteTimestamps(r).inicio),
+      horas: +(ms / 3600000).toFixed(1),
+    }))
+    .sort((a, b) => b.horas - a.horas)
+    .slice(0, 8);
+
   return (
     <div>
       <h1 className="text-lg font-bold mb-1">Reportes de falla</h1>
       <p className={`text-xs mb-4 ${t.muted}`}>Solicitudes enviadas por los coordinadores de sede.</p>
+
+      <div className="grid sm:grid-cols-2 gap-3 mb-4">
+        <HeroStat t={t} label="Tiempo promedio de solución" color={accent}
+          value={promedioMs !== null ? formatDuracion(promedioMs) : '—'}
+          sub={resueltas.length ? `${resueltas.length} falla${resueltas.length !== 1 ? 's' : ''} solucionada${resueltas.length !== 1 ? 's' : ''}` : 'Sin fallas solucionadas todavía'} />
+        {datosTiempo.length > 0 && (
+          <div className={`rounded-xl border p-4 ${t.panel} ${t.border}`}>
+            <div className="text-3xs font-semibold uppercase tracking-wide mb-2" style={{ color: accent }}>Tiempo de atención por falla</div>
+            <ResponsiveContainer width="100%" height={Math.max(120, datosTiempo.length * 26)}>
+              <BarChart data={datosTiempo} layout="vertical" margin={{ left: 10, top: 2, bottom: 2 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} unit="h" />
+                <YAxis type="category" dataKey="equipo" tick={{ fontSize: 10, fill: '#94a3b8' }} width={100} />
+                <Tooltip contentStyle={{ background: '#1e293b', border: 'none', fontSize: 12 }}
+                  formatter={(v) => [`${v} h`, 'Tiempo de atención']}
+                  labelFormatter={(label, payload) => payload?.[0]?.payload ? `${label} · reportada ${payload[0].payload.fechaTxt}` : label} />
+                <Bar dataKey="horas" radius={[0, 4, 4, 0]} barSize={14} fill={accent} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
         <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
@@ -2634,6 +2709,32 @@ function ReportesFallaPage({ reportes, t, onUpdate, readOnly }) {
                   <div className="text-3xs uppercase text-slate-400 mb-1">Descripción</div>
                   <div className="text-xs">{r.descripcion}</div>
                 </div>
+
+                {(() => {
+                  const { inicio, fin } = reporteTimestamps(r);
+                  const ms = tiempoRespuestaMs(r);
+                  return (
+                    <div className={`rounded-lg border p-3 grid grid-cols-3 gap-3 ${t.panel3} ${t.border}`}>
+                      <div>
+                        <div className="text-3xs uppercase text-slate-400 mb-1">Reportada</div>
+                        <div className="text-xs font-mono">{formatFechaHora(inicio) || '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-3xs uppercase text-slate-400 mb-1">Solucionada</div>
+                        {fin
+                          ? <div className="text-xs font-mono">{formatFechaHora(fin)}</div>
+                          : <div className="text-xs font-semibold" style={{ color: '#F59E0B' }}>Pendiente de solución</div>}
+                      </div>
+                      <div>
+                        <div className="text-3xs uppercase text-slate-400 mb-1">Tiempo de respuesta</div>
+                        <div className="text-xs font-mono font-semibold" style={ms !== null ? { color: '#22C55E' } : {}}>
+                          {ms !== null ? formatDuracion(ms) : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {r.adjuntos && r.adjuntos.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {r.adjuntos.map((a, i) => (
@@ -2644,13 +2745,14 @@ function ReportesFallaPage({ reportes, t, onUpdate, readOnly }) {
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Estado">
                     <SelectInput t={t} value={r.estado} options={REPORTE_ESTADOS} disabled={readOnly}
-                      onChange={v => onUpdate({ ...r, estado: v, fechaCierre: v === 'Finalizado' ? (r.fechaCierre || todayISO()) : r.fechaCierre })} />
+                      onChange={v => onUpdate({
+                        ...r, estado: v,
+                        fechaCierre: v === 'Finalizado' ? (r.fechaCierre || todayISO()) : r.fechaCierre,
+                        fechaHoraSolucion: v === 'Finalizado' ? (r.fechaHoraSolucion || new Date().toISOString()) : r.fechaHoraSolucion,
+                      })} />
                   </Field>
                   <Field label="Técnico asignado">
                     <TextInput t={t} value={r.tecnicoAsignado} disabled={readOnly} onChange={v => onUpdate({ ...r, tecnicoAsignado: v })} />
-                  </Field>
-                  <Field label="Fecha de cierre">
-                    <TextInput t={t} type="date" value={r.fechaCierre} disabled={readOnly} onChange={v => onUpdate({ ...r, fechaCierre: v })} />
                   </Field>
                 </div>
                 <Field label="Observaciones de la reparación">

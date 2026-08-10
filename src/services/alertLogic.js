@@ -3,7 +3,8 @@
 // La usa tanto el frontend (App.jsx) como el cron job del servidor (api/cron/daily-alerts.js),
 // para que el correo automático de las 8am calcule EXACTAMENTE lo mismo que ves en la pantalla de Alertas.
 
-export const PREVENTIVO_ALERTA_DIAS = 60; // 2 meses
+export const PREVENTIVO_ALERTA_DIAS = 15;
+export const CALIBRACION_ALERTA_DIAS = 15;
 
 export function calibStatus(equipo) {
   if (!equipo.aplicaCalibracion || !equipo.fechaUltimaCalibracion) return { status: 'sin_dato', diffDays: null, next: null };
@@ -13,7 +14,7 @@ export function calibStatus(equipo) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const diffDays = Math.round((next - today) / 86400000);
   let status = 'vigente';
-  if (diffDays < 0) status = 'vencido'; else if (diffDays <= 30) status = 'proximo';
+  if (diffDays < 0) status = 'vencido'; else if (diffDays <= CALIBRACION_ALERTA_DIAS) status = 'proximo';
   return { status, diffDays, next };
 }
 
