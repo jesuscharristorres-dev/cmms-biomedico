@@ -31,11 +31,11 @@ const ReadOnlyContext = React.createContext(false);
 const APP_BUILD = '2026-08-02 · Resumen diario automático de alertas (8am, Vercel Cron + KV)';
 
 const COMPANIES = [
-  { key: 'MACROMED', color: '#002485', gradient: 'linear-gradient(135deg, #002485 0%, #1F4FB8 100%)', sedes: ['Bogotá'] },
-  { key: 'MEIDE', color: '#24546A', gradient: 'linear-gradient(135deg, #24546A 0%, #3B7088 100%)', sedes: ['Armenia Berlín','Armenia Fundadores','Manizales Belén','Manizales Arboleda','La Dorada','Unidad Móvil'] },
-  { key: 'NP MEDICAL', color: '#3F8E6F', gradient: 'linear-gradient(135deg, #3F8E6F 0%, #63B48F 100%)', sedes: ['Bogotá Samper','Bogotá Sur','Fontibón','Girardot'] },
-  { key: 'DIAGNOSTIK', color: '#C62828', gradient: 'linear-gradient(135deg, #C62828 0%, #E53935 100%)', sedes: ['Armenia Berlín','Armenia Fundadores','Manizales Berlín','Manizales Belén','Bogotá','Chapinero','Villavicencio','La Dorada'] },
-  { key: 'AUNAR SALUD', color: '#009EB7', gradient: 'linear-gradient(135deg, #009EB7 0%, #33C4D8 100%)', sedes: ['Bogotá','Villavicencio','Neiva'] },
+  { key: 'MACROMED', color: '#002485', gradient: 'linear-gradient(135deg, #002485 0%, #1F4FB8 100%)', sedes: ['Bogotá'], logo: '/logos/MACROMED.png' },
+  { key: 'MEIDE', color: '#24546A', gradient: 'linear-gradient(135deg, #24546A 0%, #3B7088 100%)', sedes: ['Armenia Berlín','Armenia Fundadores','Manizales Belén','Manizales Arboleda','La Dorada','Unidad Móvil'], logo: '/logos/MEIDE.png' },
+  { key: 'NP MEDICAL', color: '#3F8E6F', gradient: 'linear-gradient(135deg, #3F8E6F 0%, #63B48F 100%)', sedes: ['Bogotá Samper','Bogotá Sur','Fontibón','Girardot'], logo: '/logos/NP_MEDICAL.png' },
+  { key: 'DIAGNOSTIK', color: '#C62828', gradient: 'linear-gradient(135deg, #C62828 0%, #E53935 100%)', sedes: ['Armenia Berlín','Armenia Fundadores','Manizales Berlín','Manizales Belén','Bogotá','Chapinero','Villavicencio','La Dorada'], logo: '/logos/DIAGNOSTIK.png' },
+  { key: 'AUNAR SALUD', color: '#009EB7', gradient: 'linear-gradient(135deg, #009EB7 0%, #33C4D8 100%)', sedes: ['Bogotá','Villavicencio','Neiva'], logo: '/logos/AUNAR.png' },
 ];
 const companyOf = (key) => COMPANIES.find(c => c.key === key);
 
@@ -293,7 +293,9 @@ function generarReportePDF(equipo, tipoKey, rep) {
       body { font-family: Arial, Helvetica, sans-serif; color:#1e293b; padding:30px; font-size:11.5px; }
       table { border-collapse: collapse; width:100%; }
       .headwrap { display:flex; justify-content:space-between; align-items:stretch; border:1.5px solid #1e293b; margin-bottom:2px; }
-      .headleft { flex:1; padding:10px 14px; border-right:1.5px solid #1e293b; }
+      .headleft { flex:1; padding:10px 14px; border-right:1.5px solid #1e293b; display:flex; align-items:center; gap:12px; }
+      .headleft .logo { max-height:40px; max-width:130px; object-fit:contain; flex-shrink:0; }
+      .headleft .brandblock { min-width:0; }
       .headleft .brand { font-size:10px; letter-spacing:.06em; color:${co.color}; font-weight:bold; text-transform:uppercase; }
       .headleft h1 { font-size:15px; margin:4px 0 2px; text-transform:uppercase; }
       .headleft .sub { font-size:11px; font-weight:bold; }
@@ -320,9 +322,12 @@ function generarReportePDF(equipo, tipoKey, rep) {
     <body>
       <div class="headwrap">
         <div class="headleft">
-          <div class="brand">${equipo.empresa}</div>
-          <h1>Reporte ${tipoLabel}</h1>
-          <div class="sub">GESTIÓN DE EQUIPOS BIOMÉDICOS</div>
+          ${co.logo ? `<img class="logo" src="${co.logo}" alt="${equipo.empresa}" />` : ''}
+          <div class="brandblock">
+            <div class="brand">${equipo.empresa}</div>
+            <h1>Reporte ${tipoLabel}</h1>
+            <div class="sub">GESTIÓN DE EQUIPOS BIOMÉDICOS</div>
+          </div>
         </div>
         <div class="headright">
           <table>
