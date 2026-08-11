@@ -17,6 +17,9 @@ import {
   sendAlertsSummary, getNotifiedIds, markNotified,
 } from './services/emailService';
 import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts } from './services/alertLogic';
+// Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
+// LogoMark generado por código únicamente en la pantalla de inicio de sesión.
+import logoIngenieriaClinica from './assets/logo-ingenieria-clinica.png';
 
 /* ---------------------------------------------------------------- */
 /* CONFIG                                                            */
@@ -2211,7 +2214,7 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
                 </div>
               ))}
               <div className="login-illus absolute inset-0 flex items-center justify-center z-10">
-                <LogoMark size={190} />
+                <img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={210} height={210} style={{ objectFit: 'contain' }} />
               </div>
             </div>
           </div>
@@ -2220,9 +2223,8 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
         {/* LADO DERECHO — formulario */}
         <div className="w-full lg:w-1/2 flex flex-col justify-center p-8 sm:p-12">
           <div className="w-full max-w-sm mx-auto">
-            <div className="mb-4"><LogoMark size={56} withWordmark={false} /></div>
+            <div className="mb-3"><img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={84} height={84} style={{ objectFit: 'contain' }} /></div>
             <div className="text-xl font-bold tracking-wide" style={{ color: '#173B6C' }}>CMMS BIOMÉDICA</div>
-            <div className="text-3xs uppercase font-semibold" style={{ color: '#3CAA55', letterSpacing: '0.18em' }}>Ingeniería Clínica</div>
             <p className="text-xs text-slate-400 mt-1 mb-7">Inicie sesión para continuar.</p>
 
             <form onSubmit={submit} className="space-y-4">
