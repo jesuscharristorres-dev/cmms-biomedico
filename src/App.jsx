@@ -1401,21 +1401,53 @@ async function saveEquipos(equipos) {
 /* ---------------------------------------------------------------- */
 /* REPORTES DE FALLA (coordinadores de sede)                         */
 /* ---------------------------------------------------------------- */
-// Capa de datos aislada a propósito: hoy usa localStorage (un solo navegador).
-// Para que los coordinadores reporten desde otras sedes en tiempo real,
-// reemplaza SOLO estas 3 funciones por llamadas a Firebase/Supabase —
-// el resto de la app (formulario, tablero, estados) no necesita cambiar.
+// Fuente de verdad COMPARTIDA entre todos los usuarios y computadores: api/reportes-falla.js
+// (Vercel KV). localStorage queda como una caché de lectura best-effort — solo para no
+// mostrar la pantalla vacía si falla la red — nunca como almacenamiento principal: toda
+// escritura (crear, actualizar) va siempre al servidor, nunca solo al navegador local.
 const REPORTES_KEY = 'cmms-reportes-falla';
 async function loadReportes() {
   try {
+    const res = await fetch('/api/reportes-falla');
+    if (res.ok) {
+      const { reportes } = await res.json();
+      try { localStorage.setItem(REPORTES_KEY, JSON.stringify(reportes)); } catch { /* caché best-effort */ }
+      return reportes;
+    }
+    console.error('No se pudo consultar los reportes de falla compartidos: respuesta', res.status);
+  } catch (err) {
+    console.error('No se pudo consultar los reportes de falla compartidos', err);
+  }
+  // Sin backend disponible (sin red, o en desarrollo local con `npm run dev`, que no sirve
+  // /api): se muestra la última copia conocida en vez de dejar la pantalla vacía.
+  try {
     const raw = localStorage.getItem(REPORTES_KEY);
     if (raw) return JSON.parse(raw);
-  } catch { /* sin datos aún */ }
+  } catch { /* sin caché aún */ }
   return [];
 }
-async function saveReportes(reportes) {
-  try { localStorage.setItem(REPORTES_KEY, JSON.stringify(reportes)); }
-  catch (e) { console.error('Error guardando reportes', e); }
+// Crea UN reporte en el servidor (nunca sobrescribe el arreglo completo desde el cliente):
+// así dos coordinadores reportando casi al mismo tiempo desde computadores distintos no se
+// pisan entre sí. Devuelve el arreglo completo ya actualizado.
+async function crearReporteFalla(reporte) {
+  const res = await fetch('/api/reportes-falla', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reporte }),
+  });
+  if (!res.ok) throw new Error('No se pudo guardar el reporte en la base de datos compartida.');
+  const { reportes } = await res.json();
+  try { localStorage.setItem(REPORTES_KEY, JSON.stringify(reportes)); } catch { /* caché best-effort */ }
+  return reportes;
+}
+// Actualiza UN reporte por id (estado, técnico asignado, observaciones, etc.) — mismo
+// principio: el servidor hace el merge, el cliente nunca sobrescribe el arreglo completo.
+async function actualizarReporteFalla(id, patch) {
+  const res = await fetch('/api/reportes-falla', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }),
+  });
+  if (!res.ok) throw new Error('No se pudo actualizar el reporte en la base de datos compartida.');
+  const { reportes } = await res.json();
+  try { localStorage.setItem(REPORTES_KEY, JSON.stringify(reportes)); } catch { /* caché best-effort */ }
+  return reportes;
 }
 
 // Documentación institucional por empresa (Planes y programas) — no transversal:
@@ -2336,13 +2368,18 @@ function ReporteFallaForm({ onBack }) {
     }
     setError('');
     const eq = equipos.find(x => x.id === equipoId);
-    const reportes = await loadReportes();
     const nuevo = {
       ...newReporte(empresa, sede),
       equipoId, equipoNombre: eq ? eq.equipo : '(equipo no encontrado en inventario)',
       personaReporta: persona, descripcion, prioridad,
     };
-    await saveReportes([...reportes, nuevo]);
+    try {
+      await crearReporteFalla(nuevo);
+    } catch (err) {
+      console.error('No se pudo guardar el reporte de falla', err);
+      setError('No se pudo enviar el reporte — verifica tu conexión e intenta de nuevo.');
+      return;
+    }
     setSent(true);
     // Notificación por correo — no bloquea el flujo si falla el envío.
     try {
@@ -2532,7 +2569,6 @@ function MainApp({ onLogout, readOnly }) {
     try { return JSON.parse(localStorage.getItem('cmms-alert-emails') || '[]'); } catch { return []; }
   });
   const [reportesFalla, setReportesFalla] = useState([]);
-  const [reportesLoaded, setReportesLoaded] = useState(false);
   const [planesProgramas, setPlanesProgramas] = useState({});
   const [planesLoaded, setPlanesLoaded] = useState(false);
   const [tecnoTransversal, setTecnoTransversal] = useState({});
@@ -2559,15 +2595,24 @@ function MainApp({ onLogout, readOnly }) {
     return () => clearTimeout(timer);
   }, [equipos, alertEmails, loaded]);
   useEffect(() => { localStorage.setItem('cmms-alert-emails', JSON.stringify(alertEmails)); }, [alertEmails]);
-  useEffect(() => { loadReportes().then(d => { setReportesFalla(d); setReportesLoaded(true); }); }, []);
-  useEffect(() => { if (reportesLoaded) saveReportes(reportesFalla); }, [reportesFalla, reportesLoaded]);
-  // Notificación en vivo: si otra pestaña del mismo navegador guarda un reporte nuevo, este lo recoge de inmediato.
+  useEffect(() => { loadReportes().then(setReportesFalla); }, []);
+  // Notificación en vivo: si otra pestaña del mismo navegador refresca la caché local, esta la recoge de inmediato.
   useEffect(() => {
     const handler = (e) => { if (e.key === REPORTES_KEY) loadReportes().then(setReportesFalla); };
     window.addEventListener('storage', handler);
     return () => window.removeEventListener('storage', handler);
   }, []);
-  const updateReporte = (updated) => setReportesFalla(prev => prev.map(r => r.id === updated.id ? updated : r));
+  // Actualización optimista + persistencia puntual en el servidor (nunca se reescribe el
+  // arreglo completo): si el PATCH falla, se revierte el cambio local para no mostrar un
+  // estado que en realidad no quedó guardado para los demás usuarios.
+  const updateReporte = (updated) => {
+    const previous = reportesFalla.find(r => r.id === updated.id);
+    setReportesFalla(prev => prev.map(r => r.id === updated.id ? updated : r));
+    actualizarReporteFalla(updated.id, updated).catch(err => {
+      console.error('No se pudo sincronizar el cambio del reporte con el servidor compartido', err);
+      if (previous) setReportesFalla(prev => prev.map(r => r.id === updated.id ? previous : r));
+    });
+  };
   const nuevosReportes = reportesFalla.filter(r => !r.visto).length;
 
   useEffect(() => { loadPlanesProgramas().then(d => { setPlanesProgramas(d); setPlanesLoaded(true); }); }, []);
