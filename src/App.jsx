@@ -2986,9 +2986,9 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, re
           <div className={`h-2 rounded-full overflow-hidden mb-3 ${t.panel3}`}>
             <div className="h-full rounded-full" style={{ width: `${pctPreventivo}%`, background: '#22C55E' }} />
           </div>
-          <MiniRow label="Programados" value={prevProgramados} t={t} />
-          <MiniRow label="Ejecutados" value={prevEjecutados} t={t} color="#22C55E" />
-          <MiniRow label="Pendientes" value={Math.max(prevProgramados - prevEjecutados, 0)} t={t} color="#F59E0B" />
+          <MiniRow label="Programados" value={prevProgramados} t={t} noTranslate />
+          <MiniRow label="Ejecutados" value={prevEjecutados} t={t} color="#22C55E" noTranslate />
+          <MiniRow label="Pendientes" value={Math.max(prevProgramados - prevEjecutados, 0)} t={t} color="#F59E0B" noTranslate />
         </ClusterCard>
 
         <ClusterCard t={t} title="Calibraciones" color="#22C55E" brandBg={theme.bg}>
@@ -3331,10 +3331,10 @@ function ClusterCard({ t, title, color, children, onClick, brandBg }) {
   );
 }
 
-function MiniRow({ label, value, t, color }) {
+function MiniRow({ label, value, t, color, noTranslate }) {
   return (
     <div className="flex items-center justify-between py-1 text-2xs">
-      <span className={t.muted}>{label}</span>
+      <span className={t.muted} {...(noTranslate ? { translate: 'no', lang: 'es' } : {})}>{label}</span>
       <span className="font-mono font-semibold" style={color ? { color } : {}}>{value}</span>
     </div>
   );
