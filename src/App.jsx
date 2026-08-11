@@ -1386,16 +1386,129 @@ function ReporteTecnicoButton({ equipo, record, tipoKey, onSave, accent, t, read
 /* PERSISTENCIA                                                      */
 /* ---------------------------------------------------------------- */
 
+// Fuente de verdad COMPARTIDA del inventario de equipos (con sus preventivos, correctivos,
+// calibraciones y bajas anidados): api/equipos.js (Vercel KV). localStorage queda como
+// caché de lectura best-effort — nunca como almacenamiento principal.
+const EQUIPOS_KEY = 'cmms-equipos';
 async function loadEquipos() {
   try {
-    const raw = localStorage.getItem('cmms-equipos');
+    const res = await fetch('/api/equipos');
+    if (res.ok) {
+      const { equipos } = await res.json();
+      // Migración única: si el servidor aún no tiene nada pero este navegador sí tiene
+      // equipos guardados de antes de este cambio (datos reales), se suben una sola vez
+      // — el servidor decide por id, así que no hay riesgo de duplicar si se repite.
+      if (equipos.length === 0) {
+        let locales = [];
+        try { locales = JSON.parse(localStorage.getItem(EQUIPOS_KEY) || '[]'); } catch { /* nada que migrar */ }
+        if (locales.length > 0) {
+          try {
+            const migRes = await fetch('/api/equipos', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipos: locales }),
+            });
+            if (migRes.ok) {
+              const { equipos: migrados } = await migRes.json();
+              try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(migrados)); } catch { /* caché best-effort */ }
+              return migrados;
+            }
+          } catch (err) { console.error('No se pudo migrar el inventario local al servidor compartido', err); }
+        }
+      }
+      try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(equipos)); } catch { /* caché best-effort */ }
+      return equipos;
+    }
+    console.error('No se pudo consultar el inventario compartido: respuesta', res.status);
+  } catch (err) {
+    console.error('No se pudo consultar el inventario compartido', err);
+  }
+  try {
+    const raw = localStorage.getItem(EQUIPOS_KEY);
     if (raw) return JSON.parse(raw);
-  } catch { /* sin datos aún */ }
+  } catch { /* sin caché aún */ }
   return [];
 }
-async function saveEquipos(equipos) {
-  try { localStorage.setItem('cmms-equipos', JSON.stringify(equipos)); }
-  catch (e) { console.error('Error guardando', e); }
+async function crearEquipo(equipo) {
+  const res = await fetch('/api/equipos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipo }) });
+  if (!res.ok) throw new Error('No se pudo guardar el equipo en la base de datos compartida.');
+  const { equipos } = await res.json();
+  try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(equipos)); } catch { /* caché best-effort */ }
+  return equipos;
+}
+async function crearEquipos(nuevos) {
+  const res = await fetch('/api/equipos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipos: nuevos }) });
+  if (!res.ok) throw new Error('No se pudo importar los equipos a la base de datos compartida.');
+  const { equipos } = await res.json();
+  try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(equipos)); } catch { /* caché best-effort */ }
+  return equipos;
+}
+async function actualizarEquipo(id, patch) {
+  const res = await fetch('/api/equipos', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }) });
+  if (!res.ok) throw new Error('No se pudo actualizar el equipo en la base de datos compartida.');
+  const { equipos } = await res.json();
+  try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(equipos)); } catch { /* caché best-effort */ }
+  return equipos;
+}
+async function eliminarEquipo(id) {
+  const res = await fetch('/api/equipos', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+  if (!res.ok) throw new Error('No se pudo eliminar el equipo en la base de datos compartida.');
+  const { equipos } = await res.json();
+  try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(equipos)); } catch { /* caché best-effort */ }
+  return equipos;
+}
+async function eliminarTodosLosEquipos() {
+  const res = await fetch('/api/equipos', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ borrarTodo: true }) });
+  if (!res.ok) throw new Error('No se pudo borrar el inventario en la base de datos compartida.');
+  const { equipos } = await res.json();
+  try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(equipos)); } catch { /* caché best-effort */ }
+  return equipos;
+}
+
+// Correos que reciben el resumen diario de alertas (Configuración). Fuente de verdad
+// COMPARTIDA: api/alert-emails.js (Vercel KV) — antes se subían a KV pero nunca se
+// leían de vuelta, así que un correo agregado en un computador no se veía en otro.
+const ALERT_EMAILS_KEY = 'cmms-alert-emails';
+async function loadAlertEmails() {
+  try {
+    const res = await fetch('/api/alert-emails');
+    if (res.ok) {
+      const { emails } = await res.json();
+      if (emails.length === 0) {
+        let locales = [];
+        try { locales = JSON.parse(localStorage.getItem(ALERT_EMAILS_KEY) || '[]'); } catch { /* nada que migrar */ }
+        if (locales.length > 0) {
+          try {
+            let migrados = emails;
+            for (const email of locales) migrados = await crearAlertEmail(email);
+            return migrados;
+          } catch (err) { console.error('No se pudo migrar los correos de alerta locales al servidor compartido', err); }
+        }
+      }
+      try { localStorage.setItem(ALERT_EMAILS_KEY, JSON.stringify(emails)); } catch { /* caché best-effort */ }
+      return emails;
+    }
+    console.error('No se pudo consultar los correos de alerta compartidos: respuesta', res.status);
+  } catch (err) {
+    console.error('No se pudo consultar los correos de alerta compartidos', err);
+  }
+  try {
+    const raw = localStorage.getItem(ALERT_EMAILS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* sin caché aún */ }
+  return [];
+}
+async function crearAlertEmail(email) {
+  const res = await fetch('/api/alert-emails', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+  if (!res.ok) throw new Error('No se pudo guardar el correo en la base de datos compartida.');
+  const { emails } = await res.json();
+  try { localStorage.setItem(ALERT_EMAILS_KEY, JSON.stringify(emails)); } catch { /* caché best-effort */ }
+  return emails;
+}
+async function eliminarAlertEmail(email) {
+  const res = await fetch('/api/alert-emails', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+  if (!res.ok) throw new Error('No se pudo eliminar el correo en la base de datos compartida.');
+  const { emails } = await res.json();
+  try { localStorage.setItem(ALERT_EMAILS_KEY, JSON.stringify(emails)); } catch { /* caché best-effort */ }
+  return emails;
 }
 
 /* ---------------------------------------------------------------- */
@@ -1452,17 +1565,49 @@ async function actualizarReporteFalla(id, patch) {
 
 // Documentación institucional por empresa (Planes y programas) — no transversal:
 // cada empresa tiene sus propios documentos, guardados por separado bajo su clave.
+// Fuente de verdad COMPARTIDA: api/planes-programas.js (Vercel KV).
 const PLANES_KEY = 'cmms-planes-programas';
 async function loadPlanesProgramas() {
   try {
+    const res = await fetch('/api/planes-programas');
+    if (res.ok) {
+      const { data } = await res.json();
+      if (Object.keys(data).length === 0) {
+        let local = {};
+        try { local = JSON.parse(localStorage.getItem(PLANES_KEY) || '{}'); } catch { /* nada que migrar */ }
+        if (Object.keys(local).length > 0) {
+          try {
+            let migrado = data;
+            for (const empresaKey of Object.keys(local)) {
+              for (const campo of Object.keys(local[empresaKey] || {})) {
+                migrado = await actualizarPlanPrograma(empresaKey, campo, local[empresaKey][campo]);
+              }
+            }
+            return migrado;
+          } catch (err) { console.error('No se pudo migrar planes y programas locales al servidor compartido', err); }
+        }
+      }
+      try { localStorage.setItem(PLANES_KEY, JSON.stringify(data)); } catch { /* caché best-effort */ }
+      return data;
+    }
+    console.error('No se pudo consultar planes y programas compartidos: respuesta', res.status);
+  } catch (err) {
+    console.error('No se pudo consultar planes y programas compartidos', err);
+  }
+  try {
     const raw = localStorage.getItem(PLANES_KEY);
     if (raw) return JSON.parse(raw);
-  } catch { /* sin datos aún */ }
+  } catch { /* sin caché aún */ }
   return {};
 }
-async function savePlanesProgramas(data) {
-  try { localStorage.setItem(PLANES_KEY, JSON.stringify(data)); }
-  catch (e) { console.error('Error guardando planes y programas', e); }
+async function actualizarPlanPrograma(empresaKey, campo, valor) {
+  const res = await fetch('/api/planes-programas', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empresaKey, campo, valor }),
+  });
+  if (!res.ok) throw new Error('No se pudo guardar en la base de datos compartida.');
+  const { data } = await res.json();
+  try { localStorage.setItem(PLANES_KEY, JSON.stringify(data)); } catch { /* caché best-effort */ }
+  return data;
 }
 const PLANES_CATEGORIAS = [
   { key: 'mantenimiento', label: 'Mantenimiento', icon: '🔧', documentos: [
@@ -1477,34 +1622,98 @@ const PLANES_CATEGORIAS = [
 
 // Tecnovigilancia — documentación transversal (única, compartida por todas las empresas)
 // y reportes trimestrales que sí se organizan por empresa · sede · año.
+// Fuente de verdad COMPARTIDA: api/tecno-transversal.js (Vercel KV).
 const TECNO_TRANSVERSAL_KEY = 'cmms-tecno-transversal';
 async function loadTecnoTransversal() {
   try {
+    const res = await fetch('/api/tecno-transversal');
+    if (res.ok) {
+      const { data } = await res.json();
+      if (Object.keys(data).length === 0) {
+        let local = {};
+        try { local = JSON.parse(localStorage.getItem(TECNO_TRANSVERSAL_KEY) || '{}'); } catch { /* nada que migrar */ }
+        if (Object.keys(local).length > 0) {
+          try {
+            let migrado = data;
+            for (const docKey of Object.keys(local)) migrado = await actualizarTecnoTransversal(docKey, local[docKey]);
+            return migrado;
+          } catch (err) { console.error('No se pudo migrar la documentación transversal local al servidor compartido', err); }
+        }
+      }
+      try { localStorage.setItem(TECNO_TRANSVERSAL_KEY, JSON.stringify(data)); } catch { /* caché best-effort */ }
+      return data;
+    }
+    console.error('No se pudo consultar la documentación transversal compartida: respuesta', res.status);
+  } catch (err) {
+    console.error('No se pudo consultar la documentación transversal compartida', err);
+  }
+  try {
     const raw = localStorage.getItem(TECNO_TRANSVERSAL_KEY);
     if (raw) return JSON.parse(raw);
-  } catch { /* sin datos aún */ }
+  } catch { /* sin caché aún */ }
   return {};
 }
-async function saveTecnoTransversal(data) {
-  try { localStorage.setItem(TECNO_TRANSVERSAL_KEY, JSON.stringify(data)); }
-  catch (e) { console.error('Error guardando documentación transversal de tecnovigilancia', e); }
+async function actualizarTecnoTransversal(docKey, valor) {
+  const res = await fetch('/api/tecno-transversal', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ docKey, valor }),
+  });
+  if (!res.ok) throw new Error('No se pudo guardar en la base de datos compartida.');
+  const { data } = await res.json();
+  try { localStorage.setItem(TECNO_TRANSVERSAL_KEY, JSON.stringify(data)); } catch { /* caché best-effort */ }
+  return data;
 }
 const TECNO_DOCS = [
   { key: 'invima', label: 'ABC-Tecnovigilancia-INVIMA', icon: FileText },
   { key: 'manual', label: 'DLC-GEB-MN-01 — Manual de Tecnovigilancia', icon: BookOpen },
 ];
 
+// Fuente de verdad COMPARTIDA: api/tecno-reportes.js (Vercel KV).
 const TECNO_REPORTES_KEY = 'cmms-tecno-reportes';
 async function loadTecnoReportes() {
   try {
+    const res = await fetch('/api/tecno-reportes');
+    if (res.ok) {
+      const { data } = await res.json();
+      if (Object.keys(data).length === 0) {
+        let local = {};
+        try { local = JSON.parse(localStorage.getItem(TECNO_REPORTES_KEY) || '{}'); } catch { /* nada que migrar */ }
+        if (Object.keys(local).length > 0) {
+          try {
+            let migrado = data;
+            for (const empresaKey of Object.keys(local)) {
+              for (const sede of Object.keys(local[empresaKey] || {})) {
+                for (const anio of Object.keys(local[empresaKey][sede] || {})) {
+                  for (const trimestre of Object.keys(local[empresaKey][sede][anio] || {})) {
+                    migrado = await actualizarTecnoReporte(empresaKey, sede, anio, trimestre, local[empresaKey][sede][anio][trimestre]);
+                  }
+                }
+              }
+            }
+            return migrado;
+          } catch (err) { console.error('No se pudo migrar los reportes de tecnovigilancia locales al servidor compartido', err); }
+        }
+      }
+      try { localStorage.setItem(TECNO_REPORTES_KEY, JSON.stringify(data)); } catch { /* caché best-effort */ }
+      return data;
+    }
+    console.error('No se pudo consultar los reportes de tecnovigilancia compartidos: respuesta', res.status);
+  } catch (err) {
+    console.error('No se pudo consultar los reportes de tecnovigilancia compartidos', err);
+  }
+  try {
     const raw = localStorage.getItem(TECNO_REPORTES_KEY);
     if (raw) return JSON.parse(raw);
-  } catch { /* sin datos aún */ }
+  } catch { /* sin caché aún */ }
   return {};
 }
-async function saveTecnoReportes(data) {
-  try { localStorage.setItem(TECNO_REPORTES_KEY, JSON.stringify(data)); }
-  catch (e) { console.error('Error guardando reportes de tecnovigilancia', e); }
+async function actualizarTecnoReporte(empresaKey, sede, anio, trimestre, valor) {
+  const res = await fetch('/api/tecno-reportes', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empresaKey, sede, anio, trimestre, valor }),
+  });
+  if (!res.ok) throw new Error('No se pudo guardar en la base de datos compartida.');
+  const { data } = await res.json();
+  try { localStorage.setItem(TECNO_REPORTES_KEY, JSON.stringify(data)); } catch { /* caché best-effort */ }
+  return data;
 }
 const TECNO_TRIMESTRES = [
   { key: 't1', label: '1.er trimestre' },
@@ -1526,17 +1735,50 @@ const TECNO_CIUDADES = {
 
 // Hojas de vida del personal — un registro sencillo por trabajador (no un módulo de RRHH):
 // datos básicos + una sola hoja de vida en PDF, asociado a una empresa existente.
+// Fuente de verdad COMPARTIDA: api/personal.js (Vercel KV).
 const PERSONAL_KEY = 'cmms-personal';
 async function loadPersonal() {
   try {
+    const res = await fetch('/api/personal');
+    if (res.ok) {
+      const { personal } = await res.json();
+      if (personal.length === 0) {
+        let locales = [];
+        try { locales = JSON.parse(localStorage.getItem(PERSONAL_KEY) || '[]'); } catch { /* nada que migrar */ }
+        if (locales.length > 0) {
+          try {
+            let migrados = personal;
+            for (const record of locales) migrados = await crearPersonal(record);
+            return migrados;
+          } catch (err) { console.error('No se pudo migrar el personal local al servidor compartido', err); }
+        }
+      }
+      try { localStorage.setItem(PERSONAL_KEY, JSON.stringify(personal)); } catch { /* caché best-effort */ }
+      return personal;
+    }
+    console.error('No se pudo consultar el personal compartido: respuesta', res.status);
+  } catch (err) {
+    console.error('No se pudo consultar el personal compartido', err);
+  }
+  try {
     const raw = localStorage.getItem(PERSONAL_KEY);
     if (raw) return JSON.parse(raw);
-  } catch { /* sin datos aún */ }
+  } catch { /* sin caché aún */ }
   return [];
 }
-async function savePersonal(personal) {
-  try { localStorage.setItem(PERSONAL_KEY, JSON.stringify(personal)); }
-  catch (e) { console.error('Error guardando personal', e); }
+async function crearPersonal(record) {
+  const res = await fetch('/api/personal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ record }) });
+  if (!res.ok) throw new Error('No se pudo guardar el registro en la base de datos compartida.');
+  const { personal } = await res.json();
+  try { localStorage.setItem(PERSONAL_KEY, JSON.stringify(personal)); } catch { /* caché best-effort */ }
+  return personal;
+}
+async function actualizarPersonal(id, patch) {
+  const res = await fetch('/api/personal', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }) });
+  if (!res.ok) throw new Error('No se pudo actualizar el registro en la base de datos compartida.');
+  const { personal } = await res.json();
+  try { localStorage.setItem(PERSONAL_KEY, JSON.stringify(personal)); } catch { /* caché best-effort */ }
+  return personal;
 }
 const TIPOS_DOCUMENTO_PERSONAL = ['CC', 'CE', 'TI', 'Pasaporte'];
 const ESTADOS_PERSONAL = ['Activo', 'Inactivo'];
@@ -2381,9 +2623,11 @@ function ReporteFallaForm({ onBack }) {
       return;
     }
     setSent(true);
-    // Notificación por correo — no bloquea el flujo si falla el envío.
+    // Notificación por correo — no bloquea el flujo si falla el envío. Este formulario es
+    // público (sin sesión iniciada), así que consulta la lista compartida de destinatarios
+    // directamente al servidor en vez de depender de una caché local de este navegador.
     try {
-      const destinatarios = JSON.parse(localStorage.getItem('cmms-alert-emails') || '[]');
+      const destinatarios = await loadAlertEmails();
       notifyFallaReportada(nuevo, destinatarios);
     } catch (err) { console.error('No se pudo notificar el reporte de falla por correo', err); }
   };
@@ -2565,36 +2809,30 @@ function MainApp({ onLogout, readOnly }) {
   const [sort, setSort] = useState({ key: 'equipo', dir: 1 });
   const [drawerId, setDrawerId] = useState(null);
   const [obsModalId, setObsModalId] = useState(null);
-  const [alertEmails, setAlertEmails] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('cmms-alert-emails') || '[]'); } catch { return []; }
-  });
+  const [alertEmails, setAlertEmails] = useState([]);
   const [reportesFalla, setReportesFalla] = useState([]);
   const [planesProgramas, setPlanesProgramas] = useState({});
-  const [planesLoaded, setPlanesLoaded] = useState(false);
   const [tecnoTransversal, setTecnoTransversal] = useState({});
-  const [tecnoTransversalLoaded, setTecnoTransversalLoaded] = useState(false);
   const [tecnoReportes, setTecnoReportes] = useState({});
-  const [tecnoReportesLoaded, setTecnoReportesLoaded] = useState(false);
   const [personal, setPersonal] = useState([]);
-  const [personalLoaded, setPersonalLoaded] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => { loadEquipos().then(d => { setEquipos(d); setLoaded(true); }); }, []);
-  useEffect(() => { if (loaded) saveEquipos(equipos); }, [equipos, loaded]);
-  // Sincroniza hacia Vercel KV (con un pequeño debounce) para que el cron de las 8am
-  // tenga datos reales que revisar — el servidor no puede leer localStorage.
-  useEffect(() => {
-    if (!loaded) return;
-    const timer = setTimeout(() => {
-      fetch('/api/sync-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ equipos, alertEmails }),
-      }).catch(err => console.error('No se pudo sincronizar con Vercel KV', err));
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [equipos, alertEmails, loaded]);
-  useEffect(() => { localStorage.setItem('cmms-alert-emails', JSON.stringify(alertEmails)); }, [alertEmails]);
+  useEffect(() => { loadAlertEmails().then(setAlertEmails); }, []);
+  const addAlertEmail = (email) => {
+    setAlertEmails(prev => prev.includes(email) ? prev : [...prev, email]);
+    crearAlertEmail(email).catch(err => {
+      console.error('No se pudo guardar el correo de alerta en el servidor compartido', err);
+      setAlertEmails(prev => prev.filter(e => e !== email));
+    });
+  };
+  const removeAlertEmail = (email) => {
+    setAlertEmails(prev => prev.filter(e => e !== email));
+    eliminarAlertEmail(email).catch(err => {
+      console.error('No se pudo eliminar el correo de alerta en el servidor compartido', err);
+      setAlertEmails(prev => prev.includes(email) ? prev : [...prev, email]);
+    });
+  };
   useEffect(() => { loadReportes().then(setReportesFalla); }, []);
   // Notificación en vivo: si otra pestaña del mismo navegador refresca la caché local, esta la recoge de inmediato.
   useEffect(() => {
@@ -2615,29 +2853,57 @@ function MainApp({ onLogout, readOnly }) {
   };
   const nuevosReportes = reportesFalla.filter(r => !r.visto).length;
 
-  useEffect(() => { loadPlanesProgramas().then(d => { setPlanesProgramas(d); setPlanesLoaded(true); }); }, []);
-  useEffect(() => { if (planesLoaded) savePlanesProgramas(planesProgramas); }, [planesProgramas, planesLoaded]);
-  const updatePlanPrograma = (empresaKey, campo, valor) =>
+  useEffect(() => { loadPlanesProgramas().then(setPlanesProgramas); }, []);
+  const updatePlanPrograma = (empresaKey, campo, valor) => {
+    const previous = planesProgramas;
     setPlanesProgramas(prev => ({ ...prev, [empresaKey]: { ...(prev[empresaKey] || {}), [campo]: valor } }));
+    actualizarPlanPrograma(empresaKey, campo, valor).catch(err => {
+      console.error('No se pudo sincronizar el plan/programa con el servidor compartido', err);
+      setPlanesProgramas(previous);
+    });
+  };
 
-  useEffect(() => { loadTecnoTransversal().then(d => { setTecnoTransversal(d); setTecnoTransversalLoaded(true); }); }, []);
-  useEffect(() => { if (tecnoTransversalLoaded) saveTecnoTransversal(tecnoTransversal); }, [tecnoTransversal, tecnoTransversalLoaded]);
-  const updateTecnoTransversal = (docKey, valor) => setTecnoTransversal(prev => ({ ...prev, [docKey]: valor }));
+  useEffect(() => { loadTecnoTransversal().then(setTecnoTransversal); }, []);
+  const updateTecnoTransversal = (docKey, valor) => {
+    const previous = tecnoTransversal;
+    setTecnoTransversal(prev => ({ ...prev, [docKey]: valor }));
+    actualizarTecnoTransversal(docKey, valor).catch(err => {
+      console.error('No se pudo sincronizar el documento con el servidor compartido', err);
+      setTecnoTransversal(previous);
+    });
+  };
 
-  useEffect(() => { loadTecnoReportes().then(d => { setTecnoReportes(d); setTecnoReportesLoaded(true); }); }, []);
-  useEffect(() => { if (tecnoReportesLoaded) saveTecnoReportes(tecnoReportes); }, [tecnoReportes, tecnoReportesLoaded]);
-  const updateTecnoReporte = (empresaKey, sede, anio, trimestre, valor) =>
+  useEffect(() => { loadTecnoReportes().then(setTecnoReportes); }, []);
+  const updateTecnoReporte = (empresaKey, sede, anio, trimestre, valor) => {
+    const previous = tecnoReportes;
     setTecnoReportes(prev => {
       const emp = prev[empresaKey] || {};
       const sedeObj = emp[sede] || {};
       const anioObj = sedeObj[anio] || {};
       return { ...prev, [empresaKey]: { ...emp, [sede]: { ...sedeObj, [anio]: { ...anioObj, [trimestre]: valor } } } };
     });
+    actualizarTecnoReporte(empresaKey, sede, anio, trimestre, valor).catch(err => {
+      console.error('No se pudo sincronizar el reporte de tecnovigilancia con el servidor compartido', err);
+      setTecnoReportes(previous);
+    });
+  };
 
-  useEffect(() => { loadPersonal().then(d => { setPersonal(d); setPersonalLoaded(true); }); }, []);
-  useEffect(() => { if (personalLoaded) savePersonal(personal); }, [personal, personalLoaded]);
-  const addPersonal = (record) => setPersonal(prev => [...prev, record]);
-  const updatePersonal = (updated) => setPersonal(prev => prev.map(p => p.id === updated.id ? updated : p));
+  useEffect(() => { loadPersonal().then(setPersonal); }, []);
+  const addPersonal = (record) => {
+    setPersonal(prev => [...prev, record]);
+    crearPersonal(record).catch(err => {
+      console.error('No se pudo guardar el registro de personal en el servidor compartido', err);
+      setPersonal(prev => prev.filter(p => p.id !== record.id));
+    });
+  };
+  const updatePersonal = (updated) => {
+    const previous = personal.find(p => p.id === updated.id);
+    setPersonal(prev => prev.map(p => p.id === updated.id ? updated : p));
+    actualizarPersonal(updated.id, updated).catch(err => {
+      console.error('No se pudo sincronizar el registro de personal con el servidor compartido', err);
+      if (previous) setPersonal(prev => prev.map(p => p.id === updated.id ? previous : p));
+    });
+  };
 
   // Notificación automática de preventivos/calibraciones próximos a vencer o vencidos.
   // Corre cada vez que cambian los equipos o los correos configurados. No hay backend con
@@ -2669,10 +2935,42 @@ function MainApp({ onLogout, readOnly }) {
 
   const t = uiTheme(dark);
 
-  const updateEquipo = (updated) => setEquipos(prev => prev.map(e => e.id === updated.id ? updated : e));
-  const removeEquipo = (id) => setEquipos(prev => prev.filter(e => e.id !== id));
-  const duplicateEquipo = (eq) => setEquipos(prev => [...prev, { ...eq, id: uid('eq'), equipo: eq.equipo + ' (copia)' }]);
-  const addEquipo = () => { const n = newEquipo(activeCompany === 'TODAS' ? COMPANIES[0].key : activeCompany); setEquipos(prev => [...prev, n]); setDrawerId(n.id); };
+  // Actualización optimista + persistencia puntual en el servidor (nunca se reescribe el
+  // arreglo completo): si la operación falla, se revierte el cambio local para no mostrar
+  // en pantalla algo que en realidad no quedó guardado para los demás usuarios/computadores.
+  const updateEquipo = (updated) => {
+    const previous = equipos.find(e => e.id === updated.id);
+    setEquipos(prev => prev.map(e => e.id === updated.id ? updated : e));
+    actualizarEquipo(updated.id, updated).catch(err => {
+      console.error('No se pudo sincronizar el equipo con el servidor compartido', err);
+      if (previous) setEquipos(prev => prev.map(e => e.id === updated.id ? previous : e));
+    });
+  };
+  const removeEquipo = (id) => {
+    const previous = equipos;
+    setEquipos(prev => prev.filter(e => e.id !== id));
+    eliminarEquipo(id).catch(err => {
+      console.error('No se pudo eliminar el equipo en el servidor compartido', err);
+      setEquipos(previous);
+    });
+  };
+  const duplicateEquipo = (eq) => {
+    const nuevo = { ...eq, id: uid('eq'), equipo: eq.equipo + ' (copia)' };
+    setEquipos(prev => [...prev, nuevo]);
+    crearEquipo(nuevo).catch(err => {
+      console.error('No se pudo duplicar el equipo en el servidor compartido', err);
+      setEquipos(prev => prev.filter(e => e.id !== nuevo.id));
+    });
+  };
+  const addEquipo = () => {
+    const n = newEquipo(activeCompany === 'TODAS' ? COMPANIES[0].key : activeCompany);
+    setEquipos(prev => [...prev, n]);
+    setDrawerId(n.id);
+    crearEquipo(n).catch(err => {
+      console.error('No se pudo crear el equipo en el servidor compartido', err);
+      setEquipos(prev => prev.filter(e => e.id !== n.id));
+    });
+  };
 
   const filtered = useMemo(() => {
     let list = equipos;
@@ -2763,6 +3061,11 @@ function MainApp({ onLogout, readOnly }) {
         };
       });
       setEquipos(prev => [...prev, ...imported]);
+      const idsImportados = new Set(imported.map(e => e.id));
+      crearEquipos(imported).catch(err => {
+        console.error('No se pudo importar los equipos al servidor compartido', err);
+        setEquipos(prev => prev.filter(e => !idsImportados.has(e.id)));
+      });
     };
     reader.readAsBinaryString(file);
   };
@@ -2850,7 +3153,15 @@ function MainApp({ onLogout, readOnly }) {
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
         {menu === 'reportes' && <ReportesPage equipos={equipos} reportesFalla={reportesFalla} t={t} accent={accent} onExport={exportExcel} />}
-        {menu === 'configuracion' && <ConfigPage t={t} accent={accent} onReset={() => { if (confirm('¿Borrar todos los equipos guardados?')) setEquipos([]); }} onLogout={onLogout} alertEmails={alertEmails} setAlertEmails={setAlertEmails} readOnly={readOnly} />}
+        {menu === 'configuracion' && <ConfigPage t={t} accent={accent} onReset={() => {
+          if (!confirm('¿Borrar todos los equipos guardados?')) return;
+          const previous = equipos;
+          setEquipos([]);
+          eliminarTodosLosEquipos().catch(err => {
+            console.error('No se pudo borrar el inventario en el servidor compartido', err);
+            setEquipos(previous);
+          });
+        }} onLogout={onLogout} alertEmails={alertEmails} onAddEmail={addAlertEmail} onRemoveEmail={removeAlertEmail} readOnly={readOnly} />}
         </div>
       </div>
 
@@ -4363,7 +4674,7 @@ function ReportesPage({ t, accent, onExport, equipos, reportesFalla }) {
 /* ---------------------------------------------------------------- */
 /* PÁGINA: CONFIGURACIÓN                                              */
 /* ---------------------------------------------------------------- */
-function ConfigPage({ t, accent, onReset, onLogout, alertEmails, setAlertEmails, readOnly }) {
+function ConfigPage({ t, accent, onReset, onLogout, alertEmails, onAddEmail, onRemoveEmail, readOnly }) {
   const [draft, setDraft] = useState('');
   const addEmail = () => {
     if (readOnly) return;
@@ -4371,7 +4682,7 @@ function ConfigPage({ t, accent, onReset, onLogout, alertEmails, setAlertEmails,
     if (!v) return;
     if (!/^\S+@\S+\.\S+$/.test(v)) return;
     if (alertEmails.includes(v)) { setDraft(''); return; }
-    setAlertEmails([...alertEmails, v]);
+    onAddEmail(v);
     setDraft('');
   };
   return (
@@ -4389,7 +4700,7 @@ function ConfigPage({ t, accent, onReset, onLogout, alertEmails, setAlertEmails,
           {alertEmails.map(email => (
             <span key={email} className="flex items-center gap-1.5 rounded-full pl-2.5 pr-1.5 py-1 text-2xs" style={{ background: accent + '1A', color: accent }}>
               {email}
-              {!readOnly && <button onClick={() => setAlertEmails(alertEmails.filter(e => e !== email))} className="hover:opacity-70"><X size={11} /></button>}
+              {!readOnly && <button onClick={() => onRemoveEmail(email)} className="hover:opacity-70"><X size={11} /></button>}
             </span>
           ))}
         </div>
