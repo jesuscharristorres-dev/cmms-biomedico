@@ -268,7 +268,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
       <td style="text-align:center;">${c.estado === 'no_aplica' ? '✔' : ''}</td>
       <td style="text-align:center;">${c.estado === 'bueno' ? '✔' : ''}</td>
       <td style="text-align:center;">${c.estado === 'malo' ? '✔' : ''}</td>
-      <td>${esc(c.obs)}</td>
+      <td>${c.obs || ''}</td>
     </tr>`;
   }).join('');
 
