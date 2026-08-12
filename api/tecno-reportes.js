@@ -4,6 +4,7 @@
 // El PATCH solo toca una hoja del árbol a la vez (read-modify-write en el servidor).
 
 import { kv } from '@vercel/kv';
+import { requireAdmin } from '../lib/auth.js';
 
 const KV_KEY = 'cmms:tecnoReportes';
 
@@ -13,6 +14,9 @@ export default async function handler(req, res) {
       const data = (await kv.get(KV_KEY)) || {};
       return res.status(200).json({ data });
     }
+
+    // Toda escritura requiere sesión de admin — el modo invitado solo puede leer (GET).
+    if (!(await requireAdmin(req, res))) return;
 
     if (req.method === 'PATCH') {
       const { empresaKey, sede, anio, trimestre, valor } = req.body || {};

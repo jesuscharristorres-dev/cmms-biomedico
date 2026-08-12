@@ -74,6 +74,18 @@ const MONTHS = [
   { k: 'jul', l: 'Jul', full: 'Julio', idx: 6 }, { k: 'ago', l: 'Ago', full: 'Agosto', idx: 7 }, { k: 'sep', l: 'Sep', full: 'Septiembre', idx: 8 },
   { k: 'oct', l: 'Oct', full: 'Octubre', idx: 9 }, { k: 'nov', l: 'Nov', full: 'Noviembre', idx: 10 }, { k: 'dic', l: 'Dic', full: 'Diciembre', idx: 11 },
 ];
+// Escapa entidades HTML antes de interpolar texto libre (nombres de equipo, descripciones,
+// observaciones...) dentro del HTML que arman los generadores de reporte con
+// `win.document.write(...)`. Sin esto, un campo con `<script>` o `<img onerror=...>` se
+// ejecuta cuando cualquiera abre o imprime el reporte — XSS almacenado.
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 // Solo mes y año (ej. "Agosto 2026") — usado en el reporte de mantenimiento preventivo,
 // donde no se necesita el día exacto de la próxima intervención.
 function formatMesAnio(fechaStr) {
@@ -119,9 +131,10 @@ function tiempoRespuestaMs(r) {
   const ms = new Date(fin) - new Date(inicio);
   return isNaN(ms) ? null : Math.max(0, ms);
 }
-// Acceso simple — cámbialo por tus propios datos.
-const AUTH_USER = 'jesus.charris';
-const AUTH_PASS = 'biomedica2026';
+// El login ya NO se verifica aquí — antes AUTH_USER/AUTH_PASS vivían en este archivo,
+// lo que significa que cualquiera podía leerlos abriendo "ver código fuente" en el
+// navegador. Ahora la verificación real ocurre en el servidor (api/login.js), usando las
+// variables de entorno AUTH_USER / AUTH_PASSWORD_HASH configuradas en Vercel.
 
 const CLASIFICACIONES = ['I', 'IIA', 'IIB', 'III'];
 const ESTADOS_EQUIPO = ['Operativo', 'Fuera de servicio', 'En mantenimiento', 'Dado de baja'];
@@ -262,7 +275,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
   const tipoLabel = TIPOS_REPORTE_LABEL[tipoKey] || tipoKey;
   const win = window.open('', '_blank');
   if (!win) { alert('El navegador bloqueó la ventana emergente. Habilítala para generar el PDF.'); return; }
-  const esc = (v) => (v || '—');
+  const esc = (v) => escapeHtml(v || '—');
   const box = (checked) => checked ? '☑' : '☐';
 
   const checklistRows = CHECKLIST_ITEMS.map(item => {
@@ -272,7 +285,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
       <td style="text-align:center;">${c.estado === 'no_aplica' ? '✔' : ''}</td>
       <td style="text-align:center;">${c.estado === 'bueno' ? '✔' : ''}</td>
       <td style="text-align:center;">${c.estado === 'malo' ? '✔' : ''}</td>
-      <td>${c.obs || ''}</td>
+      <td>${esc(c.obs)}</td>
     </tr>`;
   }).join('');
 
@@ -280,7 +293,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
   const fechaProximoTxt = formatMesAnio(rep.fechaProximo);
 
   const repuestosTxt = (rep.repuestos || []).length
-    ? rep.repuestos.map(r => `${r.item}${r.cantidad ? ' — ' + r.cantidad : ''}`).join('<br/>')
+    ? rep.repuestos.map(r => `${escapeHtml(r.item)}${r.cantidad ? ' — ' + escapeHtml(r.cantidad) : ''}`).join('<br/>')
     : '—';
 
   // Cada firma cargada se imprime como imagen sobre su línea correspondiente (formato unificado).
@@ -853,7 +866,7 @@ function generarF140PDF(empresaKey, datos, form) {
   if (!co) return;
   const win = window.open('', '_blank');
   if (!win) { alert('El navegador bloqueó la ventana emergente. Habilítala para generar el PDF.'); return; }
-  const esc = (v) => (v && String(v).trim()) || '—';
+  const esc = (v) => escapeHtml((v && String(v).trim()) || '—');
 
   const filaIndicador = (id, ind, metaKey) => !ind ? '' : `<tr>
       <td>${id}</td><td>${esc(ind.nombre)}</td>
@@ -2381,15 +2394,28 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [remember, setRemember] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    if (user.trim() === AUTH_USER && pass === AUTH_PASS) {
-      localStorage.setItem('cmms-auth-ok', 'true');
-      setError('');
+    setError('');
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user: user.trim(), pass, remember }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Usuario o contraseña incorrectos');
+        return;
+      }
       onLogin();
-    } else {
-      setError('Usuario o contraseña incorrectos');
+    } catch {
+      setError('No se pudo conectar con el servidor. Verifica tu conexión e intenta de nuevo.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -2548,8 +2574,8 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
                 </div>
               )}
 
-              <button type="submit" className="login-btn-primary w-full rounded-xl py-3 text-sm font-semibold text-white flex items-center justify-center gap-1.5">
-                Iniciar sesión <ArrowRight size={15} className="login-btn-arrow" />
+              <button type="submit" disabled={submitting} className="login-btn-primary w-full rounded-xl py-3 text-sm font-semibold text-white flex items-center justify-center gap-1.5 disabled:opacity-70">
+                {submitting ? 'Iniciando sesión…' : <>Iniciar sesión <ArrowRight size={15} className="login-btn-arrow" /></>}
               </button>
             </form>
 
@@ -4793,22 +4819,39 @@ function ConfigPage({ t, accent, onReset, onLogout, alertEmails, onAddEmail, onR
 /* WRAPPER DE ACCESO                                                  */
 /* ---------------------------------------------------------------- */
 export default function App() {
-  const [authed, setAuthed] = useState(() => {
-    try { return localStorage.getItem('cmms-auth-ok') === 'true'; } catch { return false; }
-  });
+  // authed empieza en null ("verificando") — a propósito ya NO se lee de localStorage,
+  // que cualquiera puede falsificar desde DevTools sin conocer la contraseña. La única
+  // fuente de verdad es la cookie de sesión HttpOnly, que el navegador no deja leer ni
+  // escribir desde JavaScript; le preguntamos al servidor si es válida.
+  const [authed, setAuthed] = useState(null);
   const [guestMode, setGuestMode] = useState(false);
   const [publicView, setPublicView] = useState(null); // null | 'reporte'
 
+  useEffect(() => {
+    fetch('/api/login')
+      .then((res) => (res.ok ? res.json() : { authenticated: false }))
+      .then((data) => setAuthed(!!data.authenticated))
+      .catch(() => setAuthed(false));
+  }, []);
+
   if (publicView === 'reporte' && !authed && !guestMode) {
     return <ReporteFallaForm onBack={() => setPublicView(null)} />;
+  }
+
+  if (authed === null) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center text-sm text-slate-400">
+        Verificando sesión…
+      </div>
+    );
   }
 
   if (!authed && !guestMode) {
     return <LoginScreen onLogin={() => setAuthed(true)} onGuest={() => setGuestMode(true)} onReportarFalla={() => setPublicView('reporte')} />;
   }
 
-  const salir = () => {
-    localStorage.removeItem('cmms-auth-ok');
+  const salir = async () => {
+    try { await fetch('/api/logout', { method: 'POST' }); } catch { /* igual limpiamos el estado local */ }
     setAuthed(false);
     setGuestMode(false);
   };

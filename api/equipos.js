@@ -15,6 +15,7 @@
 // diario de alertas (api/daily-alerts.js) siga leyendo el mismo dato sin cambios.
 
 import { kv } from '@vercel/kv';
+import { requireAdmin } from '../lib/auth.js';
 
 const KV_KEY = 'cmms:equipos';
 
@@ -29,6 +30,9 @@ export default async function handler(req, res) {
       if (empresa) equipos = equipos.filter(e => e.empresa === empresa);
       return res.status(200).json({ equipos });
     }
+
+    // Toda escritura requiere sesión de admin — el modo invitado solo puede leer (GET).
+    if (!(await requireAdmin(req, res))) return;
 
     if (req.method === 'POST') {
       const { equipo, equipos: nuevos } = req.body || {};
@@ -54,7 +58,10 @@ export default async function handler(req, res) {
       if (idx === -1) {
         return res.status(404).json({ error: 'No existe un equipo con ese id.' });
       }
-      const actualizado = { ...equipos[idx], ...patch };
+      // El id es la llave de búsqueda en KV — nunca debe poder cambiar vía patch,
+      // así el cliente mande lo que mande en ese campo.
+      const { id: _ignored, ...patchSeguro } = patch;
+      const actualizado = { ...equipos[idx], ...patchSeguro };
       const actualizados = [...equipos];
       actualizados[idx] = actualizado;
       await kv.set(KV_KEY, actualizados);

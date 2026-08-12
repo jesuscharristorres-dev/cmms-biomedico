@@ -13,14 +13,30 @@ import { buildAlerts } from '../../src/services/alertLogic.js';
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'CMMS Biomédico <onboarding@resend.dev>';
 
+// a.equipo/a.empresa/a.sede vienen de texto libre cargado por usuarios (nombre del
+// equipo, etc.) — se escapan antes de interpolarlos en el HTML del correo.
+function esc(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export default async function handler(req, res) {
-  // Vercel agrega automáticamente este header en sus Cron Jobs cuando defines CRON_SECRET.
-  // Protege el endpoint para que nadie más lo dispare manualmente y gaste tu cupo de Resend.
-  if (process.env.CRON_SECRET) {
-    const authHeader = req.headers['authorization'];
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return res.status(401).json({ error: 'No autorizado.' });
-    }
+  // Vercel agrega automáticamente este header en sus Cron Jobs cuando defines CRON_SECRET
+  // en el proyecto. A propósito falla CERRADO: si la variable no está configurada, el
+  // endpoint se rechaza en vez de quedar abierto — antes, si alguien olvidaba configurar
+  // CRON_SECRET en Vercel, cualquiera podía disparar este endpoint manualmente sin límite
+  // y agotar la cuota de Resend.
+  if (!process.env.CRON_SECRET) {
+    console.error('[cron/daily-alerts] Falta la variable de entorno CRON_SECRET — rechazando por seguridad.');
+    return res.status(500).json({ error: 'CRON_SECRET no está configurado en el servidor.' });
+  }
+  const authHeader = req.headers['authorization'];
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: 'No autorizado.' });
   }
 
   if (!process.env.RESEND_API_KEY) {
@@ -45,8 +61,8 @@ export default async function handler(req, res) {
       .map(
         (a) => `
       <tr>
-        <td style="padding:7px 10px;font-size:11px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600;white-space:nowrap;">${a.tipo} — ${a.equipo}</td>
-        <td style="padding:7px 10px;font-size:13px;color:#1e293b;border:1px solid #e2e8f0;">${a.empresa} · ${a.sede} · ${
+        <td style="padding:7px 10px;font-size:11px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;font-weight:600;white-space:nowrap;">${esc(a.tipo)} — ${esc(a.equipo)}</td>
+        <td style="padding:7px 10px;font-size:13px;color:#1e293b;border:1px solid #e2e8f0;">${esc(a.empresa)} · ${esc(a.sede)} · ${
           a.status === 'vencido' ? `vencida hace ${Math.abs(a.diffDays)} días` : `faltan ${a.diffDays} días`
         }</td>
       </tr>`

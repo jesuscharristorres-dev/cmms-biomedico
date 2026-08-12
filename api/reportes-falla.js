@@ -13,6 +13,7 @@
 // igual que api/sync-data.js.
 
 import { kv } from '@vercel/kv';
+import { requireAdmin } from '../lib/auth.js';
 
 const KV_KEY = 'cmms:reportesFalla';
 
@@ -43,6 +44,10 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'PATCH') {
+      // A diferencia de GET/POST (que debe seguir público — es el formulario que usan
+      // los coordinadores de sede SIN cuenta), actualizar el estado de un reporte
+      // (asignar técnico, cerrar, etc.) sí requiere sesión de admin.
+      if (!(await requireAdmin(req, res))) return;
       const { id, patch } = req.body || {};
       if (!id || !patch) {
         return res.status(400).json({ error: 'Falta id o patch para actualizar el reporte.' });
@@ -52,7 +57,8 @@ export default async function handler(req, res) {
       if (idx === -1) {
         return res.status(404).json({ error: 'No existe un reporte con ese id.' });
       }
-      const actualizado = { ...reportes[idx], ...patch };
+      const { id: _ignored, ...patchSeguro } = patch;
+      const actualizado = { ...reportes[idx], ...patchSeguro };
       const actualizados = [...reportes];
       actualizados[idx] = actualizado;
       await kv.set(KV_KEY, actualizados);

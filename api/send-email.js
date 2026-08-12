@@ -16,9 +16,11 @@
 // en https://tu-dominio.vercel.app/api/send-email
 
 import { Resend } from 'resend';
+import { kv } from '@vercel/kv';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'CMMS Biomédico <onboarding@resend.dev>';
+const ALERT_EMAILS_KEY = 'cmms:alertEmails';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -37,9 +39,17 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Faltan campos requeridos: to, subject, html.' });
   }
 
-  const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean);
+  // Este endpoint NO exige sesión a propósito: lo dispara también el formulario público
+  // de reporte de fallas (coordinadores de sede sin cuenta). Para que eso no lo convierta
+  // en un relay de correo abierto, el destinatario nunca se toma tal cual del cliente —
+  // se valida contra la lista real de correos de alerta configurados en KV (Configuración).
+  // Cualquier dirección que el cliente mande y no esté en esa lista se descarta.
+  const solicitados = (Array.isArray(to) ? to : [to]).filter(Boolean);
+  const permitidos = new Set((await kv.get(ALERT_EMAILS_KEY)) || []);
+  const recipients = solicitados.filter((addr) => permitidos.has(addr));
+
   if (recipients.length === 0) {
-    return res.status(400).json({ error: 'No hay destinatarios válidos.' });
+    return res.status(400).json({ error: 'No hay destinatarios válidos configurados en Configuración → Correos para alertas.' });
   }
 
   try {

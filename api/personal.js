@@ -3,6 +3,7 @@
 // localStorage. Mismo patrón que api/reportes-falla.js: crear UNO, actualizar UNO por id.
 
 import { kv } from '@vercel/kv';
+import { requireAdmin } from '../lib/auth.js';
 
 const KV_KEY = 'cmms:personal';
 
@@ -16,6 +17,9 @@ export default async function handler(req, res) {
       if (empresa) personal = personal.filter(p => p.empresa === empresa);
       return res.status(200).json({ personal });
     }
+
+    // Toda escritura requiere sesión de admin — el modo invitado solo puede leer (GET).
+    if (!(await requireAdmin(req, res))) return;
 
     if (req.method === 'POST') {
       const { record } = req.body || {};
@@ -41,7 +45,8 @@ export default async function handler(req, res) {
       if (idx === -1) {
         return res.status(404).json({ error: 'No existe un registro con ese id.' });
       }
-      const actualizado = { ...personal[idx], ...patch };
+      const { id: _ignored, ...patchSeguro } = patch;
+      const actualizado = { ...personal[idx], ...patchSeguro };
       const actualizados = [...personal];
       actualizados[idx] = actualizado;
       await kv.set(KV_KEY, actualizados);

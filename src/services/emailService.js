@@ -40,8 +40,17 @@ async function sendEmail({ to, subject, html, text }) {
 /* PLANTILLA BASE (HTML por correo, reutilizada por todas las notif.) */
 /* ---------------------------------------------------------------- */
 
+// Escapa entidades HTML antes de interpolar texto libre (descripciones de fallas,
+// nombres de responsables, etc.) en las plantillas de correo — sin esto, un campo con
+// `<script>` o `<img onerror=...>` se ejecuta en el cliente de correo de quien lo reciba.
 function esc(v) {
-  return (v ?? '—').toString();
+  return (v ?? '—')
+    .toString()
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function baseTemplate({ colorFranja, eyebrow, titulo, filas, nota }) {
