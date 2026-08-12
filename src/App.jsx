@@ -261,7 +261,6 @@ function generarReportePDF(equipo, tipoKey, rep) {
   const esc = (v) => (v || '—');
   const box = (checked) => checked ? '☑' : '☐';
 
-  // El reporte no incluye la columna de observaciones del checklist (formato unificado).
   const checklistRows = CHECKLIST_ITEMS.map(item => {
     const c = (rep.checklist && rep.checklist[item]) || { estado: 'no_aplica', obs: '' };
     return `<tr>
@@ -269,6 +268,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
       <td style="text-align:center;">${c.estado === 'no_aplica' ? '✔' : ''}</td>
       <td style="text-align:center;">${c.estado === 'bueno' ? '✔' : ''}</td>
       <td style="text-align:center;">${c.estado === 'malo' ? '✔' : ''}</td>
+      <td>${esc(c.obs)}</td>
     </tr>`;
   }).join('');
 
@@ -368,7 +368,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
 
       <h2 class="section" style="margin-top:14px;">Características a inspeccionar</h2>
       <table class="checklist">
-        <thead><tr><th style="text-align:left;">Ítem</th><th>No aplica</th><th>Buen estado</th><th>Mal estado</th></tr></thead>
+        <thead><tr><th style="text-align:left;">Ítem</th><th>No aplica</th><th>Buen estado</th><th>Mal estado</th><th style="text-align:left;">Observaciones</th></tr></thead>
         <tbody>${checklistRows}</tbody>
       </table>
 
@@ -1254,6 +1254,7 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
   const [firmaRecibe, setFirmaRecibe] = useState(existing.firmaRecibe || '');
 
   const setItemEstado = (item, estado) => !readOnly && setChecklist({ ...checklist, [item]: { ...checklist[item], estado } });
+  const setItemObs = (item, obs) => !readOnly && setChecklist({ ...checklist, [item]: { ...checklist[item], obs } });
 
   const buildReport = () => ({
     fecha, fechaProximo, estadoInicial, checklist, trabajoRealizado, repuestos,
@@ -1315,6 +1316,9 @@ function ReporteTecnicoModal({ equipo, record, tipoKey, onClose, onSave, accent,
                   </button>
                 ))}
               </div>
+              <input type="text" value={checklist[item]?.obs || ''} disabled={readOnly} placeholder="Observaciones"
+                onChange={e => setItemObs(item, e.target.value)}
+                className={`w-full sm:w-56 rounded-md px-2 py-1 text-2xs border ${t.input} ${readOnly ? 'opacity-60' : ''}`} />
             </div>
           ))}
         </div>
@@ -2107,15 +2111,19 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
               fields={[
                 { key: 'fecha', label: 'Fecha', type: 'date' },
                 { key: 'responsable', label: 'Responsable' },
-                { key: 'estado', label: 'Estado', type: 'select', options: ['Programado', 'Ejecutado'] },
                 { key: 'pdfUrl', label: 'PDF (URL)', type: 'url' },
               ]}
-              onAdd={(d) => patchList('preventivos', [...equipo.preventivos, { id: uid('pv'), fecha: todayISO(), estado: 'Programado', ...d }])}
+              onAdd={(d) => patchList('preventivos', [...equipo.preventivos, { id: uid('pv'), fecha: todayISO(), estado: 'Ejecutado', ...d }])}
               onRemove={(i) => patchList('preventivos', equipo.preventivos.filter((_, idx) => idx !== i))}
               onUpdate={(i, k, v) => { const list = [...equipo.preventivos]; list[i] = { ...list[i], [k]: v }; patchList('preventivos', list); }}
-              renderExtra={(r, i) => r.estado === 'Ejecutado' && (
-                <ReporteTecnicoButton equipo={equipo} record={r} tipoKey="Preventivo" accent={accent} t={t} readOnly={readOnly}
-                  onSave={(rep) => { const list = [...equipo.preventivos]; list[i] = { ...list[i], reporteTecnico: rep }; patchList('preventivos', list); }} />
+              renderExtra={(r, i) => (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-3xs uppercase tracking-wide text-slate-400">Estado: <span className="font-semibold normal-case">{r.estado}</span></span>
+                  {r.estado === 'Ejecutado' && (
+                    <ReporteTecnicoButton equipo={equipo} record={r} tipoKey="Preventivo" accent={accent} t={t} readOnly={readOnly}
+                      onSave={(rep) => { const list = [...equipo.preventivos]; list[i] = { ...list[i], reporteTecnico: rep }; patchList('preventivos', list); }} />
+                  )}
+                </div>
               )}
             />
           )}
