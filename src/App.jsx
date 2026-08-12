@@ -5,7 +5,7 @@ import {
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, Mail, AlertTriangle, Lock,
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
-  IdCard
+  IdCard, Save
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -4065,66 +4065,103 @@ function ReportesFallaPage({ reportes, activeCompany, t, accent, onUpdate, readO
               <Badge color={REPORTE_ESTADO_HEX[r.estado]}>{r.estado}</Badge>
               <span className="text-2xs font-mono">{r.fecha}</span>
             </div>
-            {openId === r.id && (
-              <div className={`p-3 border-t space-y-3 ${t.border} ${t.panel3}`}>
-                <div>
-                  <div className="text-3xs uppercase text-slate-400 mb-1">Descripción</div>
-                  <div className="text-xs">{r.descripcion}</div>
-                </div>
-
-                {(() => {
-                  const { inicio, fin } = reporteTimestamps(r);
-                  const ms = tiempoRespuestaMs(r);
-                  return (
-                    <div className={`rounded-lg border p-3 grid grid-cols-3 gap-3 ${t.panel3} ${t.border}`}>
-                      <div>
-                        <div className="text-3xs uppercase text-slate-400 mb-1">Reportada</div>
-                        <div className="text-xs font-mono">{formatFechaHora(inicio) || '—'}</div>
-                      </div>
-                      <div>
-                        <div className="text-3xs uppercase text-slate-400 mb-1">Solucionada</div>
-                        {fin
-                          ? <div className="text-xs font-mono">{formatFechaHora(fin)}</div>
-                          : <div className="text-xs font-semibold" style={{ color: '#F59E0B' }}>Pendiente de solución</div>}
-                      </div>
-                      <div>
-                        <div className="text-3xs uppercase text-slate-400 mb-1">Tiempo de respuesta</div>
-                        <div className="text-xs font-mono font-semibold" style={ms !== null ? { color: '#22C55E' } : {}}>
-                          {ms !== null ? formatDuracion(ms) : '—'}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {r.adjuntos && r.adjuntos.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {r.adjuntos.map((a, i) => (
-                      <PdfLink key={i} url={a.url} label={a.nombre || 'Ver PDF'} title={a.nombre || 'Ver adjunto'} t={t} />
-                    ))}
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Estado">
-                    <SelectInput t={t} value={r.estado} options={REPORTE_ESTADOS} disabled={readOnly}
-                      onChange={v => onUpdate({
-                        ...r, estado: v,
-                        fechaCierre: v === 'Finalizado' ? (r.fechaCierre || todayISO()) : r.fechaCierre,
-                        fechaHoraSolucion: v === 'Finalizado' ? (r.fechaHoraSolucion || new Date().toISOString()) : r.fechaHoraSolucion,
-                      })} />
-                  </Field>
-                  <Field label="Técnico asignado">
-                    <TextInput t={t} value={r.tecnicoAsignado} disabled={readOnly} onChange={v => onUpdate({ ...r, tecnicoAsignado: v })} />
-                  </Field>
-                </div>
-                <Field label="Observaciones de la reparación">
-                  <textarea rows={3} value={r.observacionesReparacion || ''} disabled={readOnly} onChange={e => onUpdate({ ...r, observacionesReparacion: e.target.value })} className={`w-full rounded-md px-2.5 py-2 text-xs border ${t.input} ${readOnly ? 'opacity-60' : ''}`} />
-                </Field>
-              </div>
-            )}
+            {openId === r.id && <ReporteFallaDetalle r={r} onUpdate={onUpdate} readOnly={readOnly} t={t} accent={accent} />}
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Detalle expandido de un reporte de falla: estado, persona asignada y observaciones de
+// la reparación se editan en un borrador local y solo se envían al guardar (antes cada
+// tecla disparaba un PATCH; ahora el coordinador confirma explícitamente con "Guardar").
+function ReporteFallaDetalle({ r, onUpdate, readOnly, t, accent }) {
+  const [draft, setDraft] = useState({
+    estado: r.estado, tecnicoAsignado: r.tecnicoAsignado || '', observacionesReparacion: r.observacionesReparacion || '',
+  });
+  const [guardado, setGuardado] = useState(false);
+
+  // Si el reporte cambia desde afuera (otro usuario lo actualizó, o falló el guardado y
+  // se revirtió), el borrador se realinea con el dato real — ajuste durante el render.
+  const [prevReporte, setPrevReporte] = useState(r);
+  if (r.estado !== prevReporte.estado || r.tecnicoAsignado !== prevReporte.tecnicoAsignado || r.observacionesReparacion !== prevReporte.observacionesReparacion) {
+    setPrevReporte(r);
+    setDraft({ estado: r.estado, tecnicoAsignado: r.tecnicoAsignado || '', observacionesReparacion: r.observacionesReparacion || '' });
+  }
+
+  const hayCambios = draft.estado !== r.estado || draft.tecnicoAsignado !== (r.tecnicoAsignado || '') || draft.observacionesReparacion !== (r.observacionesReparacion || '');
+
+  const guardar = () => {
+    onUpdate({
+      ...r,
+      estado: draft.estado, tecnicoAsignado: draft.tecnicoAsignado, observacionesReparacion: draft.observacionesReparacion,
+      fechaCierre: draft.estado === 'Finalizado' ? (r.fechaCierre || todayISO()) : r.fechaCierre,
+      fechaHoraSolucion: draft.estado === 'Finalizado' ? (r.fechaHoraSolucion || new Date().toISOString()) : r.fechaHoraSolucion,
+    });
+    setGuardado(true);
+    setTimeout(() => setGuardado(false), 2000);
+  };
+
+  return (
+    <div className={`p-3 border-t space-y-3 ${t.border} ${t.panel3}`}>
+      <div>
+        <div className="text-3xs uppercase text-slate-400 mb-1">Descripción</div>
+        <div className="text-xs">{r.descripcion}</div>
+      </div>
+
+      {(() => {
+        const { inicio, fin } = reporteTimestamps(r);
+        const ms = tiempoRespuestaMs(r);
+        return (
+          <div className={`rounded-lg border p-3 grid grid-cols-3 gap-3 ${t.panel3} ${t.border}`}>
+            <div>
+              <div className="text-3xs uppercase text-slate-400 mb-1">Reportada</div>
+              <div className="text-xs font-mono">{formatFechaHora(inicio) || '—'}</div>
+            </div>
+            <div>
+              <div className="text-3xs uppercase text-slate-400 mb-1">Solucionada</div>
+              {fin
+                ? <div className="text-xs font-mono">{formatFechaHora(fin)}</div>
+                : <div className="text-xs font-semibold" style={{ color: '#F59E0B' }}>Pendiente de solución</div>}
+            </div>
+            <div>
+              <div className="text-3xs uppercase text-slate-400 mb-1">Tiempo de respuesta</div>
+              <div className="text-xs font-mono font-semibold" style={ms !== null ? { color: '#22C55E' } : {}}>
+                {ms !== null ? formatDuracion(ms) : '—'}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {r.adjuntos && r.adjuntos.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {r.adjuntos.map((a, i) => (
+            <PdfLink key={i} url={a.url} label={a.nombre || 'Ver PDF'} title={a.nombre || 'Ver adjunto'} t={t} />
+          ))}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Estado">
+          <SelectInput t={t} value={draft.estado} options={REPORTE_ESTADOS} disabled={readOnly}
+            onChange={v => setDraft({ ...draft, estado: v })} />
+        </Field>
+        <Field label="Persona asignada">
+          <TextInput t={t} value={draft.tecnicoAsignado} disabled={readOnly} onChange={v => setDraft({ ...draft, tecnicoAsignado: v })} />
+        </Field>
+      </div>
+      <Field label="Observaciones de la reparación">
+        <textarea rows={3} value={draft.observacionesReparacion} disabled={readOnly}
+          onChange={e => setDraft({ ...draft, observacionesReparacion: e.target.value })}
+          className={`w-full rounded-md px-2.5 py-2 text-xs border ${t.input} ${readOnly ? 'opacity-60' : ''}`} />
+      </Field>
+      {!readOnly && (
+        <div className="flex items-center gap-2">
+          <Button variant="primary" accent={accent} t={t} icon={Save} iconSize={13} disabled={!hayCambios} onClick={guardar}>Guardar</Button>
+          {guardado && <span className="text-2xs font-semibold" style={{ color: '#22C55E' }}>Reporte guardado</span>}
+        </div>
+      )}
     </div>
   );
 }
