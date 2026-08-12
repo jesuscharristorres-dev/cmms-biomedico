@@ -2851,7 +2851,7 @@ function MainApp({ onLogout, readOnly }) {
       if (previous) setReportesFalla(prev => prev.map(r => r.id === updated.id ? previous : r));
     });
   };
-  const nuevosReportes = reportesFalla.filter(r => !r.visto).length;
+  const nuevosReportes = reportesFalla.filter(r => !r.visto && (activeCompany === 'TODAS' || r.empresa === activeCompany)).length;
 
   useEffect(() => { loadPlanesProgramas().then(setPlanesProgramas); }, []);
   const updatePlanPrograma = (empresaKey, campo, valor) => {
@@ -3148,11 +3148,11 @@ function MainApp({ onLogout, readOnly }) {
             }}
           />
         )}
-        {menu === 'fallas' && <ReportesFallaPage reportes={reportesFalla} t={t} accent={accent} onUpdate={updateReporte} readOnly={readOnly} />}
-        {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
-        {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
-        {menu === 'personal' && <PersonalPage personal={personal} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
-        {menu === 'reportes' && <ReportesPage equipos={equipos} reportesFalla={reportesFalla} t={t} accent={accent} onExport={exportExcel} />}
+        {menu === 'fallas' && <ReportesFallaPage reportes={reportesFalla} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} readOnly={readOnly} />}
+        {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
+        {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
+        {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
+        {menu === 'reportes' && <ReportesPage equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} t={t} accent={accent} onExport={exportExcel} />}
         {menu === 'configuracion' && <ConfigPage t={t} accent={accent} onReset={() => {
           if (!confirm('¿Borrar todos los equipos guardados?')) return;
           const previous = equipos;
@@ -4007,12 +4007,15 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
 /* ---------------------------------------------------------------- */
 /* PÁGINA: REPORTES DE FALLA (Ingeniería Biomédica)                   */
 /* ---------------------------------------------------------------- */
-function ReportesFallaPage({ reportes, t, accent, onUpdate, readOnly }) {
+function ReportesFallaPage({ reportes, activeCompany, t, accent, onUpdate, readOnly }) {
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroPrioridad, setFiltroPrioridad] = useState('');
   const [openId, setOpenId] = useState(null);
 
+  // Respeta el contexto global de empresa (selector superior): con una empresa activa,
+  // solo se ven sus reportes; con "TODAS" se ve la vista consolidada.
   const list = reportes
+    .filter(r => activeCompany === 'TODAS' || r.empresa === activeCompany)
     .filter(r => (!filtroEstado || r.estado === filtroEstado) && (!filtroPrioridad || r.prioridad === filtroPrioridad))
     .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 
@@ -4155,8 +4158,13 @@ function ReportesFallaPage({ reportes, t, accent, onUpdate, readOnly }) {
 // Documentación institucional que NO es transversal: cada empresa tiene sus propios
 // documentos de Mantenimiento y Capacitaciones, nunca mezclados entre sí. Distinta de
 // la pestaña "Documentos" de cada equipo (esa es por equipo; esta es por empresa).
-function PlanesProgramasPage({ planesProgramas, t, onUpdate, readOnly }) {
-  const [empresaSel, setEmpresaSel] = useState(null);
+function PlanesProgramasPage({ planesProgramas, activeCompany, t, onUpdate, readOnly }) {
+  const [empresaSelLocal, setEmpresaSelLocal] = useState(null);
+  // Con una empresa activa en el selector superior, este módulo queda fijo en ella —
+  // ya no hay un selector propio que pueda quedar desincronizado del contexto global.
+  // El selector interno solo existe para navegar entre empresas en la vista "Todas las empresas".
+  const modoGlobal = activeCompany !== 'TODAS';
+  const empresaSel = modoGlobal ? activeCompany : empresaSelLocal;
 
   if (!empresaSel) {
     return (
@@ -4165,7 +4173,7 @@ function PlanesProgramasPage({ planesProgramas, t, onUpdate, readOnly }) {
         <p className={`text-xs mb-4 ${t.muted}`}>Documentación institucional de mantenimiento y capacitaciones, organizada por empresa. Selecciona una empresa para ver sus documentos.</p>
         <div className="grid md:grid-cols-3 gap-4">
           {COMPANIES.map(c => (
-            <button key={c.key} onClick={() => setEmpresaSel(c.key)}
+            <button key={c.key} onClick={() => setEmpresaSelLocal(c.key)}
               className={`text-left rounded-xl border overflow-hidden hover:-translate-y-0.5 transition ${t.panel} ${t.border}`}>
               <div className="h-2" style={{ background: c.gradient }} />
               <div className="p-5">
@@ -4184,9 +4192,11 @@ function PlanesProgramasPage({ planesProgramas, t, onUpdate, readOnly }) {
 
   return (
     <div>
-      <button onClick={() => setEmpresaSel(null)} className={`text-2xs font-mono uppercase mb-3 hover:underline ${t.muted}`}>
-        ← Cambiar empresa
-      </button>
+      {!modoGlobal && (
+        <button onClick={() => setEmpresaSelLocal(null)} className={`text-2xs font-mono uppercase mb-3 hover:underline ${t.muted}`}>
+          ← Cambiar empresa
+        </button>
+      )}
       <h1 className="text-lg font-bold mb-1" style={{ color: empresa.color }}>{empresa.key}</h1>
       <p className={`text-xs mb-4 ${t.muted}`}>Planes y programas — documentación institucional exclusiva de esta empresa.</p>
 
@@ -4218,18 +4228,34 @@ function PlanesProgramasPage({ planesProgramas, t, onUpdate, readOnly }) {
 
 // Tecnovigilancia: documentación transversal (compartida por todas las empresas) +
 // reportes trimestrales que se consultan empresa → sede → año → trimestre.
-function TecnovigilanciaPage({ transversal, reportes, t, accent, onUpdateTransversal, onUpdateReporte, readOnly }) {
-  const [empresaSel, setEmpresaSel] = useState(null);
+function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, onUpdateTransversal, onUpdateReporte, readOnly }) {
+  const [empresaSelLocal, setEmpresaSelLocal] = useState(null);
   const [sedeSel, setSedeSel] = useState(null);
   const [anio, setAnio] = useState(new Date().getFullYear());
   const [openTrimestre, setOpenTrimestre] = useState(null);
+  // Igual que en Planes y programas: con una empresa activa en el selector superior, los
+  // reportes de tecnovigilancia quedan fijos en ella (sin selector propio desincronizado).
+  // Los documentos transversales de arriba nunca se filtran: son compartidos por todas las empresas.
+  const modoGlobal = activeCompany !== 'TODAS';
+  const empresaSel = modoGlobal ? activeCompany : empresaSelLocal;
+  // Si cambia la empresa activa del selector superior, se limpia la sede/trimestre ya
+  // elegidos (ajuste de estado durante el render, como recomienda React, en vez de un efecto).
+  const [prevActiveCompany, setPrevActiveCompany] = useState(activeCompany);
+  if (activeCompany !== prevActiveCompany) {
+    setPrevActiveCompany(activeCompany);
+    setSedeSel(null);
+    setOpenTrimestre(null);
+  }
 
   const cargadosTransversal = TECNO_DOCS.filter(d => transversal[d.key]).length;
 
-  const totalCiudades = COMPANIES.reduce((acc, c) => acc + (TECNO_CIUDADES[c.key] || []).length, 0);
+  // Los KPI de reportes trimestrales sí respetan la empresa activa (los documentos
+  // transversales de arriba no, porque son compartidos por todas las empresas).
+  const empresasKpi = modoGlobal ? COMPANIES.filter(c => c.key === activeCompany) : COMPANIES;
+  const totalCiudades = empresasKpi.reduce((acc, c) => acc + (TECNO_CIUDADES[c.key] || []).length, 0);
   const anioActual = new Date().getFullYear();
   let cargadosAnioActual = 0;
-  COMPANIES.forEach(c => {
+  empresasKpi.forEach(c => {
     (TECNO_CIUDADES[c.key] || []).forEach(ciudad => {
       const anioData = reportes?.[c.key]?.[ciudad]?.[anioActual];
       if (anioData) TECNO_TRIMESTRES.forEach(tr => { if (anioData[tr.key]) cargadosAnioActual++; });
@@ -4242,7 +4268,7 @@ function TecnovigilanciaPage({ transversal, reportes, t, accent, onUpdateTransve
   const anioData = (empresaSel && sedeSel) ? (reportes?.[empresaSel]?.[sedeSel]?.[anio] || {}) : {};
 
   const resetSede = () => { setSedeSel(null); setOpenTrimestre(null); };
-  const resetEmpresa = () => { setEmpresaSel(null); setSedeSel(null); setOpenTrimestre(null); };
+  const resetEmpresa = () => { setEmpresaSelLocal(null); setSedeSel(null); setOpenTrimestre(null); };
 
   return (
     <div>
@@ -4255,7 +4281,7 @@ function TecnovigilanciaPage({ transversal, reportes, t, accent, onUpdateTransve
         <HeroStat t={t} label="Documentos transversales" color={accent}
           value={`${cargadosTransversal}/${TECNO_DOCS.length}`} sub="cargados" />
         <HeroStat t={t} label="Empresas" color={accent}
-          value={COMPANIES.length} sub="con módulo de tecnovigilancia" />
+          value={empresasKpi.length} sub="con módulo de tecnovigilancia" />
         <HeroStat t={t} label="Reportes del año" color="#22C55E"
           value={cargadosAnioActual} sub={`${anioActual} · de ${totalSlotsAnioActual} esperados`} />
         <HeroStat t={t} label="Reportes pendientes" color="#F59E0B"
@@ -4304,7 +4330,7 @@ function TecnovigilanciaPage({ transversal, reportes, t, accent, onUpdateTransve
               {COMPANIES.map(c => {
                 const ciudades = TECNO_CIUDADES[c.key] || [];
                 return (
-                  <button key={c.key} onClick={() => setEmpresaSel(c.key)}
+                  <button key={c.key} onClick={() => setEmpresaSelLocal(c.key)}
                     className={`text-left rounded-xl border overflow-hidden hover:-translate-y-0.5 transition ${t.panel} ${t.border}`}>
                     <div className="h-2" style={{ background: c.gradient }} />
                     <div className="p-5">
@@ -4320,7 +4346,7 @@ function TecnovigilanciaPage({ transversal, reportes, t, accent, onUpdateTransve
 
         {empresaSel && !sedeSel && (
           <div>
-            <button onClick={resetEmpresa} className={`text-2xs font-mono uppercase mb-3 hover:underline ${t.muted}`}>← Cambiar empresa</button>
+            {!modoGlobal && <button onClick={resetEmpresa} className={`text-2xs font-mono uppercase mb-3 hover:underline ${t.muted}`}>← Cambiar empresa</button>}
             <div className="text-sm font-bold mb-3" style={{ color: empresa.color }}>{empresa.key}</div>
             <p className={`text-2xs mb-3 ${t.muted}`}>Selecciona una ciudad/departamento.</p>
             <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -4338,8 +4364,7 @@ function TecnovigilanciaPage({ transversal, reportes, t, accent, onUpdateTransve
         {empresaSel && sedeSel && (
           <div>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-3 text-2xs font-mono uppercase">
-              <button onClick={resetEmpresa} className={`hover:underline ${t.muted}`}>Empresa</button>
-              <span className={t.muted}>/</span>
+              {!modoGlobal && (<><button onClick={resetEmpresa} className={`hover:underline ${t.muted}`}>Empresa</button><span className={t.muted}>/</span></>)}
               <button onClick={resetSede} className={`hover:underline ${t.muted}`}>{empresa.key}</button>
               <span className={t.muted}>/</span>
               <span style={{ color: empresa.color }}>{sedeSel}</span>
@@ -4394,7 +4419,7 @@ function TecnovigilanciaPage({ transversal, reportes, t, accent, onUpdateTransve
 // Hojas de vida del personal — control sencillo de quién trabaja en cada empresa, su
 // cargo y si ya tiene su hoja de vida (PDF) cargada. No es un módulo de RRHH: un solo
 // documento por persona, sin diplomas/certificados/otros anexos.
-function PersonalPage({ personal, t, accent, onAdd, onUpdate, readOnly }) {
+function PersonalPage({ personal, activeCompany, t, accent, onAdd, onUpdate, readOnly }) {
   const [filtroNombre, setFiltroNombre] = useState('');
   const [filtroEmpresa, setFiltroEmpresa] = useState('');
   const [filtroCargo, setFiltroCargo] = useState('');
@@ -4402,16 +4427,21 @@ function PersonalPage({ personal, t, accent, onAdd, onUpdate, readOnly }) {
   const [openId, setOpenId] = useState(null);
   const [showForm, setShowForm] = useState(false);
 
-  const activos = personal.filter(p => p.estado === 'Activo');
+  // Respeta el contexto global de empresa: con una empresa activa, toda la página (KPI,
+  // filtros y listado) queda restringida a ella — sin filtro propio desincronizado.
+  const modoGlobal = activeCompany !== 'TODAS';
+  const personalScoped = modoGlobal ? personal.filter(p => p.empresa === activeCompany) : personal;
+
+  const activos = personalScoped.filter(p => p.estado === 'Activo');
   const cargadas = activos.filter(p => p.hojaVidaUrl).length;
   const pendientes = activos.length - cargadas;
-  const empresasConPersonal = new Set(personal.map(p => p.empresa)).size;
+  const empresasConPersonal = new Set(personalScoped.map(p => p.empresa)).size;
 
-  const cargoOptions = [...new Set(personal.map(p => p.cargo).filter(Boolean))].sort();
+  const cargoOptions = [...new Set(personalScoped.map(p => p.cargo).filter(Boolean))].sort();
 
-  const list = personal
+  const list = personalScoped
     .filter(p => !filtroNombre.trim() || (p.nombreCompleto || '').toLowerCase().includes(filtroNombre.trim().toLowerCase()))
-    .filter(p => !filtroEmpresa || p.empresa === filtroEmpresa)
+    .filter(p => modoGlobal || !filtroEmpresa || p.empresa === filtroEmpresa)
     .filter(p => !filtroCargo || p.cargo === filtroCargo)
     .filter(p => !filtroEstado || p.estado === filtroEstado)
     .sort((a, b) => (a.nombreCompleto || '').localeCompare(b.nombreCompleto || ''));
@@ -4441,10 +4471,12 @@ function PersonalPage({ personal, t, accent, onAdd, onUpdate, readOnly }) {
           <input value={filtroNombre} onChange={e => setFiltroNombre(e.target.value)} placeholder="Buscar por nombre…"
             className={`rounded-md pl-7 pr-2.5 py-1.5 text-xs border ${t.input}`} />
         </div>
-        <select value={filtroEmpresa} onChange={e => setFiltroEmpresa(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
-          <option value="">Toda empresa</option>
-          {COMPANIES.map(c => <option key={c.key} value={c.key}>{c.key}</option>)}
-        </select>
+        {!modoGlobal && (
+          <select value={filtroEmpresa} onChange={e => setFiltroEmpresa(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+            <option value="">Toda empresa</option>
+            {COMPANIES.map(c => <option key={c.key} value={c.key}>{c.key}</option>)}
+          </select>
+        )}
         <select value={filtroCargo} onChange={e => setFiltroCargo(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
           <option value="">Todo cargo</option>
           {cargoOptions.map(c => <option key={c} value={c}>{c}</option>)}
@@ -4520,15 +4552,15 @@ function PersonalPage({ personal, t, accent, onAdd, onUpdate, readOnly }) {
       </div>
 
       {showForm && !readOnly && (
-        <PersonalFormModal t={t} accent={accent} onClose={() => setShowForm(false)}
+        <PersonalFormModal t={t} accent={accent} activeCompany={activeCompany} onClose={() => setShowForm(false)}
           onSave={(record) => { onAdd(record); setShowForm(false); }} />
       )}
     </div>
   );
 }
 
-function PersonalFormModal({ t, accent, onClose, onSave }) {
-  const [form, setForm] = useState(() => newPersonal(COMPANIES[0].key));
+function PersonalFormModal({ t, accent, activeCompany, onClose, onSave }) {
+  const [form, setForm] = useState(() => newPersonal(activeCompany && activeCompany !== 'TODAS' ? activeCompany : COMPANIES[0].key));
   const patch = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const canSave = form.nombreCompleto.trim() && form.numeroDocumento.trim() && form.cargo.trim();
 
@@ -4579,13 +4611,24 @@ function PersonalFormModal({ t, accent, onClose, onSave }) {
   );
 }
 
-function ReportesPage({ t, accent, onExport, equipos, reportesFalla }) {
+function ReportesPage({ t, accent, onExport, equipos, reportesFalla, activeCompany }) {
   const reportes = [
     'Reporte anual', 'Reporte por empresa', 'Reporte por sede',
     'Reporte por técnico', 'Reporte de calibraciones', 'Reporte de correctivos', 'Reporte de preventivos',
   ];
   const hoy = new Date();
-  const [informeEmpresa, setInformeEmpresa] = useState('MACROMED');
+  // Respeta el contexto global de empresa: con una empresa activa, el informe mensual de
+  // gestión queda fijo en ella (sin selector propio desincronizado); en "Todas las empresas"
+  // sigue siendo elegible libremente, porque el PDF es de una sola empresa a la vez.
+  const modoGlobal = activeCompany !== 'TODAS';
+  const [informeEmpresa, setInformeEmpresa] = useState(modoGlobal ? activeCompany : 'MACROMED');
+  // Ajuste de estado durante el render (patrón recomendado por React en vez de un efecto):
+  // si cambia la empresa activa del selector superior, el informe se realinea con ella.
+  const [prevActiveCompany, setPrevActiveCompany] = useState(activeCompany);
+  if (activeCompany !== prevActiveCompany) {
+    setPrevActiveCompany(activeCompany);
+    if (modoGlobal) setInformeEmpresa(activeCompany);
+  }
   const [informeMes, setInformeMes] = useState(hoy.getMonth());
   const [informeAnio, setInformeAnio] = useState(hoy.getFullYear());
 
@@ -4641,7 +4684,9 @@ function ReportesPage({ t, accent, onExport, equipos, reportesFalla }) {
         </p>
         <div className="flex flex-wrap items-end gap-2">
           <Field label="Empresa">
-            <SelectInput t={t} value={informeEmpresa} options={COMPANIES.map(c => c.key)} onChange={setInformeEmpresa} />
+            {modoGlobal
+              ? <TextInput t={t} value={informeEmpresa} disabled onChange={() => {}} />
+              : <SelectInput t={t} value={informeEmpresa} options={COMPANIES.map(c => c.key)} onChange={setInformeEmpresa} />}
           </Field>
           <Field label="Mes">
             <select value={informeMes} onChange={e => setInformeMes(+e.target.value)} className={`rounded-md px-2.5 py-1.5 text-xs border ${t.input}`}>

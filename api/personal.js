@@ -9,7 +9,11 @@ const KV_KEY = 'cmms:personal';
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      const personal = (await kv.get(KV_KEY)) || [];
+      let personal = (await kv.get(KV_KEY)) || [];
+      // Filtrado por empresa a nivel de servidor (opcional): ?empresa=MACROMED recorta
+      // la respuesta antes de enviarla — no depende de ocultar visualmente en el cliente.
+      const { empresa } = req.query || {};
+      if (empresa) personal = personal.filter(p => p.empresa === empresa);
       return res.status(200).json({ personal });
     }
 

@@ -21,7 +21,12 @@ const KV_KEY = 'cmms:equipos';
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      const equipos = (await kv.get(KV_KEY)) || [];
+      let equipos = (await kv.get(KV_KEY)) || [];
+      // Filtrado por empresa a nivel de servidor (opcional): si el cliente pide
+      // ?empresa=MACROMED, la respuesta ya viene recortada — no depende de que el
+      // frontend oculte visualmente los registros de las demás empresas.
+      const { empresa } = req.query || {};
+      if (empresa) equipos = equipos.filter(e => e.empresa === empresa);
       return res.status(200).json({ equipos });
     }
 
