@@ -2217,7 +2217,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
           {tab === 'Documentos' && (
             <RecordList t={t} records={equipo.documentos} readOnly={readOnly}
               fields={[
-                { key: 'tipo', label: 'Tipo', type: 'select', options: ['Manuales', 'Fichas técnicas', 'Guías de uso rápido', 'Registro INVIMA', 'Certificado de calibración', 'Factura', 'Otros'] },
+                { key: 'tipo', label: 'Tipo', type: 'select', options: ['Manuales', 'Fichas técnicas', 'Guías de uso rápido', 'Registro INVIMA', 'Certificado de calibración', 'Acta de entrega', 'Factura', 'Otros'] },
                 { key: 'nombre', label: 'Nombre' },
                 { key: 'url', label: 'Enlace (URL)', type: 'url' },
               ]}
