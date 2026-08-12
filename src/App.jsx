@@ -125,7 +125,7 @@ const AUTH_PASS = 'biomedica2026';
 
 const CLASIFICACIONES = ['I', 'IIA', 'IIB', 'III'];
 const ESTADOS_EQUIPO = ['Operativo', 'Fuera de servicio', 'En mantenimiento', 'Dado de baja'];
-const PERIODICIDADES = ['Mensual', 'Bimestral', 'Trimestral', 'Semestral', 'Anual'];
+const PERIODICIDADES = ['Mensual', 'Bimestral', 'Trimestral', 'Cuatrimestral', 'Semestral', 'Anual'];
 const MENU = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'alertas', label: 'Alertas', icon: BellRing },
@@ -2045,21 +2045,12 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
                 <Field label="Registro INVIMA"><TextInput t={t} disabled={readOnly} value={equipo.registroInvima} onChange={v => patch('registroInvima', v)} /></Field>
                 <Field label="Clasificación de riesgo"><SelectInput t={t} disabled={readOnly} value={equipo.clasificacionRiesgo} options={CLASIFICACIONES} onChange={v => patch('clasificacionRiesgo', v)} /></Field>
                 <Field label="Inventario"><TextInput t={t} disabled={readOnly} value={equipo.inventario} onChange={v => patch('inventario', v)} /></Field>
-                <Field label="Estado"><SelectInput t={t} disabled={readOnly} value={equipo.estado} options={ESTADOS_EQUIPO} onChange={v => patch('estado', v)} /></Field>
+                <Field label="Estado"><TextInput t={t} value={equipo.estado} disabled onChange={() => {}} /></Field>
                 <Field label="Fecha de instalación"><TextInput t={t} disabled={readOnly} type="date" value={equipo.fechaInstalacion} onChange={v => patch('fechaInstalacion', v)} /></Field>
                 <Field label="Ubicación"><TextInput t={t} disabled={readOnly} value={equipo.ubicacion} onChange={v => patch('ubicacion', v)} /></Field>
                 <Field label="Periodicidad de mantenimiento"><SelectInput t={t} disabled={readOnly} value={equipo.periodicidadMantenimiento} options={PERIODICIDADES} onChange={v => patch('periodicidadMantenimiento', v)} /></Field>
-                <Field label="Periodicidad de calibración"><SelectInput t={t} disabled={readOnly} value={equipo.periodicidadCalibracion} options={PERIODICIDADES} onChange={v => patch('periodicidadCalibracion', v)} /></Field>
+                <Field label="Periodicidad de calibración"><TextInput t={t} value="Anual" disabled onChange={() => {}} /></Field>
 
-                <div>
-                  <Field label="Acta de entrega (URL)">
-                    <div className="flex gap-2">
-                      <div className="flex-1 min-w-0"><TextInput t={t} disabled={readOnly} value={equipo.actaEntregaUrl} placeholder="https://drive.google.com/..." onChange={v => patch('actaEntregaUrl', v)} /></div>
-                      <PdfLink url={equipo.actaEntregaUrl} title="Ver acta de entrega" t={t} />
-                    </div>
-                  </Field>
-                  {!readOnly && <p className={`text-3xs mt-1 ${t.muted}`}>Sube el acta firmada a Drive/OneDrive/SharePoint y pega aquí el enlace.</p>}
-                </div>
                 <div>
                   <Field label="Hoja de vida (URL)">
                     <div className="flex gap-2">
@@ -2070,9 +2061,9 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
                   {!readOnly && <p className={`text-3xs mt-1 ${t.muted}`}>Sube la hoja de vida a Drive/OneDrive/SharePoint y pega aquí el enlace.</p>}
                 </div>
 
-                <div className="col-span-2 flex gap-4 mt-1">
+                <div className="col-span-2 flex gap-4 mt-1 items-center">
                   <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={equipo.aplicaCalibracion} disabled={readOnly} onChange={e => patch('aplicaCalibracion', e.target.checked)} /> Aplica calibración</label>
-                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={equipo.aplicaPreventivo} disabled={readOnly} onChange={e => patch('aplicaPreventivo', e.target.checked)} /> Aplica preventivo</label>
+                  <span className="text-xs">Mantenimiento preventivo: <span className="font-semibold">{equipo.aplicaPreventivo ? 'Aplicable' : 'No aplica'}</span></span>
                 </div>
               </div>
             </div>
