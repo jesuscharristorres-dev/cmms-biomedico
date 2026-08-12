@@ -74,11 +74,6 @@ const MONTHS = [
   { k: 'jul', l: 'Jul', full: 'Julio', idx: 6 }, { k: 'ago', l: 'Ago', full: 'Agosto', idx: 7 }, { k: 'sep', l: 'Sep', full: 'Septiembre', idx: 8 },
   { k: 'oct', l: 'Oct', full: 'Octubre', idx: 9 }, { k: 'nov', l: 'Nov', full: 'Noviembre', idx: 10 }, { k: 'dic', l: 'Dic', full: 'Diciembre', idx: 11 },
 ];
-function formatFechaCorta(fechaStr) {
-  const d = new Date(fechaStr + 'T00:00:00');
-  if (isNaN(d.getTime())) return fechaStr;
-  return `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()].l} ${d.getFullYear()}`;
-}
 // Solo mes y año (ej. "Agosto 2026") — usado en el reporte de mantenimiento preventivo,
 // donde no se necesita el día exacto de la próxima intervención.
 function formatMesAnio(fechaStr) {
