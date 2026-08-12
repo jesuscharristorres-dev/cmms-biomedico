@@ -186,6 +186,19 @@ function getMonthStatus(equipo, monthIdx, year) {
   return 'programado';
 }
 
+// Transformación EXCLUSIVA de la pestaña "Cronograma" del equipo (historial, no
+// programador): a diferencia de getMonthStatus (que sigue usando Excel y la vista de
+// Mantenimientos, con programado/vencido/no_aplica), esta solo distingue si ESE mes tuvo
+// un preventivo realmente ejecutado — nunca calcula "programado" ni "vencido".
+function getMonthHistorial(equipo, monthIdx, year) {
+  const realizado = (equipo.preventivos || []).some(p => {
+    if (!p.fecha || p.estado !== 'Ejecutado') return false;
+    const d = new Date(p.fecha + 'T00:00:00');
+    return d.getFullYear() === year && d.getMonth() === monthIdx;
+  });
+  return realizado ? 'realizado' : 'sin_registro';
+}
+
 
 
 function historialDe(equipo) {
@@ -2071,23 +2084,20 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
 
           {tab === 'Cronograma' && (
             <div>
-              <p className={`text-xs mb-3 ${t.muted}`}>Línea de tiempo {year} — el color refleja el estado del preventivo registrado ese mes.</p>
-              <div className="grid grid-cols-6 sm:grid-cols-4 gap-2">
+              <p className={`text-xs mb-3 ${t.muted}`}>Historial de mantenimientos realizados durante {year}.</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {MONTHS.map(m => {
-                  const st = getMonthStatus(equipo, m.idx, year);
+                  const realizado = getMonthHistorial(equipo, m.idx, year) === 'realizado';
                   return (
                     <div key={m.k} className={`rounded-lg border p-3 text-center ${t.panel3} ${t.border}`}>
-                      <div className="w-3 h-3 rounded-full mx-auto mb-1.5" style={{ background: STATUS_HEX[st] }} role="img" aria-label={STATUS_LABEL[st]} title={STATUS_LABEL[st]} />
-                      <div className="text-2xs font-mono uppercase" translate="no" lang="es">{m.full}</div>
+                      <div className="text-2xs font-mono uppercase mb-1.5" translate="no" lang="es">{m.full}</div>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: realizado ? SEMANTIC_HEX.ok : '#94A3B8' }} role="img" aria-label={realizado ? 'Realizado' : 'Sin registro'} />
+                        <span className="text-2xs font-medium" style={realizado ? { color: SEMANTIC_HEX.ok } : {}}>{realizado ? 'Realizado' : 'Sin registro'}</span>
+                      </div>
                     </div>
                   );
                 })}
-              </div>
-              <div className="flex gap-3 mt-3 flex-wrap text-2xs">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: STATUS_HEX.realizado }} />Realizado</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: STATUS_HEX.programado }} />Programado</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: STATUS_HEX.vencido }} />Vencido</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: STATUS_HEX.no_aplica }} />No aplica</span>
               </div>
             </div>
           )}
