@@ -125,6 +125,10 @@ const AUTH_PASS = 'biomedica2026';
 
 const CLASIFICACIONES = ['I', 'IIA', 'IIB', 'III'];
 const ESTADOS_EQUIPO = ['Operativo', 'Fuera de servicio', 'En mantenimiento', 'Dado de baja'];
+// La vista "Mantenimientos preventivos" solo ofrece estos dos — "Dado de baja" únicamente
+// aparece seleccionable en un equipo cuando ya tiene un reporte de baja (mismo campo
+// equipo.estado de siempre; no es una lógica nueva, solo se acortan las opciones visibles aquí).
+const ESTADOS_MANTENIMIENTOS = ['Operativo', 'Dado de baja'];
 const PERIODICIDADES = ['Mensual', 'Bimestral', 'Trimestral', 'Cuatrimestral', 'Semestral', 'Anual'];
 const MENU = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -3777,9 +3781,12 @@ const INVENTORY_HEAD = [
 function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilters, search, setSearch, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport, activeCompany, onClearFilters, readOnly }) {
   const year = new Date().getFullYear();
   const title = { inventario: 'Inventario de equipos', mantenimientos: 'Mantenimientos preventivos', calibraciones: 'Calibraciones', correctivos: 'Correctivos' }[mode];
+  // Filtro por mes del mantenimiento — exclusivo de la vista "Mantenimientos preventivos",
+  // no forma parte del objeto `filters` compartido porque no aplica a las demás vistas.
+  const [filtroMes, setFiltroMes] = useState('');
   const hayFiltrosActivos = Boolean(
     (activeCompany && activeCompany !== 'TODAS') || search.trim() ||
-    filters.sede || filters.ubicacion || filters.estado || filters.marca || filters.clasificacion
+    filters.sede || filters.ubicacion || filters.estado || filters.marca || filters.clasificacion || filtroMes
   );
 
   const toggleSort = (key) => setSort(s => ({ key, dir: s.key === key ? -s.dir : 1 }));
@@ -3818,7 +3825,7 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
         </select>
         <select value={filters.estado} onChange={e => setFilters({ ...filters, estado: e.target.value })} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
           <option value="">Todo estado</option>
-          {ESTADOS_EQUIPO.map(v => <option key={v} value={v}>{v}</option>)}
+          {(mode === 'mantenimientos' ? ESTADOS_MANTENIMIENTOS : ESTADOS_EQUIPO).map(v => <option key={v} value={v}>{v}</option>)}
         </select>
         <select value={filters.marca} onChange={e => setFilters({ ...filters, marca: e.target.value })} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
           <option value="">Toda marca</option>
@@ -3828,8 +3835,14 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
           <option value="">Toda clasificación</option>
           {CLASIFICACIONES.map(v => <option key={v} value={v}>{v}</option>)}
         </select>
+        {mode === 'mantenimientos' && (
+          <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+            <option value="">Todo mes</option>
+            {MONTHS.map(m => <option key={m.k} value={m.idx}>{m.full}</option>)}
+          </select>
+        )}
         {hayFiltrosActivos && (
-          <Button variant="ghost" t={t} icon={X} iconSize={12} onClick={onClearFilters}>Limpiar filtros</Button>
+          <Button variant="ghost" t={t} icon={X} iconSize={12} onClick={() => { onClearFilters(); setFiltroMes(''); }}>Limpiar filtros</Button>
         )}
       </div>
 
@@ -3927,6 +3940,7 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
       {mode === 'mantenimientos' && (
         <div className="space-y-2">
           {equipos.flatMap(e => (e.preventivos || []).map(p => ({ ...p, equipoNombre: e.equipo, equipoId: e.id, empresa: e.empresa, sede: e.sede })))
+            .filter(p => filtroMes === '' || (p.fecha && new Date(p.fecha + 'T00:00:00').getMonth() === +filtroMes))
             .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
             .map((p, i) => (
               <div key={i} onClick={() => onOpen(p.equipoId)} className={`rounded-lg border p-3 flex items-center gap-3 cursor-pointer ${t.panel} ${t.border}`}>
