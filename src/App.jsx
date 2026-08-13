@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X, Menu,
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
@@ -2947,23 +2947,34 @@ function MainApp({ onLogout, readOnly }) {
   // Corre cada vez que cambian los equipos o los correos configurados. No hay backend con
   // cron en esta app, así que esto se dispara cuando alguien tiene el CMMS abierto — y cada
   // alerta se notifica UNA sola vez (se guarda un registro local para no reenviar en cada visita).
+  //
+  // notifyingRef evita que dos disparos de este efecto (p.ej. cuando `equipos` y
+  // `alertEmails` terminan de cargar en momentos distintos) manden lotes de correos
+  // superpuestos. Cada alerta se marca como notificada apenas se envía con éxito —no al
+  // final del lote— así un envío fallido nunca se marca (se reintenta en la próxima
+  // carga) y una ejecución interrumpida no reenvía lo que ya salió bien.
+  const notifyingRef = useRef(false);
   useEffect(() => {
     if (readOnly || !loaded || alertEmails.length === 0) return;
+    if (notifyingRef.current) return;
     const alerts = buildAlerts(equipos);
     if (alerts.length === 0) return;
     const notified = getNotifiedIds();
     const pendientes = alerts.filter(a => !notified.has(`${a.tipo}:${a.equipoId}:${a.status}`));
     if (pendientes.length === 0) return;
+    notifyingRef.current = true;
     (async () => {
-      const idsEnviados = [];
-      for (const a of pendientes) {
-        const equipo = equipos.find(e => e.id === a.equipoId);
-        if (!equipo) continue;
-        const fn = a.tipo === 'Calibración' ? notifyCalibracionProxima : notifyPreventivoProximo;
-        const res = await fn(equipo, a, alertEmails);
-        if (res.success) idsEnviados.push(`${a.tipo}:${a.equipoId}:${a.status}`);
+      try {
+        for (const a of pendientes) {
+          const equipo = equipos.find(e => e.id === a.equipoId);
+          if (!equipo) continue;
+          const fn = a.tipo === 'Calibración' ? notifyCalibracionProxima : notifyPreventivoProximo;
+          const res = await fn(equipo, a, alertEmails);
+          if (res.success) markNotified([`${a.tipo}:${a.equipoId}:${a.status}`]);
+        }
+      } finally {
+        notifyingRef.current = false;
       }
-      if (idsEnviados.length > 0) markNotified(idsEnviados);
     })();
   }, [equipos, alertEmails, loaded, readOnly]);
 
