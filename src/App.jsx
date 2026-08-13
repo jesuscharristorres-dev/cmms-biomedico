@@ -2409,12 +2409,16 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error || 'Usuario o contraseña incorrectos');
+        setSubmitting(false);
         return;
       }
+      // Éxito: App() va a desmontar LoginScreen para mostrar MainApp en su lugar.
+      // A propósito NO se hace setSubmitting(false) aquí — este componente está a
+      // punto de desaparecer, y actualizar su estado justo en ese instante compite
+      // con el desmontaje en el mismo ciclo de React.
       onLogin();
     } catch {
       setError('No se pudo conectar con el servidor. Verifica tu conexión e intenta de nuevo.');
-    } finally {
       setSubmitting(false);
     }
   };

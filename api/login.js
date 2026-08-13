@@ -14,8 +14,17 @@ import { getSession, createSession, isLoginLocked, recordFailedLogin, resetFaile
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
-    const session = await getSession(req);
-    return res.status(200).json({ authenticated: !!session });
+    // Antes sin try/catch: si getSession() lanzaba (p.ej. un problema puntual de KV),
+    // la función quedaba sin manejar la excepción y Vercel devolvía un 500 no controlado
+    // en cada carga de página. No fue la causa del bug actual (el GET ya respondía 200
+    // correctamente), pero es un caso real que conviene blindar de todas formas.
+    try {
+      const session = await getSession(req);
+      return res.status(200).json({ authenticated: !!session });
+    } catch (err) {
+      console.error('[api/login] Error verificando sesión (GET):', err);
+      return res.status(200).json({ authenticated: false });
+    }
   }
 
   if (req.method !== 'POST') {
