@@ -4025,14 +4025,28 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
 function ReportesFallaPage({ reportes, activeCompany, t, accent, onUpdate, readOnly }) {
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroPrioridad, setFiltroPrioridad] = useState('');
+  const [filtroMes, setFiltroMes] = useState('');
   const [openId, setOpenId] = useState(null);
 
-  // Respeta el contexto global de empresa (selector superior): con una empresa activa,
-  // solo se ven sus reportes; con "TODAS" se ve la vista consolidada.
-  const list = reportes
+  // Respeta el contexto global de empresa (selector superior) y estado/prioridad,
+  // ANTES del filtro de mes — así el conteo mensual de abajo siempre refleja los
+  // otros filtros activos, y se puede ver el total de todos los meses a la vez.
+  const baseList = reportes
     .filter(r => activeCompany === 'TODAS' || r.empresa === activeCompany)
-    .filter(r => (!filtroEstado || r.estado === filtroEstado) && (!filtroPrioridad || r.prioridad === filtroPrioridad))
+    .filter(r => (!filtroEstado || r.estado === filtroEstado) && (!filtroPrioridad || r.prioridad === filtroPrioridad));
+
+  const list = baseList
+    .filter(r => filtroMes === '' || (r.fecha && new Date(r.fecha + 'T00:00:00').getMonth() === +filtroMes))
     .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+  // Conteo de fallas reportadas por mes (todos los años juntos, mismo criterio que
+  // el filtro de mes de arriba) — para el KPI y la gráfica mensual.
+  const conteoPorMes = MONTHS.map(m => ({
+    mes: m.l,
+    idx: m.idx,
+    total: baseList.filter(r => r.fecha && new Date(r.fecha + 'T00:00:00').getMonth() === m.idx).length,
+  }));
+  const totalMesSeleccionado = filtroMes !== '' ? (conteoPorMes.find(c => c.idx === +filtroMes)?.total || 0) : baseList.length;
 
   const openReport = (r) => {
     setOpenId(openId === r.id ? null : r.id);
@@ -4058,10 +4072,29 @@ function ReportesFallaPage({ reportes, activeCompany, t, accent, onUpdate, readO
       <h1 className="text-lg font-bold mb-1">Reportes de falla</h1>
       <p className={`text-xs mb-4 ${t.muted}`}>Solicitudes enviadas por los coordinadores de sede.</p>
 
-      <div className="grid sm:grid-cols-2 gap-3 mb-4">
+      <div className="grid sm:grid-cols-2 gap-3 mb-3">
         <HeroStat t={t} label="Tiempo promedio de solución" color={accent}
           value={promedioMs !== null ? formatDuracion(promedioMs) : '—'}
           sub={resueltas.length ? `${resueltas.length} falla${resueltas.length !== 1 ? 's' : ''} solucionada${resueltas.length !== 1 ? 's' : ''}` : 'Sin fallas solucionadas todavía'} />
+        <HeroStat t={t} label={filtroMes !== '' ? `Fallas en ${MONTHS[+filtroMes].full}` : 'Fallas reportadas (total)'} color={accent}
+          value={totalMesSeleccionado}
+          sub={filtroMes !== '' ? 'Clic en una barra para cambiar de mes' : 'Todos los meses'} />
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3 mb-4">
+        <div className={`rounded-xl border p-4 ${t.panel} ${t.border}`}>
+          <div className="text-3xs font-semibold uppercase tracking-wide mb-2" style={{ color: accent }}>Fallas reportadas por mes</div>
+          <ResponsiveContainer width="100%" height={140}>
+            <BarChart data={conteoPorMes}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#94a3b8' }} />
+              <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} width={24} />
+              <Tooltip contentStyle={{ background: '#1e293b', border: 'none', fontSize: 12 }} />
+              <Bar dataKey="total" radius={[4, 4, 0, 0]} fill={accent} cursor="pointer"
+                onClick={(d) => setFiltroMes(f => f === String(d.idx) ? '' : String(d.idx))} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
         {datosTiempo.length > 0 && (
           <div className={`rounded-xl border p-4 ${t.panel} ${t.border}`}>
             <div className="text-3xs font-semibold uppercase tracking-wide mb-2" style={{ color: accent }}>Tiempo de atención por falla</div>
@@ -4088,6 +4121,10 @@ function ReportesFallaPage({ reportes, activeCompany, t, accent, onUpdate, readO
         <select value={filtroPrioridad} onChange={e => setFiltroPrioridad(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
           <option value="">Toda prioridad</option>
           {PRIORIDADES.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+          <option value="">Todo mes</option>
+          {MONTHS.map(m => <option key={m.k} value={m.idx}>{m.full}</option>)}
         </select>
       </div>
 
