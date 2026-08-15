@@ -17,6 +17,35 @@ import {
   sendAlertsSummary, getNotifiedIds, markNotified,
 } from './services/emailService';
 import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts } from './services/alertLogic';
+
+// Red de seguridad para la transición login → panel: si algo falla en el primer render
+// (una condición de carrera puntual justo después de autenticar, antes de que todos los
+// efectos de carga hayan corrido), React deja la pantalla en blanco sin avisar — y sin
+// esto, la única forma de recuperarla era refrescar manualmente. Con este Error Boundary,
+// el fallo se detecta y la página se recarga sola en menos de un segundo.
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error, info) {
+    console.error('[ErrorBoundary] Error al renderizar el panel, recargando automáticamente:', error, info);
+    setTimeout(() => window.location.reload(), 500);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-dvh flex items-center justify-center text-sm text-slate-400">
+          Cargando tu panel…
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 // Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
 import logoIngenieriaClinica from './assets/logo-ingenieria-clinica.png';
@@ -4879,12 +4908,21 @@ export default function App() {
   const [guestMode, setGuestMode] = useState(false);
   const [publicView, setPublicView] = useState(null); // null | 'reporte'
 
-  useEffect(() => {
+  // Extraída para poder reusarla exactamente igual en dos momentos: al cargar la página
+  // (efecto de abajo) y justo después de un login exitoso (ver checkSession() más abajo).
+  // Antes, el login hacía un setAuthed(true) "optimista" sin volver a preguntarle al
+  // servidor — un camino distinto al del refresh (que sí pasa por aquí), y esa diferencia
+  // es la sospechosa más probable de la pantalla en blanco: si por lo que sea la cookie
+  // recién puesta no queda 100% lista para el siguiente render, el camino optimista no
+  // tenía ninguna repregunta que lo corrigiera. Ahora ambos caminos son el mismo código.
+  const checkSession = () => {
     fetch('/api/login')
       .then((res) => (res.ok ? res.json() : { authenticated: false }))
       .then((data) => setAuthed(!!data.authenticated))
       .catch(() => setAuthed(false));
-  }, []);
+  };
+
+  useEffect(() => { checkSession(); }, []);
 
   if (publicView === 'reporte' && !authed && !guestMode) {
     return <ReporteFallaForm onBack={() => setPublicView(null)} />;
@@ -4899,7 +4937,7 @@ export default function App() {
   }
 
   if (!authed && !guestMode) {
-    return <LoginScreen onLogin={() => setAuthed(true)} onGuest={() => setGuestMode(true)} onReportarFalla={() => setPublicView('reporte')} />;
+    return <LoginScreen onLogin={checkSession} onGuest={() => setGuestMode(true)} onReportarFalla={() => setPublicView('reporte')} />;
   }
 
   const salir = async () => {
@@ -4909,8 +4947,10 @@ export default function App() {
   };
 
   return (
-    <ReadOnlyContext.Provider value={guestMode}>
-      <MainApp onLogout={salir} readOnly={guestMode} />
-    </ReadOnlyContext.Provider>
+    <ErrorBoundary>
+      <ReadOnlyContext.Provider value={guestMode}>
+        <MainApp onLogout={salir} readOnly={guestMode} />
+      </ReadOnlyContext.Provider>
+    </ErrorBoundary>
   );
 }
