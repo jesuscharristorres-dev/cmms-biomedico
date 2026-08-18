@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X, Menu,
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
-  ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, Mail, AlertTriangle, Lock,
+  ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, AlertTriangle, Lock,
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
   IdCard, Save, SprayCan
@@ -13,10 +13,6 @@ import {
 } from 'recharts';
 import readXlsxFile from 'read-excel-file/browser';
 import writeXlsxFile from 'write-excel-file/browser';
-import {
-  notifyFallaReportada, notifyCorrectivoRegistrado, notifyPreventivoProximo, notifyCalibracionProxima,
-  sendAlertsSummary, getNotifiedIds, markNotified,
-} from './services/emailService';
 import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts } from './services/alertLogic';
 // Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
@@ -1552,50 +1548,6 @@ async function eliminarTodosLosEquipos() {
   return equipos;
 }
 
-// Correos que reciben el resumen diario de alertas (Configuración). Fuente de verdad
-// COMPARTIDA: api/alert-emails.js (Vercel KV) — antes se subían a KV pero nunca se
-// leían de vuelta, así que un correo agregado en un computador no se veía en otro.
-const ALERT_EMAILS_KEY = 'cmms-alert-emails';
-async function loadAlertEmails() {
-  try {
-    const res = await fetch('/api/alert-emails');
-    if (res.ok) {
-      const { emails } = await res.json();
-      if (emails.length === 0) {
-        let locales = [];
-        try { locales = JSON.parse(localStorage.getItem(ALERT_EMAILS_KEY) || '[]'); } catch { /* nada que migrar */ }
-        if (locales.length > 0) {
-          try {
-            let migrados = emails;
-            for (const email of locales) migrados = await crearAlertEmail(email);
-            return migrados;
-          } catch (err) { console.error('No se pudo migrar los correos de alerta locales al servidor compartido', err); }
-        }
-      }
-      cacheSet(ALERT_EMAILS_KEY, emails);
-      return emails;
-    }
-    console.error('No se pudo consultar los correos de alerta compartidos: respuesta', res.status);
-  } catch (err) {
-    console.error('No se pudo consultar los correos de alerta compartidos', err);
-  }
-  return cacheGet(ALERT_EMAILS_KEY, []);
-}
-async function crearAlertEmail(email) {
-  const res = await fetch('/api/alert-emails', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
-  if (!res.ok) throw new Error('No se pudo guardar el correo en la base de datos compartida.');
-  const { emails } = await res.json();
-  cacheSet(ALERT_EMAILS_KEY, emails);
-  return emails;
-}
-async function eliminarAlertEmail(email) {
-  const res = await fetch('/api/alert-emails', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
-  if (!res.ok) throw new Error('No se pudo eliminar el correo en la base de datos compartida.');
-  const { emails } = await res.json();
-  cacheSet(ALERT_EMAILS_KEY, emails);
-  return emails;
-}
-
 /* ---------------------------------------------------------------- */
 /* REPORTES DE FALLA (coordinadores de sede)                         */
 /* ---------------------------------------------------------------- */
@@ -2077,7 +2029,7 @@ function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, renderExtra
 
 const DRAWER_TABS = ['Información General', 'Cronograma', 'Preventivos', 'Correctivos', 'Calibraciones', 'Instalaciones', 'Baja de Equipo', 'Documentos', 'Historial'];
 
-function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
+function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
   const [tab, setTab] = useState('Información General');
   const c = calibStatus(equipo);
   const year = new Date().getFullYear();
@@ -2222,7 +2174,6 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly, alertEmails }) {
               onAdd={(d) => {
                 const nuevo = { id: uid('cv'), fecha: todayISO(), estado: 'Programado', ...d };
                 patchList('correctivos', [...equipo.correctivos, nuevo]);
-                try { notifyCorrectivoRegistrado(equipo, nuevo, alertEmails); } catch (err) { console.error('No se pudo notificar el correctivo por correo', err); }
               }}
               onRemove={(i) => patchList('correctivos', equipo.correctivos.filter((_, idx) => idx !== i))}
               onUpdate={(i, k, v) => { const list = [...equipo.correctivos]; list[i] = { ...list[i], [k]: v }; patchList('correctivos', list); }}
@@ -2734,13 +2685,6 @@ function ReporteFallaForm({ onBack }) {
       return;
     }
     setSent(true);
-    // Notificación por correo — no bloquea el flujo si falla el envío. Este formulario es
-    // público (sin sesión iniciada), así que consulta la lista compartida de destinatarios
-    // directamente al servidor en vez de depender de una caché local de este navegador.
-    try {
-      const destinatarios = await loadAlertEmails();
-      notifyFallaReportada(nuevo, destinatarios);
-    } catch (err) { console.error('No se pudo notificar el reporte de falla por correo', err); }
   };
 
   if (sent) {
@@ -2911,7 +2855,6 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
 
 function MainApp({ onLogout, readOnly }) {
   const [equipos, setEquipos] = useState([]);
-  const [loaded, setLoaded] = useState(false);
   const [dark, setDark] = useState(false);
   const [menu, setMenu] = useState('dashboard');
   const [activeCompany, setActiveCompany] = useState('TODAS');
@@ -2920,7 +2863,6 @@ function MainApp({ onLogout, readOnly }) {
   const [sort, setSort] = useState({ key: 'equipo', dir: 1 });
   const [drawerId, setDrawerId] = useState(null);
   const [obsModalId, setObsModalId] = useState(null);
-  const [alertEmails, setAlertEmails] = useState([]);
   const [reportesFalla, setReportesFalla] = useState([]);
   const [planesProgramas, setPlanesProgramas] = useState({});
   const [tecnoTransversal, setTecnoTransversal] = useState({});
@@ -2929,22 +2871,7 @@ function MainApp({ onLogout, readOnly }) {
   const [limpiezaDesinfeccion, setLimpiezaDesinfeccion] = useState({});
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  useEffect(() => { loadEquipos().then(d => { setEquipos(d); setLoaded(true); }); }, []);
-  useEffect(() => { loadAlertEmails().then(setAlertEmails); }, []);
-  const addAlertEmail = (email) => {
-    setAlertEmails(prev => prev.includes(email) ? prev : [...prev, email]);
-    crearAlertEmail(email).catch(err => {
-      console.error('No se pudo guardar el correo de alerta en el servidor compartido', err);
-      setAlertEmails(prev => prev.filter(e => e !== email));
-    });
-  };
-  const removeAlertEmail = (email) => {
-    setAlertEmails(prev => prev.filter(e => e !== email));
-    eliminarAlertEmail(email).catch(err => {
-      console.error('No se pudo eliminar el correo de alerta en el servidor compartido', err);
-      setAlertEmails(prev => prev.includes(email) ? prev : [...prev, email]);
-    });
-  };
+  useEffect(() => { loadEquipos().then(setEquipos); }, []);
   useEffect(() => { loadReportes().then(setReportesFalla); }, []);
   // Notificación en vivo: si otra pestaña del mismo navegador refresca la caché local, esta la recoge de inmediato.
   useEffect(() => {
@@ -3033,41 +2960,6 @@ function MainApp({ onLogout, readOnly }) {
       setLimpiezaDesinfeccion(previous);
     });
   };
-
-  // Notificación automática de preventivos/calibraciones próximos a vencer o vencidos.
-  // Corre cada vez que cambian los equipos o los correos configurados. No hay backend con
-  // cron en esta app, así que esto se dispara cuando alguien tiene el CMMS abierto — y cada
-  // alerta se notifica UNA sola vez (se guarda un registro local para no reenviar en cada visita).
-  //
-  // notifyingRef evita que dos disparos de este efecto (p.ej. cuando `equipos` y
-  // `alertEmails` terminan de cargar en momentos distintos) manden lotes de correos
-  // superpuestos. Cada alerta se marca como notificada apenas se envía con éxito —no al
-  // final del lote— así un envío fallido nunca se marca (se reintenta en la próxima
-  // carga) y una ejecución interrumpida no reenvía lo que ya salió bien.
-  const notifyingRef = useRef(false);
-  useEffect(() => {
-    if (readOnly || !loaded || alertEmails.length === 0) return;
-    if (notifyingRef.current) return;
-    const alerts = buildAlerts(equipos);
-    if (alerts.length === 0) return;
-    const notified = getNotifiedIds();
-    const pendientes = alerts.filter(a => !notified.has(`${a.tipo}:${a.equipoId}:${a.status}`));
-    if (pendientes.length === 0) return;
-    notifyingRef.current = true;
-    (async () => {
-      try {
-        for (const a of pendientes) {
-          const equipo = equipos.find(e => e.id === a.equipoId);
-          if (!equipo) continue;
-          const fn = a.tipo === 'Calibración' ? notifyCalibracionProxima : notifyPreventivoProximo;
-          const res = await fn(equipo, a, alertEmails);
-          if (res.success) markNotified([`${a.tipo}:${a.equipoId}:${a.status}`]);
-        }
-      } finally {
-        notifyingRef.current = false;
-      }
-    })();
-  }, [equipos, alertEmails, loaded, readOnly]);
 
   const theme = themeOf(activeCompany);
   const accent = theme.solid;
@@ -3379,7 +3271,7 @@ await writeXlsxFile(data, {
         </div>
 
         {menu === 'dashboard' && <Dashboard equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} accent={accent} theme={theme} t={t} readOnly={readOnly} onGoAlerts={readOnly ? undefined : () => setMenu('alertas')} onGoFallas={readOnly ? undefined : () => setMenu('fallas')} onGoInventario={() => setMenu('inventario')} />}
-        {menu === 'alertas' && !readOnly && <AlertasPage equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} alertEmails={alertEmails} onOpen={setDrawerId} readOnly={readOnly} />}
+        {menu === 'alertas' && !readOnly && <AlertasPage equipos={equipos} activeCompany={activeCompany} t={t} onOpen={setDrawerId} />}
         {menu === 'empresas' && <EmpresasPage equipos={equipos} t={t} onSelect={(k) => { setActiveCompany(k); setMenu('inventario'); }} />}
         {(menu === 'inventario' || ((menu === 'mantenimientos' || menu === 'calibraciones' || menu === 'correctivos') && !readOnly)) && (
           <InventarioPage
@@ -3403,7 +3295,7 @@ await writeXlsxFile(data, {
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
         {menu === 'limpieza' && <LimpiezaDesinfeccionPage data={limpiezaDesinfeccion} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateLimpiezaDesinfeccion} />}
         {menu === 'reportes' && !readOnly && <ReportesPage equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} t={t} accent={accent} onExport={exportExcel} />}
-        {menu === 'configuracion' && !readOnly && <ConfigPage t={t} accent={accent} onReset={() => {
+        {menu === 'configuracion' && !readOnly && <ConfigPage t={t} onReset={() => {
           if (!confirm('¿Borrar todos los equipos guardados?')) return;
           const previous = equipos;
           setEquipos([]);
@@ -3411,11 +3303,11 @@ await writeXlsxFile(data, {
             console.error('No se pudo borrar el inventario en el servidor compartido', err);
             setEquipos(previous);
           });
-        }} onLogout={onLogout} alertEmails={alertEmails} onAddEmail={addAlertEmail} onRemoveEmail={removeAlertEmail} readOnly={readOnly} />}
+        }} onLogout={onLogout} readOnly={readOnly} />}
         </div>
       </div>
 
-      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => setDrawerId(null)} onUpdate={updateEquipo} t={t} readOnly={readOnly} alertEmails={alertEmails} />}
+      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => setDrawerId(null)} onUpdate={updateEquipo} t={t} readOnly={readOnly} />}
       {obsEquipo && <ObsModal equipo={obsEquipo} onClose={() => setObsModalId(null)} onSave={(v) => updateEquipo({ ...obsEquipo, observaciones: v })} t={t} accent={accent} readOnly={readOnly} />}
       </div>
     </div>
@@ -3907,38 +3799,19 @@ function MiniRow({ label, value, t, color, noTranslate }) {
 /* ---------------------------------------------------------------- */
 /* PÁGINA: ALERTAS                                                    */
 /* ---------------------------------------------------------------- */
-function AlertasPage({ equipos, activeCompany, t, accent, alertEmails, onOpen, readOnly }) {
+function AlertasPage({ equipos, activeCompany, t, onOpen }) {
   const scoped = activeCompany === 'TODAS' ? equipos : equipos.filter(e => e.empresa === activeCompany);
   const alerts = buildAlerts(scoped);
   const vencidas = alerts.filter(a => a.status === 'vencido');
   const proximas = alerts.filter(a => a.status === 'proximo');
-  const [sendState, setSendState] = useState('idle'); // idle | sending | sent | error
 
   const badgeColor = (a) => a.status === 'vencido' ? '#EF4444' : '#F59E0B';
   const daysTxt = (a) => a.status === 'vencido' ? `Vencida hace ${Math.abs(a.diffDays)} días` : `Faltan ${a.diffDays} días`;
-
-  const handleSendAlerts = async () => {
-    setSendState('sending');
-    const res = await sendAlertsSummary(alerts, alertEmails);
-    setSendState(res.success ? 'sent' : 'error');
-    setTimeout(() => setSendState('idle'), 3000);
-  };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h1 className="text-lg font-bold">Alertas</h1>
-        {!readOnly && alerts.length > 0 && (
-          alertEmails.length > 0
-            ? (
-              <Button variant="primary" accent={accent} icon={Mail} disabled={sendState === 'sending'}
-                style={sendState === 'error' ? { background: '#EF4444' } : undefined}
-                onClick={handleSendAlerts}>
-                {sendState === 'sending' ? 'Enviando…' : sendState === 'sent' ? 'Enviado ✓' : sendState === 'error' ? 'Error al enviar' : 'Enviar alertas por correo'}
-              </Button>
-            )
-            : <span className={`text-2xs ${t.muted}`}>Agrega correos en Configuración para poder enviarlas</span>
-        )}
       </div>
       <p className={`text-xs mb-5 ${t.muted}`}>
         Preventivos pendientes a {PREVENTIVO_ALERTA_DIAS} días o menos de su fecha, y calibraciones próximas a vencer (≤{CALIBRACION_ALERTA_DIAS} días) o vencidas.
@@ -5145,48 +5018,11 @@ function ReportesPage({ t, accent, onExport, equipos, reportesFalla, activeCompa
 /* ---------------------------------------------------------------- */
 /* PÁGINA: CONFIGURACIÓN                                              */
 /* ---------------------------------------------------------------- */
-function ConfigPage({ t, accent, onReset, onLogout, alertEmails, onAddEmail, onRemoveEmail, readOnly }) {
-  const [draft, setDraft] = useState('');
-  const addEmail = () => {
-    if (readOnly) return;
-    const v = draft.trim();
-    if (!v) return;
-    if (!/^\S+@\S+\.\S+$/.test(v)) return;
-    if (alertEmails.includes(v)) { setDraft(''); return; }
-    onAddEmail(v);
-    setDraft('');
-  };
+function ConfigPage({ t, onReset, onLogout, readOnly }) {
   return (
     <div>
       <h1 className="text-lg font-bold mb-1">Configuración</h1>
       <p className={`text-2xs mb-4 font-mono ${t.muted}`}>Versión del panel: {APP_BUILD}</p>
-
-      <div className={`rounded-lg border p-4 max-w-md mb-4 ${t.panel} ${t.border}`}>
-        <div className="text-xs font-semibold mb-1">Correos para alertas</div>
-        <p className={`text-2xs mb-3 ${t.muted}`}>
-          Se usan en el botón "Enviar alertas por correo" dentro de la sección Alertas. Abre tu programa de correo con estos destinatarios y el resumen ya redactado — no se envían solos.
-        </p>
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {alertEmails.length === 0 && <span className={`text-2xs ${t.muted}`}>Sin correos agregados todavía</span>}
-          {alertEmails.map(email => (
-            <span key={email} className="flex items-center gap-1.5 rounded-full pl-2.5 pr-1.5 py-1 text-2xs" style={{ background: accent + '1A', color: accent }}>
-              {email}
-              {!readOnly && <button onClick={() => onRemoveEmail(email)} className="hover:opacity-70"><X size={11} /></button>}
-            </span>
-          ))}
-        </div>
-        {!readOnly && (
-          <div className="flex gap-2">
-            <input
-              value={draft} onChange={e => setDraft(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && addEmail()}
-              placeholder="correo@empresa.com" type="email"
-              className={`flex-1 rounded-md px-2.5 py-1.5 text-xs border ${t.input}`}
-            />
-            <Button variant="primary" accent={accent} onClick={addEmail}>Agregar</Button>
-          </div>
-        )}
-      </div>
 
       {!readOnly && (
         <div className={`rounded-lg border p-4 max-w-md mb-4 ${t.panel} ${t.border}`}>

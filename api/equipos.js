@@ -11,8 +11,7 @@
 // guardando casi al mismo tiempo desde computadores distintos no se pisan ni se pierden
 // equipos entre sí.
 //
-// Usa la misma clave que ya usaba api/sync-data.js ('cmms:equipos'), para que el cron
-// diario de alertas (api/daily-alerts.js) siga leyendo el mismo dato sin cambios.
+// Usa la misma clave que ya usaba api/sync-data.js ('cmms:equipos').
 
 import { kv } from '@vercel/kv';
 import { requireAdmin } from '../lib/auth.js';
