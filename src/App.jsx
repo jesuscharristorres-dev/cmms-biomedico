@@ -1540,13 +1540,6 @@ async function eliminarEquipo(id) {
   cacheSet(EQUIPOS_KEY, equipos);
   return equipos;
 }
-async function eliminarTodosLosEquipos() {
-  const res = await fetch('/api/equipos', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ borrarTodo: true }) });
-  if (!res.ok) throw new Error('No se pudo borrar el inventario en la base de datos compartida.');
-  const { equipos } = await res.json();
-  cacheSet(EQUIPOS_KEY, equipos);
-  return equipos;
-}
 
 /* ---------------------------------------------------------------- */
 /* REPORTES DE FALLA (coordinadores de sede)                         */
@@ -2639,6 +2632,14 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
 /* ---------------------------------------------------------------- */
 /* FORMULARIO PÚBLICO — REPORTE DE FALLA (coordinadores de sede)     */
 /* ---------------------------------------------------------------- */
+// Identifica cada equipo en el desplegable "Equipo biomédico" (solo en este formulario):
+// nombre — marca — modelo — S/N. Cualquier dato ausente se omite en vez de mostrar
+// "undefined" o un separador vacío.
+function equipoLabelReporteFalla(e) {
+  const partes = [e.equipo, e.marca, e.modelo].filter(Boolean);
+  if (e.numeroSerie) partes.push(`S/N: ${e.numeroSerie}`);
+  return partes.join(' — ') || 'Equipo sin datos';
+}
 function ReporteFallaForm({ onBack }) {
   const [equipos, setEquipos] = useState([]);
   const [empresa, setEmpresa] = useState(COMPANIES[0].key);
@@ -2733,7 +2734,7 @@ function ReporteFallaForm({ onBack }) {
               <select value={equipoId} onChange={e => setEquipoId(e.target.value)}
                 className={`w-full rounded-md px-2.5 py-1.5 text-xs border ${t.input}`}>
                 <option value="">Selecciona un equipo…</option>
-                {equiposFiltrados.map(e => <option key={e.id} value={e.id}>{e.equipo}{e.inventario ? ` (${e.inventario})` : ''}</option>)}
+                {equiposFiltrados.map(e => <option key={e.id} value={e.id}>{equipoLabelReporteFalla(e)}</option>)}
               </select>
               {equiposFiltrados.length === 0 && <p className="text-2xs mt-1" style={{ color: '#D97706' }}>No hay equipos cargados para esta sede todavía en este dispositivo.</p>}
             </Field>
@@ -3298,15 +3299,7 @@ await writeXlsxFile(data, {
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
         {menu === 'limpieza' && <LimpiezaDesinfeccionPage data={limpiezaDesinfeccion} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateLimpiezaDesinfeccion} />}
         {menu === 'reportes' && !readOnly && <ReportesPage equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} t={t} accent={accent} onExport={exportExcel} />}
-        {menu === 'configuracion' && !readOnly && <ConfigPage t={t} onReset={() => {
-          if (!confirm('¿Borrar todos los equipos guardados?')) return;
-          const previous = equipos;
-          setEquipos([]);
-          eliminarTodosLosEquipos().catch(err => {
-            console.error('No se pudo borrar el inventario en el servidor compartido', err);
-            setEquipos(previous);
-          });
-        }} onLogout={onLogout} readOnly={readOnly} />}
+        {menu === 'configuracion' && !readOnly && <ConfigPage t={t} onLogout={onLogout} readOnly={readOnly} />}
         </div>
       </div>
 
@@ -5021,19 +5014,12 @@ function ReportesPage({ t, accent, onExport, equipos, reportesFalla, activeCompa
 /* ---------------------------------------------------------------- */
 /* PÁGINA: CONFIGURACIÓN                                              */
 /* ---------------------------------------------------------------- */
-function ConfigPage({ t, onReset, onLogout, readOnly }) {
+function ConfigPage({ t, onLogout, readOnly }) {
   return (
     <div>
       <h1 className="text-lg font-bold mb-1">Configuración</h1>
       <p className={`text-2xs mb-4 font-mono ${t.muted}`}>Versión del panel: {APP_BUILD}</p>
 
-      {!readOnly && (
-        <div className={`rounded-lg border p-4 max-w-md mb-4 ${t.panel} ${t.border}`}>
-          <div className="text-xs font-semibold mb-1">Restablecer datos</div>
-          <p className={`text-2xs mb-3 ${t.muted}`}>Elimina todos los equipos guardados en este panel. Esta acción no se puede deshacer.</p>
-          <Button variant="danger" onClick={onReset}>Borrar todos los datos</Button>
-        </div>
-      )}
       <div className={`rounded-lg border p-4 max-w-md ${t.panel} ${t.border}`}>
         <div className="text-xs font-semibold mb-1">Sesión</div>
         <p className={`text-2xs mb-3 ${t.muted}`}>{readOnly ? 'Sales del modo invitado en este navegador.' : 'Cierra tu sesión en este navegador. Te pedirá usuario y contraseña de nuevo.'}</p>

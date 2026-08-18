@@ -68,11 +68,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'DELETE') {
-      const { id, borrarTodo } = req.body || {};
-      if (borrarTodo) {
-        await kv.set(KV_KEY, []);
-        return res.status(200).json({ equipos: [] });
-      }
+      const { id } = req.body || {};
       if (!id) {
         return res.status(400).json({ error: 'Falta id del equipo a eliminar.' });
       }
