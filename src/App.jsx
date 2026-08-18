@@ -1851,7 +1851,9 @@ const ESTADO_PERSONAL_HEX = { Activo: '#22C55E', Inactivo: '#94A3B8' };
 
 // Formatos de limpieza y desinfección — un enlace externo (Drive/OneDrive/SharePoint) por
 // sede · mes del año actual. Nunca se sube el documento en sí, solo su URL — igual que
-// Planes y programas / Tecnovigilancia. Fuente de verdad COMPARTIDA: api/limpieza-desinfeccion.js (Vercel KV).
+// Planes y programas / Tecnovigilancia. Fuente de verdad COMPARTIDA: api/limpieza-desinfeccion.js
+// (Vercel KV). A diferencia de esos otros recursos, aquí el PATCH NO requiere sesión de admin
+// a propósito: el Modo Invitado también puede pegar/actualizar el enlace del mes.
 const LIMPIEZA_KEY = 'cmms-limpieza-desinfeccion';
 async function loadLimpiezaDesinfeccion() {
   try {
@@ -3399,7 +3401,7 @@ await writeXlsxFile(data, {
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
-        {menu === 'limpieza' && <LimpiezaDesinfeccionPage data={limpiezaDesinfeccion} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateLimpiezaDesinfeccion} readOnly={readOnly} />}
+        {menu === 'limpieza' && <LimpiezaDesinfeccionPage data={limpiezaDesinfeccion} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateLimpiezaDesinfeccion} />}
         {menu === 'reportes' && !readOnly && <ReportesPage equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} t={t} accent={accent} onExport={exportExcel} />}
         {menu === 'configuracion' && !readOnly && <ConfigPage t={t} accent={accent} onReset={() => {
           if (!confirm('¿Borrar todos los equipos guardados?')) return;
@@ -4903,9 +4905,11 @@ function PersonalFormModal({ t, accent, activeCompany, onClose, onSave }) {
 /* PÁGINA: FORMATOS DE LIMPIEZA Y DESINFECCIÓN                        */
 /* ---------------------------------------------------------------- */
 // Un enlace externo (Drive/OneDrive/SharePoint) por sede · mes del año actual — nunca se
-// sube el documento en sí, solo su URL. Visible también en Modo Invitado (solo lectura):
-// guests ven el estado de cada mes y pueden abrir el enlace, pero no pegar/editar uno nuevo.
-function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, readOnly }) {
+// sube el documento en sí, solo su URL. A diferencia de las demás secciones administrativas,
+// esta página SÍ es editable en Modo Invitado (pegar/guardar/reemplazar el enlace del mes) —
+// por eso, a propósito, no recibe `readOnly`: el endpoint que la respalda
+// (api/limpieza-desinfeccion.js) también deja su PATCH abierto sin sesión de admin.
+function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate }) {
   const [empresaSelLocal, setEmpresaSelLocal] = useState(null);
   const [sedeSel, setSedeSel] = useState(null);
   const [openMes, setOpenMes] = useState(null);
@@ -5018,7 +5022,7 @@ function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, re
                   </button>
                   {open && (
                     <div className={`p-3 border-t space-y-2 ${t.border} ${t.panel3}`}>
-                      <TextInput t={t} value={registro?.url} disabled={readOnly} placeholder="URL del formato"
+                      <TextInput t={t} value={registro?.url} placeholder="URL del formato"
                         onChange={v => onUpdate(empresaSel, sedeSel, year, m.idx, v)} />
                       <PdfLink url={registro?.url} t={t} label="Ver / Descargar" title={`${m.full} · ${sedeSel}`} emptyLabel="Enlace no cargado" />
                     </div>
