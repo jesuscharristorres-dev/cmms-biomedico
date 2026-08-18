@@ -5,7 +5,7 @@ import {
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, Mail, AlertTriangle, Lock,
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
-  IdCard, Save
+  IdCard, Save, SprayCan
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -198,6 +198,7 @@ const MENU = [
   { key: 'planes', label: 'Planes y programas', icon: FolderOpen },
   { key: 'tecnovigilancia', label: 'Tecnovigilancia', icon: ShieldAlert },
   { key: 'personal', label: 'Hojas de vida personal', icon: IdCard },
+  { key: 'limpieza', label: 'Formatos de limpieza y desinfección', icon: SprayCan },
   { key: 'empresas', label: 'Empresas', icon: Building2 },
   { key: 'inventario', label: 'Inventario', icon: ListTree },
   { key: 'mantenimientos', label: 'Mantenimientos', icon: CalendarClock, guestHidden: true },
@@ -1847,6 +1848,34 @@ async function actualizarPersonal(id, patch) {
 const TIPOS_DOCUMENTO_PERSONAL = ['CC', 'CE', 'TI', 'Pasaporte'];
 const ESTADOS_PERSONAL = ['Activo', 'Inactivo'];
 const ESTADO_PERSONAL_HEX = { Activo: '#22C55E', Inactivo: '#94A3B8' };
+
+// Formatos de limpieza y desinfección — un enlace externo (Drive/OneDrive/SharePoint) por
+// sede · mes del año actual. Nunca se sube el documento en sí, solo su URL — igual que
+// Planes y programas / Tecnovigilancia. Fuente de verdad COMPARTIDA: api/limpieza-desinfeccion.js (Vercel KV).
+const LIMPIEZA_KEY = 'cmms-limpieza-desinfeccion';
+async function loadLimpiezaDesinfeccion() {
+  try {
+    const res = await fetch('/api/limpieza-desinfeccion');
+    if (res.ok) {
+      const { data } = await res.json();
+      cacheSet(LIMPIEZA_KEY, data);
+      return data;
+    }
+    console.error('No se pudo consultar los formatos de limpieza y desinfección: respuesta', res.status);
+  } catch (err) {
+    console.error('No se pudo consultar los formatos de limpieza y desinfección', err);
+  }
+  return cacheGet(LIMPIEZA_KEY, {});
+}
+async function actualizarLimpiezaDesinfeccion(empresaKey, sede, anio, mes, url) {
+  const res = await fetch('/api/limpieza-desinfeccion', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empresaKey, sede, anio, mes, url }),
+  });
+  if (!res.ok) throw new Error('No se pudo guardar el enlace en la base de datos compartida.');
+  const { data } = await res.json();
+  cacheSet(LIMPIEZA_KEY, data);
+  return data;
+}
 function newPersonal(empresa) {
   return {
     id: uid('per'),
@@ -2895,6 +2924,7 @@ function MainApp({ onLogout, readOnly }) {
   const [tecnoTransversal, setTecnoTransversal] = useState({});
   const [tecnoReportes, setTecnoReportes] = useState({});
   const [personal, setPersonal] = useState([]);
+  const [limpiezaDesinfeccion, setLimpiezaDesinfeccion] = useState({});
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => { loadEquipos().then(d => { setEquipos(d); setLoaded(true); }); }, []);
@@ -2982,6 +3012,23 @@ function MainApp({ onLogout, readOnly }) {
     actualizarPersonal(updated.id, updated).catch(err => {
       console.error('No se pudo sincronizar el registro de personal con el servidor compartido', err);
       if (previous) setPersonal(prev => prev.map(p => p.id === updated.id ? previous : p));
+    });
+  };
+
+  useEffect(() => { loadLimpiezaDesinfeccion().then(setLimpiezaDesinfeccion); }, []);
+  const updateLimpiezaDesinfeccion = (empresaKey, sede, anio, mes, url) => {
+    const previous = limpiezaDesinfeccion;
+    setLimpiezaDesinfeccion(prev => {
+      const emp = prev[empresaKey] || {};
+      const sedeObj = emp[sede] || {};
+      const anioObj = { ...(sedeObj[anio] || {}) };
+      if (url && url.trim()) anioObj[mes] = { url: url.trim(), updatedAt: new Date().toISOString() };
+      else delete anioObj[mes];
+      return { ...prev, [empresaKey]: { ...emp, [sede]: { ...sedeObj, [anio]: anioObj } } };
+    });
+    actualizarLimpiezaDesinfeccion(empresaKey, sede, anio, mes, url).catch(err => {
+      console.error('No se pudo sincronizar el formato de limpieza y desinfección con el servidor compartido', err);
+      setLimpiezaDesinfeccion(previous);
     });
   };
 
@@ -3352,6 +3399,7 @@ await writeXlsxFile(data, {
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
+        {menu === 'limpieza' && <LimpiezaDesinfeccionPage data={limpiezaDesinfeccion} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateLimpiezaDesinfeccion} readOnly={readOnly} />}
         {menu === 'reportes' && !readOnly && <ReportesPage equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} t={t} accent={accent} onExport={exportExcel} />}
         {menu === 'configuracion' && !readOnly && <ConfigPage t={t} accent={accent} onReset={() => {
           if (!confirm('¿Borrar todos los equipos guardados?')) return;
@@ -4847,6 +4895,140 @@ function PersonalFormModal({ t, accent, activeCompany, onClose, onSave }) {
           <Button variant="primary" accent={accent} disabled={!canSave} onClick={() => onSave(form)}>Guardar</Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* PÁGINA: FORMATOS DE LIMPIEZA Y DESINFECCIÓN                        */
+/* ---------------------------------------------------------------- */
+// Un enlace externo (Drive/OneDrive/SharePoint) por sede · mes del año actual — nunca se
+// sube el documento en sí, solo su URL. Visible también en Modo Invitado (solo lectura):
+// guests ven el estado de cada mes y pueden abrir el enlace, pero no pegar/editar uno nuevo.
+function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, readOnly }) {
+  const [empresaSelLocal, setEmpresaSelLocal] = useState(null);
+  const [sedeSel, setSedeSel] = useState(null);
+  const [openMes, setOpenMes] = useState(null);
+  // Igual que en Tecnovigilancia: con una empresa activa en el selector superior, esta
+  // página queda fija en ella (sin selector propio desincronizado).
+  const modoGlobal = activeCompany !== 'TODAS';
+  const empresaSel = modoGlobal ? activeCompany : empresaSelLocal;
+  // Si cambia la empresa activa del selector superior, se limpia la sede/mes ya elegidos
+  // (ajuste de estado durante el render, como recomienda React, en vez de un efecto).
+  const [prevActiveCompany, setPrevActiveCompany] = useState(activeCompany);
+  if (activeCompany !== prevActiveCompany) {
+    setPrevActiveCompany(activeCompany);
+    setSedeSel(null);
+    setOpenMes(null);
+  }
+
+  const year = new Date().getFullYear();
+  const empresa = empresaSel ? companyOf(empresaSel) : null;
+  const anioData = (empresaSel && sedeSel) ? (data?.[empresaSel]?.[sedeSel]?.[year] || {}) : {};
+  const cargados = MONTHS.filter(m => anioData[m.idx]?.url).length;
+
+  const resetSede = () => { setSedeSel(null); setOpenMes(null); };
+  const resetEmpresa = () => { setEmpresaSelLocal(null); setSedeSel(null); setOpenMes(null); };
+
+  return (
+    <div>
+      <h1 className="text-lg font-bold mb-1 flex items-center gap-2">
+        <SprayCan size={19} style={{ color: accent }} /> Formatos de limpieza y desinfección
+      </h1>
+      <p className={`text-xs mb-5 ${t.muted}`}>
+        Enlace externo (Drive/OneDrive/SharePoint) al formato de limpieza y desinfección de cada sede, mes a mes, para {year}. El documento no se sube a la aplicación — solo se guarda el enlace.
+      </p>
+
+      {!empresaSel && (
+        <div>
+          <p className={`text-2xs mb-3 ${t.muted}`}>Selecciona una empresa.</p>
+          <div className="grid md:grid-cols-3 gap-4">
+            {COMPANIES.map(c => (
+              <button key={c.key} onClick={() => setEmpresaSelLocal(c.key)}
+                className={`text-left rounded-xl border overflow-hidden hover:-translate-y-0.5 transition ${t.panel} ${t.border}`}>
+                <div className="h-2" style={{ background: c.gradient }} />
+                <div className="p-5">
+                  <div className="text-sm font-bold" style={{ color: c.color }}>{c.key}</div>
+                  <div className={`text-2xs mt-1 ${t.muted}`}>{c.sedes.length} sede{c.sedes.length !== 1 ? 's' : ''}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {empresaSel && !sedeSel && (
+        <div>
+          {!modoGlobal && <button onClick={resetEmpresa} className={`text-2xs font-mono uppercase mb-3 hover:underline ${t.muted}`}>← Cambiar empresa</button>}
+          <div className="text-sm font-bold mb-3" style={{ color: empresa.color }}>{empresa.key}</div>
+          <p className={`text-2xs mb-3 ${t.muted}`}>Selecciona una sede.</p>
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {empresa.sedes.map(sede => {
+              const sedeAnioData = data?.[empresaSel]?.[sede]?.[year] || {};
+              const sedeCargados = MONTHS.filter(m => sedeAnioData[m.idx]?.url).length;
+              return (
+                <button key={sede} onClick={() => setSedeSel(sede)}
+                  className={`flex items-center gap-2 rounded-xl border p-3 text-left hover:-translate-y-0.5 transition ${t.panel} ${t.border}`}>
+                  <MapPin size={15} style={{ color: empresa.color }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold truncate">{sede}</div>
+                    <div className={`text-3xs ${t.muted}`}>{sedeCargados}/{MONTHS.length} meses cargados</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {empresaSel && sedeSel && (
+        <div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-3 text-2xs font-mono uppercase">
+            {!modoGlobal && (<><button onClick={resetEmpresa} className={`hover:underline ${t.muted}`}>Empresa</button><span className={t.muted}>/</span></>)}
+            <button onClick={resetSede} className={`hover:underline ${t.muted}`}>{empresa.key}</button>
+            <span className={t.muted}>/</span>
+            <span style={{ color: empresa.color }}>{sedeSel}</span>
+          </div>
+
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-sm font-bold font-mono">{year}</span>
+            <span className={`text-2xs ${t.muted}`}>{cargados}/{MONTHS.length} meses cargados</span>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {MONTHS.map(m => {
+              const registro = anioData[m.idx];
+              const cargado = !!registro?.url;
+              const open = openMes === m.idx;
+              return (
+                <div key={m.k} className={`rounded-xl border overflow-hidden shadow-sm ${t.panel} ${t.border}`}>
+                  <button onClick={() => setOpenMes(open ? null : m.idx)} className="w-full text-left p-4">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-xs font-semibold">{m.full}</span>
+                      {cargado
+                        ? <CheckCircle2 size={16} style={{ color: '#22C55E' }} />
+                        : <AlertCircle size={16} style={{ color: '#F59E0B' }} />}
+                    </div>
+                    <span className="text-2xs font-medium" style={{ color: cargado ? '#22C55E' : '#F59E0B' }}>
+                      {cargado ? 'Cargado' : 'Pendiente'}
+                    </span>
+                    {registro?.updatedAt && (
+                      <div className={`text-3xs mt-1 ${t.muted}`}>Actualizado {new Date(registro.updatedAt).toLocaleDateString('es-CO')}</div>
+                    )}
+                  </button>
+                  {open && (
+                    <div className={`p-3 border-t space-y-2 ${t.border} ${t.panel3}`}>
+                      <TextInput t={t} value={registro?.url} disabled={readOnly} placeholder="URL del formato"
+                        onChange={v => onUpdate(empresaSel, sedeSel, year, m.idx, v)} />
+                      <PdfLink url={registro?.url} t={t} label="Ver / Descargar" title={`${m.full} · ${sedeSel}`} emptyLabel="Enlace no cargado" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
