@@ -2629,17 +2629,19 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
   );
 }
 
-/* ---------------------------------------------------------------- */
-/* FORMULARIO PÚBLICO — REPORTE DE FALLA (coordinadores de sede)     */
-/* ---------------------------------------------------------------- */
-// Identifica cada equipo en el desplegable "Equipo biomédico" (solo en este formulario):
-// nombre — marca — modelo — S/N. Cualquier dato ausente se omite en vez de mostrar
-// "undefined" o un separador vacío.
-function equipoLabelReporteFalla(e) {
+// Identifica un equipo por su nombre — marca — modelo — S/N. Compartida por el formulario
+// público "Reportar falla" y la sección "Reporte de fallas" de la interfaz principal, para
+// que ambas pantallas identifiquen el mismo equipo de la misma forma. Cualquier dato
+// ausente se omite en vez de mostrar "undefined" o un separador vacío.
+function equipoLabelCompleto(e) {
   const partes = [e.equipo, e.marca, e.modelo].filter(Boolean);
   if (e.numeroSerie) partes.push(`S/N: ${e.numeroSerie}`);
   return partes.join(' — ') || 'Equipo sin datos';
 }
+
+/* ---------------------------------------------------------------- */
+/* FORMULARIO PÚBLICO — REPORTE DE FALLA (coordinadores de sede)     */
+/* ---------------------------------------------------------------- */
 function ReporteFallaForm({ onBack }) {
   const [equipos, setEquipos] = useState([]);
   const [empresa, setEmpresa] = useState(COMPANIES[0].key);
@@ -2714,8 +2716,13 @@ function ReporteFallaForm({ onBack }) {
         </div>
 
         <div className={`rounded-xl border p-6 ${t.panel} ${t.border}`}>
-          <div className="text-3xs uppercase tracking-widest mb-1" style={{ color: '#2F8FD1' }}>CMMS Biomédico</div>
-          <h1 className="text-lg font-bold mb-1">Reportar falla de equipo</h1>
+          <div className="flex items-center gap-3 mb-3">
+            <img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={52} height={52} className="shrink-0" style={{ objectFit: 'contain' }} />
+            <div className="min-w-0">
+              <div className="text-3xs uppercase tracking-widest" style={{ color: '#2F8FD1' }}>CMMS Biomédico</div>
+              <h1 className="text-lg font-bold">Reportar falla de equipo</h1>
+            </div>
+          </div>
           <p className={`text-xs mb-5 ${t.muted}`}>Diligencia este formulario si detectas una novedad o daño en un equipo.</p>
 
           <form onSubmit={submit} className="space-y-3">
@@ -2734,7 +2741,7 @@ function ReporteFallaForm({ onBack }) {
               <select value={equipoId} onChange={e => setEquipoId(e.target.value)}
                 className={`w-full rounded-md px-2.5 py-1.5 text-xs border ${t.input}`}>
                 <option value="">Selecciona un equipo…</option>
-                {equiposFiltrados.map(e => <option key={e.id} value={e.id}>{equipoLabelReporteFalla(e)}</option>)}
+                {equiposFiltrados.map(e => <option key={e.id} value={e.id}>{equipoLabelCompleto(e)}</option>)}
               </select>
               {equiposFiltrados.length === 0 && <p className="text-2xs mt-1" style={{ color: '#D97706' }}>No hay equipos cargados para esta sede todavía en este dispositivo.</p>}
             </Field>
@@ -3293,7 +3300,7 @@ await writeXlsxFile(data, {
             }}
           />
         )}
-        {menu === 'fallas' && !readOnly && <ReportesFallaPage reportes={reportesFalla} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} readOnly={readOnly} />}
+        {menu === 'fallas' && !readOnly && <ReportesFallaPage reportes={reportesFalla} equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} readOnly={readOnly} />}
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
@@ -4092,7 +4099,16 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
 /* ---------------------------------------------------------------- */
 /* PÁGINA: REPORTES DE FALLA (Ingeniería Biomédica)                   */
 /* ---------------------------------------------------------------- */
-function ReportesFallaPage({ reportes, activeCompany, t, accent, onUpdate, readOnly }) {
+function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpdate, readOnly }) {
+  // El reporte solo guarda equipoId + equipoNombre (foto del nombre al momento de crearse) —
+  // para mostrar marca/modelo/serie se consulta el inventario ACTUAL por id, sin tocar lo
+  // que ya está guardado en el reporte. Si el equipo ya no existe en el inventario (borrado
+  // después de reportarse la falla), se conserva el nombre guardado como respaldo.
+  const equipoLabel = (r) => {
+    const eq = equipos.find(e => e.id === r.equipoId);
+    return eq ? equipoLabelCompleto(eq) : (r.equipoNombre || 'Equipo sin especificar');
+  };
+
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroPrioridad, setFiltroPrioridad] = useState('');
   const [filtroMes, setFiltroMes] = useState('');
@@ -4207,7 +4223,7 @@ function ReportesFallaPage({ reportes, activeCompany, t, accent, onUpdate, readO
               {!r.visto && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title="Nuevo" />}
               <Badge color={PRIORIDAD_HEX[r.prioridad]}>{r.prioridad}</Badge>
               <div className="flex-1 min-w-[160px]">
-                <div className="text-xs font-semibold">{r.equipoNombre || 'Equipo sin especificar'}</div>
+                <div className="text-xs font-semibold">{equipoLabel(r)}</div>
                 <div className={`text-2xs ${t.muted}`}>{r.empresa} · {r.sede} · reportó {r.personaReporta || 'sin nombre'}</div>
               </div>
               <Badge color={REPORTE_ESTADO_HEX[r.estado]}>{r.estado}</Badge>
