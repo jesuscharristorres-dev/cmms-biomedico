@@ -18,35 +18,6 @@ import {
   sendAlertsSummary, getNotifiedIds, markNotified,
 } from './services/emailService';
 import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts } from './services/alertLogic';
-
-// Red de seguridad para la transición login → panel: si algo falla en el primer render
-// (una condición de carrera puntual justo después de autenticar, antes de que todos los
-// efectos de carga hayan corrido), React deja la pantalla en blanco sin avisar — y sin
-// esto, la única forma de recuperarla era refrescar manualmente. Con este Error Boundary,
-// el fallo se detecta y la página se recarga sola en menos de un segundo.
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  componentDidCatch(error, info) {
-    console.error('[ErrorBoundary] Error al renderizar el panel, recargando automáticamente:', error, info);
-    setTimeout(() => window.location.reload(), 500);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-dvh flex items-center justify-center text-sm text-slate-400">
-          Cargando tu panel…
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 // Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
 import logoIngenieriaClinica from './assets/logo-ingenieria-clinica.png';
@@ -1490,6 +1461,21 @@ function ReporteTecnicoButton({ equipo, record, tipoKey, onSave, accent, t, read
 /* PERSISTENCIA                                                      */
 /* ---------------------------------------------------------------- */
 
+// Caché local best-effort compartida por todos los loadX/crearX/actualizarX de abajo — cada
+// recurso sigue teniendo su propia clave y su propia lógica de fetch/migración (son distintas
+// entre sí), pero el pequeño ritual de guardar/leer en localStorage sin que un error ahí
+// tumbe la app era idéntico repetido ~28 veces.
+function cacheSet(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* caché best-effort */ }
+}
+function cacheGet(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return JSON.parse(raw);
+  } catch { /* sin caché aún */ }
+  return fallback;
+}
+
 // Fuente de verdad COMPARTIDA del inventario de equipos (con sus preventivos, correctivos,
 // calibraciones y bajas anidados): api/equipos.js (Vercel KV). localStorage queda como
 // caché de lectura best-effort — nunca como almacenamiento principal.
@@ -1512,58 +1498,54 @@ async function loadEquipos() {
             });
             if (migRes.ok) {
               const { equipos: migrados } = await migRes.json();
-              try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(migrados)); } catch { /* caché best-effort */ }
+              cacheSet(EQUIPOS_KEY, migrados);
               return migrados;
             }
           } catch (err) { console.error('No se pudo migrar el inventario local al servidor compartido', err); }
         }
       }
-      try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(equipos)); } catch { /* caché best-effort */ }
+      cacheSet(EQUIPOS_KEY, equipos);
       return equipos;
     }
     console.error('No se pudo consultar el inventario compartido: respuesta', res.status);
   } catch (err) {
     console.error('No se pudo consultar el inventario compartido', err);
   }
-  try {
-    const raw = localStorage.getItem(EQUIPOS_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* sin caché aún */ }
-  return [];
+  return cacheGet(EQUIPOS_KEY, []);
 }
 async function crearEquipo(equipo) {
   const res = await fetch('/api/equipos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipo }) });
   if (!res.ok) throw new Error('No se pudo guardar el equipo en la base de datos compartida.');
   const { equipos } = await res.json();
-  try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(equipos)); } catch { /* caché best-effort */ }
+  cacheSet(EQUIPOS_KEY, equipos);
   return equipos;
 }
 async function crearEquipos(nuevos) {
   const res = await fetch('/api/equipos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipos: nuevos }) });
   if (!res.ok) throw new Error('No se pudo importar los equipos a la base de datos compartida.');
   const { equipos } = await res.json();
-  try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(equipos)); } catch { /* caché best-effort */ }
+  cacheSet(EQUIPOS_KEY, equipos);
   return equipos;
 }
 async function actualizarEquipo(id, patch) {
   const res = await fetch('/api/equipos', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }) });
   if (!res.ok) throw new Error('No se pudo actualizar el equipo en la base de datos compartida.');
   const { equipos } = await res.json();
-  try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(equipos)); } catch { /* caché best-effort */ }
+  cacheSet(EQUIPOS_KEY, equipos);
   return equipos;
 }
 async function eliminarEquipo(id) {
   const res = await fetch('/api/equipos', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
   if (!res.ok) throw new Error('No se pudo eliminar el equipo en la base de datos compartida.');
   const { equipos } = await res.json();
-  try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(equipos)); } catch { /* caché best-effort */ }
+  cacheSet(EQUIPOS_KEY, equipos);
   return equipos;
 }
 async function eliminarTodosLosEquipos() {
   const res = await fetch('/api/equipos', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ borrarTodo: true }) });
   if (!res.ok) throw new Error('No se pudo borrar el inventario en la base de datos compartida.');
   const { equipos } = await res.json();
-  try { localStorage.setItem(EQUIPOS_KEY, JSON.stringify(equipos)); } catch { /* caché best-effort */ }
+  cacheSet(EQUIPOS_KEY, equipos);
   return equipos;
 }
 
@@ -1587,31 +1569,27 @@ async function loadAlertEmails() {
           } catch (err) { console.error('No se pudo migrar los correos de alerta locales al servidor compartido', err); }
         }
       }
-      try { localStorage.setItem(ALERT_EMAILS_KEY, JSON.stringify(emails)); } catch { /* caché best-effort */ }
+      cacheSet(ALERT_EMAILS_KEY, emails);
       return emails;
     }
     console.error('No se pudo consultar los correos de alerta compartidos: respuesta', res.status);
   } catch (err) {
     console.error('No se pudo consultar los correos de alerta compartidos', err);
   }
-  try {
-    const raw = localStorage.getItem(ALERT_EMAILS_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* sin caché aún */ }
-  return [];
+  return cacheGet(ALERT_EMAILS_KEY, []);
 }
 async function crearAlertEmail(email) {
   const res = await fetch('/api/alert-emails', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
   if (!res.ok) throw new Error('No se pudo guardar el correo en la base de datos compartida.');
   const { emails } = await res.json();
-  try { localStorage.setItem(ALERT_EMAILS_KEY, JSON.stringify(emails)); } catch { /* caché best-effort */ }
+  cacheSet(ALERT_EMAILS_KEY, emails);
   return emails;
 }
 async function eliminarAlertEmail(email) {
   const res = await fetch('/api/alert-emails', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
   if (!res.ok) throw new Error('No se pudo eliminar el correo en la base de datos compartida.');
   const { emails } = await res.json();
-  try { localStorage.setItem(ALERT_EMAILS_KEY, JSON.stringify(emails)); } catch { /* caché best-effort */ }
+  cacheSet(ALERT_EMAILS_KEY, emails);
   return emails;
 }
 
@@ -1628,7 +1606,7 @@ async function loadReportes() {
     const res = await fetch('/api/reportes-falla');
     if (res.ok) {
       const { reportes } = await res.json();
-      try { localStorage.setItem(REPORTES_KEY, JSON.stringify(reportes)); } catch { /* caché best-effort */ }
+      cacheSet(REPORTES_KEY, reportes);
       return reportes;
     }
     console.error('No se pudo consultar los reportes de falla compartidos: respuesta', res.status);
@@ -1637,11 +1615,7 @@ async function loadReportes() {
   }
   // Sin backend disponible (sin red, o en desarrollo local con `npm run dev`, que no sirve
   // /api): se muestra la última copia conocida en vez de dejar la pantalla vacía.
-  try {
-    const raw = localStorage.getItem(REPORTES_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* sin caché aún */ }
-  return [];
+  return cacheGet(REPORTES_KEY, []);
 }
 // Crea UN reporte en el servidor (nunca sobrescribe el arreglo completo desde el cliente):
 // así dos coordinadores reportando casi al mismo tiempo desde computadores distintos no se
@@ -1652,7 +1626,7 @@ async function crearReporteFalla(reporte) {
   });
   if (!res.ok) throw new Error('No se pudo guardar el reporte en la base de datos compartida.');
   const { reportes } = await res.json();
-  try { localStorage.setItem(REPORTES_KEY, JSON.stringify(reportes)); } catch { /* caché best-effort */ }
+  cacheSet(REPORTES_KEY, reportes);
   return reportes;
 }
 // Actualiza UN reporte por id (estado, técnico asignado, observaciones, etc.) — mismo
@@ -1663,7 +1637,7 @@ async function actualizarReporteFalla(id, patch) {
   });
   if (!res.ok) throw new Error('No se pudo actualizar el reporte en la base de datos compartida.');
   const { reportes } = await res.json();
-  try { localStorage.setItem(REPORTES_KEY, JSON.stringify(reportes)); } catch { /* caché best-effort */ }
+  cacheSet(REPORTES_KEY, reportes);
   return reportes;
 }
 
@@ -1691,18 +1665,14 @@ async function loadPlanesProgramas() {
           } catch (err) { console.error('No se pudo migrar planes y programas locales al servidor compartido', err); }
         }
       }
-      try { localStorage.setItem(PLANES_KEY, JSON.stringify(data)); } catch { /* caché best-effort */ }
+      cacheSet(PLANES_KEY, data);
       return data;
     }
     console.error('No se pudo consultar planes y programas compartidos: respuesta', res.status);
   } catch (err) {
     console.error('No se pudo consultar planes y programas compartidos', err);
   }
-  try {
-    const raw = localStorage.getItem(PLANES_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* sin caché aún */ }
-  return {};
+  return cacheGet(PLANES_KEY, {});
 }
 async function actualizarPlanPrograma(empresaKey, campo, valor) {
   const res = await fetch('/api/planes-programas', {
@@ -1710,7 +1680,7 @@ async function actualizarPlanPrograma(empresaKey, campo, valor) {
   });
   if (!res.ok) throw new Error('No se pudo guardar en la base de datos compartida.');
   const { data } = await res.json();
-  try { localStorage.setItem(PLANES_KEY, JSON.stringify(data)); } catch { /* caché best-effort */ }
+  cacheSet(PLANES_KEY, data);
   return data;
 }
 const PLANES_CATEGORIAS = [
@@ -1744,18 +1714,14 @@ async function loadTecnoTransversal() {
           } catch (err) { console.error('No se pudo migrar la documentación transversal local al servidor compartido', err); }
         }
       }
-      try { localStorage.setItem(TECNO_TRANSVERSAL_KEY, JSON.stringify(data)); } catch { /* caché best-effort */ }
+      cacheSet(TECNO_TRANSVERSAL_KEY, data);
       return data;
     }
     console.error('No se pudo consultar la documentación transversal compartida: respuesta', res.status);
   } catch (err) {
     console.error('No se pudo consultar la documentación transversal compartida', err);
   }
-  try {
-    const raw = localStorage.getItem(TECNO_TRANSVERSAL_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* sin caché aún */ }
-  return {};
+  return cacheGet(TECNO_TRANSVERSAL_KEY, {});
 }
 async function actualizarTecnoTransversal(docKey, valor) {
   const res = await fetch('/api/tecno-transversal', {
@@ -1763,7 +1729,7 @@ async function actualizarTecnoTransversal(docKey, valor) {
   });
   if (!res.ok) throw new Error('No se pudo guardar en la base de datos compartida.');
   const { data } = await res.json();
-  try { localStorage.setItem(TECNO_TRANSVERSAL_KEY, JSON.stringify(data)); } catch { /* caché best-effort */ }
+  cacheSet(TECNO_TRANSVERSAL_KEY, data);
   return data;
 }
 const TECNO_DOCS = [
@@ -1797,18 +1763,14 @@ async function loadTecnoReportes() {
           } catch (err) { console.error('No se pudo migrar los reportes de tecnovigilancia locales al servidor compartido', err); }
         }
       }
-      try { localStorage.setItem(TECNO_REPORTES_KEY, JSON.stringify(data)); } catch { /* caché best-effort */ }
+      cacheSet(TECNO_REPORTES_KEY, data);
       return data;
     }
     console.error('No se pudo consultar los reportes de tecnovigilancia compartidos: respuesta', res.status);
   } catch (err) {
     console.error('No se pudo consultar los reportes de tecnovigilancia compartidos', err);
   }
-  try {
-    const raw = localStorage.getItem(TECNO_REPORTES_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* sin caché aún */ }
-  return {};
+  return cacheGet(TECNO_REPORTES_KEY, {});
 }
 async function actualizarTecnoReporte(empresaKey, sede, anio, trimestre, valor) {
   const res = await fetch('/api/tecno-reportes', {
@@ -1816,7 +1778,7 @@ async function actualizarTecnoReporte(empresaKey, sede, anio, trimestre, valor) 
   });
   if (!res.ok) throw new Error('No se pudo guardar en la base de datos compartida.');
   const { data } = await res.json();
-  try { localStorage.setItem(TECNO_REPORTES_KEY, JSON.stringify(data)); } catch { /* caché best-effort */ }
+  cacheSet(TECNO_REPORTES_KEY, data);
   return data;
 }
 const TECNO_TRIMESTRES = [
@@ -1857,31 +1819,27 @@ async function loadPersonal() {
           } catch (err) { console.error('No se pudo migrar el personal local al servidor compartido', err); }
         }
       }
-      try { localStorage.setItem(PERSONAL_KEY, JSON.stringify(personal)); } catch { /* caché best-effort */ }
+      cacheSet(PERSONAL_KEY, personal);
       return personal;
     }
     console.error('No se pudo consultar el personal compartido: respuesta', res.status);
   } catch (err) {
     console.error('No se pudo consultar el personal compartido', err);
   }
-  try {
-    const raw = localStorage.getItem(PERSONAL_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* sin caché aún */ }
-  return [];
+  return cacheGet(PERSONAL_KEY, []);
 }
 async function crearPersonal(record) {
   const res = await fetch('/api/personal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ record }) });
   if (!res.ok) throw new Error('No se pudo guardar el registro en la base de datos compartida.');
   const { personal } = await res.json();
-  try { localStorage.setItem(PERSONAL_KEY, JSON.stringify(personal)); } catch { /* caché best-effort */ }
+  cacheSet(PERSONAL_KEY, personal);
   return personal;
 }
 async function actualizarPersonal(id, patch) {
   const res = await fetch('/api/personal', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }) });
   if (!res.ok) throw new Error('No se pudo actualizar el registro en la base de datos compartida.');
   const { personal } = await res.json();
-  try { localStorage.setItem(PERSONAL_KEY, JSON.stringify(personal)); } catch { /* caché best-effort */ }
+  cacheSet(PERSONAL_KEY, personal);
   return personal;
 }
 const TIPOS_DOCUMENTO_PERSONAL = ['CC', 'CE', 'TI', 'Pasaporte'];
@@ -3103,6 +3061,20 @@ function MainApp({ onLogout, readOnly }) {
     });
   };
 
+  // Valores únicos para los <select> de filtro (sede/ubicación/marca) — a propósito se
+  // calculan sobre el inventario de la empresa activa SIN aplicar los demás filtros, para
+  // que las opciones del desplegable no vayan desapareciendo a medida que el usuario
+  // filtra por otro campo.
+  const uniqueOptions = useMemo(() => {
+    const scoped = activeCompany === 'TODAS' ? equipos : equipos.filter(e => e.empresa === activeCompany);
+    const out = {};
+    ['sede', 'ubicacion', 'marca'].forEach(field => {
+      out[field] = [...new Set(scoped.map(e => e[field]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    });
+    return out;
+  }, [equipos, activeCompany]);
+  const uniqueVals = (field) => uniqueOptions[field] || [];
+
   const filtered = useMemo(() => {
     let list = equipos;
     if (activeCompany !== 'TODAS') list = list.filter(e => e.empresa === activeCompany);
@@ -3360,7 +3332,7 @@ await writeXlsxFile(data, {
         {menu === 'empresas' && <EmpresasPage equipos={equipos} t={t} onSelect={(k) => { setActiveCompany(k); setMenu('inventario'); }} />}
         {(menu === 'inventario' || menu === 'mantenimientos' || menu === 'calibraciones' || menu === 'correctivos') && (
           <InventarioPage
-            mode={menu} equipos={filtered} allEquipos={equipos} t={t} accent={accent} accentBg={accentBg}
+            mode={menu} equipos={filtered} t={t} accent={accent} accentBg={accentBg}
             filters={filters} setFilters={setFilters} search={search} setSearch={setSearch}
             sort={sort} setSort={setSort} uniqueVals={uniqueVals} activeCompany={activeCompany}
             onOpen={setDrawerId} onObs={setObsModalId}
@@ -3391,7 +3363,7 @@ await writeXlsxFile(data, {
         </div>
       </div>
 
-      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => setDrawerId(null)} onUpdate={updateEquipo} t={t} accent={accent} readOnly={readOnly} alertEmails={alertEmails} />}
+      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => setDrawerId(null)} onUpdate={updateEquipo} t={t} readOnly={readOnly} alertEmails={alertEmails} />}
       {obsEquipo && <ObsModal equipo={obsEquipo} onClose={() => setObsModalId(null)} onSave={(v) => updateEquipo({ ...obsEquipo, observaciones: v })} t={t} accent={accent} readOnly={readOnly} />}
       </div>
     </div>
@@ -5103,10 +5075,8 @@ function AppInner() {
   };
 
   return (
-    <ErrorBoundary>
-      <ReadOnlyContext.Provider value={guestMode}>
-        <MainApp onLogout={salir} readOnly={guestMode} />
-      </ReadOnlyContext.Provider>
-    </ErrorBoundary>
+    <ReadOnlyContext.Provider value={guestMode}>
+      <MainApp onLogout={salir} readOnly={guestMode} />
+    </ReadOnlyContext.Provider>
   );
 }
