@@ -11,7 +11,8 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, LineChart, Line
 } from 'recharts';
-import * as XLSX from 'xlsx';
+import readXlsxFile from 'read-excel-file/browser';
+import writeXlsxFile from 'write-excel-file/browser';
 import {
   notifyFallaReportada, notifyCorrectivoRegistrado, notifyPreventivoProximo, notifyCalibracionProxima,
   sendAlertsSummary, getNotifiedIds, markNotified,
@@ -49,6 +50,51 @@ class ErrorBoundary extends React.Component {
 // Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
 import logoIngenieriaClinica from './assets/logo-ingenieria-clinica.png';
+
+/* ---------------------------------------------------------------- */
+/* ERROR BOUNDARY                                                     */
+/* ---------------------------------------------------------------- */
+// Sin esto, cualquier excepción de render en cualquier parte del árbol (p.ej. un dato
+// inesperado que llega del servidor justo después del login) desmonta TODA la app sin
+// avisar — pantalla en blanco, sin pista salvo un stack trace de React perdido en la
+// consola. Con esto, el error queda visible en pantalla (con recarga de un clic) en vez
+// de desaparecer silenciosamente.
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error('[AppErrorBoundary] Error de render capturado:', error, info?.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-dvh flex items-center justify-center p-6 bg-slate-50 text-slate-800">
+          <div className="max-w-lg w-full bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <h1 className="text-base font-bold text-red-600 mb-2">Ocurrió un error inesperado</h1>
+            <p className="text-sm text-slate-600 mb-3">
+              La aplicación encontró un problema y no pudo continuar. Recarga la página para intentar de nuevo.
+            </p>
+            <pre className="text-xs bg-slate-100 rounded-md p-3 overflow-auto mb-4 whitespace-pre-wrap">
+              {String(this.state.error?.stack || this.state.error)}
+            </pre>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-md px-3 py-2"
+            >
+              Recargar página
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /* ---------------------------------------------------------------- */
 /* CONFIG                                                            */
@@ -2417,6 +2463,40 @@ const REPORTE_BG_LIGHT = 'linear-gradient(160deg, #FFFFFF 0%, #EEF6FB 24%, #FFFF
 /* ---------------------------------------------------------------- */
 /* PANTALLA DE ACCESO                                                 */
 /* ---------------------------------------------------------------- */
+// Fuera del componente a propósito: si viviera dentro de LoginScreen, React recrearía
+// este string (y volvería a tocar el nodo <style>) en cada tecla que el usuario escribe
+// en usuario/contraseña, justo la ventana en la que el formulario es más sensible a que
+// un gestor de contraseñas u otra extensión también esté tocando ese mismo subárbol.
+const LOGIN_SCREEN_STYLES = `
+  @keyframes login-card-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes login-field-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes illus-float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
+  @keyframes decor-float { 0%, 100% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-7px) scale(1.04); } }
+  @keyframes bg-drift { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(14px, -10px); } }
+  @keyframes glow-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.6; } }
+  .login-card-wrap { width: 100%; animation: login-card-in .5s ease both; }
+  @media (min-width: 1024px) { .login-card-wrap { width: 82%; max-width: 1180px; } }
+  .login-illus { animation: illus-float 5.5s ease-in-out infinite; }
+  .login-decor { animation: decor-float 6.5s ease-in-out infinite; }
+  .login-glow { animation: glow-pulse 5s ease-in-out infinite; }
+  .login-bg-blob { animation: bg-drift 16s ease-in-out infinite; }
+  .login-field-in { animation: login-field-in .5s ease both; }
+  .login-input { background: #F8FAFC; border-color: #E2E8F0; }
+  .login-input:hover { border-color: #CBD5E1; }
+  .login-input:focus { background: #FFFFFF; box-shadow: 0 0 0 3px rgba(47,143,209,0.16); border-color: #2F8FD1; }
+  .login-btn-primary { background: linear-gradient(135deg, #173B6C 0%, #2F8FD1 60%, #3CAA55 130%); box-shadow: 0 16px 32px -14px rgba(23,59,108,0.45); transition: filter 250ms ease, transform 250ms ease, box-shadow 250ms ease; }
+  .login-btn-primary:hover { filter: brightness(1.08); box-shadow: 0 20px 36px -14px rgba(23,59,108,0.55); }
+  .login-btn-primary:hover .login-btn-arrow { transform: translateX(3px); }
+  .login-btn-primary:active { transform: scale(0.98); }
+  .login-btn-arrow { transition: transform 200ms ease; }
+  .login-btn-report { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); box-shadow: 0 12px 24px -10px rgba(217,119,6,0.4); }
+  .login-btn-report:hover { filter: brightness(1.06); box-shadow: 0 16px 28px -10px rgba(217,119,6,0.5); }
+  .login-fast { transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease, background-color 200ms ease, color 200ms ease; }
+  .login-dotgrid { background-image: radial-gradient(circle, #17417a20 1px, transparent 1px); background-size: 26px 26px; }
+  @media (prefers-reduced-motion: reduce) {
+    .login-illus, .login-decor, .login-glow, .login-bg-blob, .login-card-wrap, .login-field-in { animation: none; }
+  }
+`;
 function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
@@ -2466,36 +2546,7 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
   return (
     <div className="min-h-dvh flex items-center justify-center p-4 lg:p-8 relative overflow-hidden"
       style={{ fontFamily: "'IBM Plex Sans', sans-serif", background: 'linear-gradient(160deg, #EAF5FB 0%, #F4FAF6 45%, #FFFFFF 75%, #EEF8F1 100%)' }}>
-      <style>{`
-        @keyframes login-card-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes login-field-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes illus-float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
-        @keyframes decor-float { 0%, 100% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-7px) scale(1.04); } }
-        @keyframes bg-drift { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(14px, -10px); } }
-        @keyframes glow-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.6; } }
-        .login-card-wrap { width: 100%; animation: login-card-in .5s ease both; }
-        @media (min-width: 1024px) { .login-card-wrap { width: 82%; max-width: 1180px; } }
-        .login-illus { animation: illus-float 5.5s ease-in-out infinite; }
-        .login-decor { animation: decor-float 6.5s ease-in-out infinite; }
-        .login-glow { animation: glow-pulse 5s ease-in-out infinite; }
-        .login-bg-blob { animation: bg-drift 16s ease-in-out infinite; }
-        .login-field-in { animation: login-field-in .5s ease both; }
-        .login-input { background: #F8FAFC; border-color: #E2E8F0; }
-        .login-input:hover { border-color: #CBD5E1; }
-        .login-input:focus { background: #FFFFFF; box-shadow: 0 0 0 3px rgba(47,143,209,0.16); border-color: #2F8FD1; }
-        .login-btn-primary { background: linear-gradient(135deg, #173B6C 0%, #2F8FD1 60%, #3CAA55 130%); box-shadow: 0 16px 32px -14px rgba(23,59,108,0.45); transition: filter 250ms ease, transform 250ms ease, box-shadow 250ms ease; }
-        .login-btn-primary:hover { filter: brightness(1.08); box-shadow: 0 20px 36px -14px rgba(23,59,108,0.55); }
-        .login-btn-primary:hover .login-btn-arrow { transform: translateX(3px); }
-        .login-btn-primary:active { transform: scale(0.98); }
-        .login-btn-arrow { transition: transform 200ms ease; }
-        .login-btn-report { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); box-shadow: 0 12px 24px -10px rgba(217,119,6,0.4); }
-        .login-btn-report:hover { filter: brightness(1.06); box-shadow: 0 16px 28px -10px rgba(217,119,6,0.5); }
-        .login-fast { transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease, background-color 200ms ease, color 200ms ease; }
-        .login-dotgrid { background-image: radial-gradient(circle, #17417a20 1px, transparent 1px); background-size: 26px 26px; }
-        @media (prefers-reduced-motion: reduce) {
-          .login-illus, .login-decor, .login-glow, .login-bg-blob, .login-card-wrap, .login-field-in { animation: none; }
-        }
-      `}</style>
+      <style>{LOGIN_SCREEN_STYLES}</style>
 
       {/* Fondo ambiental de toda la pantalla — degradado institucional + formas
           translúcidas a la deriva + patrón de puntos muy discreto (profundidad sin ruido) */}
@@ -2574,6 +2625,7 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
                 <div className="relative mt-1.5">
                   <User size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
+                    id="login-user" name="username" autoComplete="username"
                     autoFocus value={user} onChange={e => { setUser(e.target.value); setError(''); }}
                     className="login-input login-fast w-full rounded-xl pl-10 pr-3 py-3 text-sm border text-slate-800 outline-none"
                   />
@@ -2585,6 +2637,7 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
                 <div className="relative mt-1.5">
                   <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
+                    id="login-pass" name="password" autoComplete="current-password"
                     type={showPass ? 'text' : 'password'} value={pass} onChange={e => { setPass(e.target.value); setError(''); }}
                     className="login-input login-fast w-full rounded-xl pl-10 pr-10 py-3 text-sm border text-slate-800 outline-none"
                   />
@@ -3074,7 +3127,7 @@ function MainApp({ onLogout, readOnly }) {
   const obsEquipo = equipos.find(e => e.id === obsModalId);
 
   /* ---- Excel export / import ---- */
-  const exportExcel = () => {
+  const exportExcel = async () => {
     const year = new Date().getFullYear();
     const rows = filtered.map(e => {
       const row = {
@@ -3096,10 +3149,21 @@ function MainApp({ onLogout, readOnly }) {
       row.OBSERVACIONES = e.observaciones;
       return row;
     });
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
-    XLSX.writeFile(wb, 'inventario-biomedico.xlsx');
+    const headers = Object.keys(rows[0] || {});
+
+const data = [
+  headers.map(header => ({ value: header, fontWeight: 'bold' })),
+  ...rows.map(row =>
+    headers.map(header => ({
+      value: row[header] ?? ''
+    }))
+  )
+];
+
+await writeXlsxFile(data, {
+  fileName: 'inventario-biomedico.xlsx',
+  sheet: 'Inventario',
+});
   };
   const parseExcelDate = (val) => {
     if (!val) return '';
@@ -3116,39 +3180,123 @@ function MainApp({ onLogout, readOnly }) {
     const d = new Date(str);
     return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
   };
-  const importExcel = (file) => {
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const wb = XLSX.read(ev.target.result, { type: 'binary' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws);
-      const imported = rows.filter(r => r.EQUIPO).map(r => {
-        const empresaKey = COMPANIES.find(c => c.key.toUpperCase() === (r.EMPRESA || '').toString().trim().toUpperCase())?.key
-          || (activeCompany === 'TODAS' ? COMPANIES[0].key : activeCompany);
+  const importExcel = async (file) => {
+  try {
+    const rows = await readXlsxFile(file);
+
+    if (!rows || rows.length < 2) {
+      alert('El archivo Excel está vacío o no contiene datos.');
+      return;
+    }
+
+    // Primera fila = encabezados
+    const headers = rows[0].map(value =>
+      (value ?? '').toString().trim()
+    );
+
+    // Convertir las filas en objetos, igual que hacía sheet_to_json()
+    const dataRows = rows.slice(1).map(row => {
+      const obj = {};
+
+      headers.forEach((header, index) => {
+        obj[header] = row[index] ?? '';
+      });
+
+      return obj;
+    });
+
+    const imported = dataRows
+      .filter(r => r.EQUIPO)
+      .map(r => {
+        const empresaKey =
+          COMPANIES.find(
+            c =>
+              c.key.toUpperCase() ===
+              (r.EMPRESA || '')
+                .toString()
+                .trim()
+                .toUpperCase()
+          )?.key ||
+          (activeCompany === 'TODAS'
+            ? COMPANIES[0].key
+            : activeCompany);
+
         const co = companyOf(empresaKey);
-        const sedeVal = co.sedes.find(s => s.toUpperCase() === (r.SEDE || '').toString().trim().toUpperCase()) || co.sedes[0];
+
+        const sedeVal =
+          co.sedes.find(
+            s =>
+              s.toUpperCase() ===
+              (r.SEDE || '')
+                .toString()
+                .trim()
+                .toUpperCase()
+          ) || co.sedes[0];
+
         return {
           ...newEquipo(empresaKey),
+
           sede: sedeVal,
-          equipo: r.EQUIPO || '', marca: r.MARCA || '', modelo: r.MODELO || '',
-          numeroSerie: r['NUMERO DE SERIE'] || '', registroInvima: r['REGISTRO INVIMA'] || '',
-          clasificacionRiesgo: r['CLASIFICACION DE RIESGO'] || 'IIB', inventario: r.INVENTARIO || '',
-          periodicidadMantenimiento: r['PERIODICIDAD DE MANTENIMIENTO'] || 'Anual', periodicidadCalibracion: r['PERIODICIDAD DE CALIBRACION'] || 'Anual',
-          ubicacion: r['UBICACIÓN'] || '', fechaUltimaCalibracion: parseExcelDate(r['FECHA DE ULTIMA CALIBRACION']),
-          estado: r.ESTADO || 'Operativo', certificadoUrl: r['CERTIFICADO DE CALIBRACION'] || '', observaciones: r.OBSERVACIONES || '',
+
+          equipo: r.EQUIPO || '',
+          marca: r.MARCA || '',
+          modelo: r.MODELO || '',
+
+          numeroSerie: r['NUMERO DE SERIE'] || '',
+          registroInvima: r['REGISTRO INVIMA'] || '',
+
+          clasificacionRiesgo:
+            r['CLASIFICACION DE RIESGO'] || 'IIB',
+
+          inventario: r.INVENTARIO || '',
+
+          periodicidadMantenimiento:
+            r['PERIODICIDAD DE MANTENIMIENTO'] || 'Anual',
+
+          periodicidadCalibracion:
+            r['PERIODICIDAD DE CALIBRACION'] || 'Anual',
+
+          ubicacion: r['UBICACIÃ“N'] || '',
+
+          fechaUltimaCalibracion:
+            parseExcelDate(
+              r['FECHA DE ULTIMA CALIBRACION']
+            ),
+
+          estado: r.ESTADO || 'Operativo',
+
+          certificadoUrl:
+            r['CERTIFICADO DE CALIBRACION'] || '',
+
+          observaciones:
+            r.OBSERVACIONES || '',
         };
       });
-      setEquipos(prev => [...prev, ...imported]);
-      const idsImportados = new Set(imported.map(e => e.id));
-      crearEquipos(imported).catch(err => {
-        console.error('No se pudo importar los equipos al servidor compartido', err);
-        setEquipos(prev => prev.filter(e => !idsImportados.has(e.id)));
-      });
-    };
-    reader.readAsBinaryString(file);
-  };
 
-  const uniqueVals = (key) => [...new Set(equipos.map(e => e[key]).filter(Boolean))];
+    setEquipos(prev => [...prev, ...imported]);
+
+    const idsImportados = new Set(
+      imported.map(e => e.id)
+    );
+
+    crearEquipos(imported).catch(err => {
+      console.error(
+        'No se pudo importar los equipos al servidor compartido',
+        err
+      );
+
+      setEquipos(prev =>
+        prev.filter(e => !idsImportados.has(e.id))
+      );
+    });
+
+  } catch (err) {
+    console.error('Error al importar el archivo Excel:', err);
+    alert(
+      'No se pudo importar el archivo Excel. Verifica que sea un archivo .xlsx válido.'
+    );
+  }
+};
 
   /* ---------------------------------------------------------------- */
   return (
@@ -3872,7 +4020,7 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
             {!readOnly && (
               <label className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs border cursor-pointer ${t.border}`}>
                 <Upload size={13} /> Importar Excel
-                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => e.target.files[0] && onImport(e.target.files[0])} />
+                <input type="file" accept=".xlsx" className="hidden" onChange={e => e.target.files[0] && onImport(e.target.files[0])} />
               </label>
             )}
           </div>
@@ -4900,6 +5048,14 @@ function ConfigPage({ t, accent, onReset, onLogout, alertEmails, onAddEmail, onR
 /* WRAPPER DE ACCESO                                                  */
 /* ---------------------------------------------------------------- */
 export default function App() {
+  return (
+    <AppErrorBoundary>
+      <AppInner />
+    </AppErrorBoundary>
+  );
+}
+
+function AppInner() {
   // authed empieza en null ("verificando") — a propósito ya NO se lee de localStorage,
   // que cualquiera puede falsificar desde DevTools sin conocer la contraseña. La única
   // fuente de verdad es la cookie de sesión HttpOnly, que el navegador no deja leer ni
