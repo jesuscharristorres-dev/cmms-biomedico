@@ -189,20 +189,22 @@ const ESTADOS_EQUIPO = ['Operativo', 'Fuera de servicio', 'En mantenimiento', 'D
 // equipo.estado de siempre; no es una lógica nueva, solo se acortan las opciones visibles aquí).
 const ESTADOS_MANTENIMIENTOS = ['Operativo', 'Dado de baja'];
 const PERIODICIDADES = ['Mensual', 'Bimestral', 'Trimestral', 'Cuatrimestral', 'Semestral', 'Anual'];
+// `guestHidden`: oculto del menú (y de cualquier acceso directo) en Modo Invitado — ese modo
+// solo debe ofrecer consulta de lectura, sin las secciones operativas/administrativas.
 const MENU = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'alertas', label: 'Alertas', icon: BellRing },
-  { key: 'fallas', label: 'Reportes de falla', icon: AlertTriangle },
+  { key: 'alertas', label: 'Alertas', icon: BellRing, guestHidden: true },
+  { key: 'fallas', label: 'Reportes de falla', icon: AlertTriangle, guestHidden: true },
   { key: 'planes', label: 'Planes y programas', icon: FolderOpen },
   { key: 'tecnovigilancia', label: 'Tecnovigilancia', icon: ShieldAlert },
   { key: 'personal', label: 'Hojas de vida personal', icon: IdCard },
   { key: 'empresas', label: 'Empresas', icon: Building2 },
   { key: 'inventario', label: 'Inventario', icon: ListTree },
-  { key: 'mantenimientos', label: 'Mantenimientos', icon: CalendarClock },
-  { key: 'calibraciones', label: 'Calibraciones', icon: ShieldCheck },
-  { key: 'correctivos', label: 'Correctivos', icon: Wrench },
-  { key: 'reportes', label: 'Reportes', icon: FileBarChart },
-  { key: 'configuracion', label: 'Configuración', icon: Settings },
+  { key: 'mantenimientos', label: 'Mantenimientos', icon: CalendarClock, guestHidden: true },
+  { key: 'calibraciones', label: 'Calibraciones', icon: ShieldCheck, guestHidden: true },
+  { key: 'correctivos', label: 'Correctivos', icon: Wrench, guestHidden: true },
+  { key: 'reportes', label: 'Reportes', icon: FileBarChart, guestHidden: true },
+  { key: 'configuracion', label: 'Configuración', icon: Settings, guestHidden: true },
 ];
 // Semáforo semántico compartido — mantenimientos y calibraciones usan el mismo
 // significado de color (verde=bien, ámbar=próximo, rojo=vencido, gris=sin dato),
@@ -2845,7 +2847,7 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
         )}
       </div>
       <div className="flex-1 py-3 overflow-y-auto">
-        {MENU.map(m => {
+        {MENU.filter(m => !(readOnly && m.guestHidden)).map(m => {
           const Icon = m.icon;
           const active = menu === m.key;
           return (
@@ -3327,10 +3329,10 @@ await writeXlsxFile(data, {
           ))}
         </div>
 
-        {menu === 'dashboard' && <Dashboard equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} accent={accent} theme={theme} t={t} readOnly={readOnly} onGoAlerts={() => setMenu('alertas')} onGoFallas={() => setMenu('fallas')} onGoInventario={() => setMenu('inventario')} />}
-        {menu === 'alertas' && <AlertasPage equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} alertEmails={alertEmails} onOpen={setDrawerId} readOnly={readOnly} />}
+        {menu === 'dashboard' && <Dashboard equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} accent={accent} theme={theme} t={t} readOnly={readOnly} onGoAlerts={readOnly ? undefined : () => setMenu('alertas')} onGoFallas={readOnly ? undefined : () => setMenu('fallas')} onGoInventario={() => setMenu('inventario')} />}
+        {menu === 'alertas' && !readOnly && <AlertasPage equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} alertEmails={alertEmails} onOpen={setDrawerId} readOnly={readOnly} />}
         {menu === 'empresas' && <EmpresasPage equipos={equipos} t={t} onSelect={(k) => { setActiveCompany(k); setMenu('inventario'); }} />}
-        {(menu === 'inventario' || menu === 'mantenimientos' || menu === 'calibraciones' || menu === 'correctivos') && (
+        {(menu === 'inventario' || ((menu === 'mantenimientos' || menu === 'calibraciones' || menu === 'correctivos') && !readOnly)) && (
           <InventarioPage
             mode={menu} equipos={filtered} t={t} accent={accent} accentBg={accentBg}
             filters={filters} setFilters={setFilters} search={search} setSearch={setSearch}
@@ -3346,12 +3348,12 @@ await writeXlsxFile(data, {
             }}
           />
         )}
-        {menu === 'fallas' && <ReportesFallaPage reportes={reportesFalla} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} readOnly={readOnly} />}
+        {menu === 'fallas' && !readOnly && <ReportesFallaPage reportes={reportesFalla} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} readOnly={readOnly} />}
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
-        {menu === 'reportes' && <ReportesPage equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} t={t} accent={accent} onExport={exportExcel} />}
-        {menu === 'configuracion' && <ConfigPage t={t} accent={accent} onReset={() => {
+        {menu === 'reportes' && !readOnly && <ReportesPage equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} t={t} accent={accent} onExport={exportExcel} />}
+        {menu === 'configuracion' && !readOnly && <ConfigPage t={t} accent={accent} onReset={() => {
           if (!confirm('¿Borrar todos los equipos guardados?')) return;
           const previous = equipos;
           setEquipos([]);
