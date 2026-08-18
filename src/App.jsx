@@ -2548,7 +2548,7 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
                 </div>
               ))}
               <div className="login-illus absolute inset-0 flex items-center justify-center z-10">
-                <img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={210} height={210} style={{ objectFit: 'contain' }} />
+                <img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={232} height={232} style={{ objectFit: 'contain' }} />
               </div>
             </div>
           </div>
@@ -2557,7 +2557,7 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
         {/* LADO DERECHO — formulario */}
         <div className="w-full lg:w-1/2 flex flex-col justify-center p-8 sm:p-12">
           <div className="w-full max-w-sm mx-auto">
-            <div className="mb-3"><img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={84} height={84} style={{ objectFit: 'contain' }} /></div>
+            <div className="mb-3"><img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={96} height={96} style={{ objectFit: 'contain' }} /></div>
             <div className="text-xl font-bold tracking-wide" style={{ color: '#173B6C' }}>CMMS BIOMÉDICA</div>
             <p className="text-xs text-slate-400 mt-1 mb-7">Inicie sesión para continuar.</p>
 
@@ -2811,9 +2811,12 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
     <>
       <div className="h-1" style={{ background: accentBg }} />
       <div className="px-4 py-5 border-b flex items-center justify-between" style={{ borderColor: 'inherit' }}>
-        <div>
-          <div className="text-3xs uppercase tracking-widest" style={{ color: accent }}>CMMS Biomédico</div>
-          <div className="text-sm font-bold mt-0.5">Gestión de equipos</div>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={36} height={36} className="shrink-0" style={{ objectFit: 'contain' }} />
+          <div className="min-w-0">
+            <div className="text-3xs uppercase tracking-widest truncate" style={{ color: accent }}>CMMS Biomédico</div>
+            <div className="text-sm font-bold mt-0.5 truncate">Gestión de equipos</div>
+          </div>
         </div>
         {onCloseMobile && (
           <button onClick={onCloseMobile} aria-label="Cerrar menú" className={`flex items-center justify-center w-11 h-11 -mr-2 ${t.muted}`}>
