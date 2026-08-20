@@ -615,24 +615,19 @@ function computeInformeMensual(empresaKey, monthIdx, year, equipos, reportesFall
           : ''),
   };
 
-  // 4) Reportes de falla — reutiliza exactamente el mismo cálculo de tiempo de
-  // atención que ya usa la página "Reportes de falla" (tiempoRespuestaMs/formatDuracion).
+  // 4) Reportes de falla.
   const fallasPeriodo = (reportesFalla || []).filter(r => r.empresa === empresaKey && enPeriodo(r.fecha));
   const fallasReportadas = fallasPeriodo.length;
   const fallasSolucionadas = fallasPeriodo.filter(r => r.estado === 'Finalizado').length;
   const fallasPendientes = fallasReportadas - fallasSolucionadas;
-  const resueltasConTiempo = fallasPeriodo.map(r => tiempoRespuestaMs(r)).filter(ms => ms !== null);
-  const promedioMs = resueltasConTiempo.length ? resueltasConTiempo.reduce((a, ms) => a + ms, 0) / resueltasConTiempo.length : null;
   const fallas = {
     insufficient: fallasReportadas === 0,
     chart: svgStackedBar([
       { label: 'Solucionadas', value: fallasSolucionadas, color: '#22C55E' },
       { label: 'Pendientes', value: fallasPendientes, color: '#F59E0B' },
     ]),
-    descripcion: fallasReportadas === 0 ? '' : (
-      `Durante ${mesLabel} se reportaron ${fallasReportadas} falla${fallasReportadas !== 1 ? 's' : ''}, de las cuales ${fallasSolucionadas} fueron solucionadas y ${fallasPendientes} permanecen pendientes.` +
-      (promedioMs !== null ? ` El tiempo promedio de solución fue de ${formatDuracion(promedioMs)}.` : ' Aún no hay fallas solucionadas en el periodo para calcular un tiempo promedio de atención.')
-    ),
+    descripcion: fallasReportadas === 0 ? '' :
+      `Durante ${mesLabel} se reportaron ${fallasReportadas} falla${fallasReportadas !== 1 ? 's' : ''}, de las cuales ${fallasSolucionadas} fueron solucionadas y ${fallasPendientes} permanecen pendientes.`,
   };
 
   return { mesLabel, preventivos, correctivos, calibraciones, fallas };
@@ -845,8 +840,6 @@ function computeInformeF140(empresaKey, monthIdx, year, equipos, reportesFalla) 
   let falla = null;
   if (fallasPeriodo.length > 0) {
     const fallasSolucionadas = fallasPeriodo.filter(r => r.estado === 'Finalizado').length;
-    const tiempos = fallasPeriodo.map(r => tiempoRespuestaMs(r)).filter(ms => ms !== null);
-    const promedioMs = tiempos.length ? tiempos.reduce((a, ms) => a + ms, 0) / tiempos.length : null;
     falla = {
       nombre: 'Resolución de fallas reportadas',
       numerador: fallasSolucionadas, denominador: fallasPeriodo.length,
@@ -856,8 +849,7 @@ function computeInformeF140(empresaKey, monthIdx, year, equipos, reportesFalla) 
         { label: 'Solucionadas', value: fallasSolucionadas, color: '#22C55E' },
         { label: 'Pendientes', value: fallasPeriodo.length - fallasSolucionadas, color: '#F59E0B' },
       ]),
-      interpretacion: `Durante ${mesLabel} se reportaron ${fallasPeriodo.length} falla${fallasPeriodo.length !== 1 ? 's' : ''}, de las cuales ${fallasSolucionadas} fueron solucionadas.` +
-        (promedioMs !== null ? ` El tiempo promedio de solución fue de ${formatDuracion(promedioMs)}.` : ' Aún no hay fallas solucionadas en el periodo para calcular un tiempo promedio.'),
+      interpretacion: `Durante ${mesLabel} se reportaron ${fallasPeriodo.length} falla${fallasPeriodo.length !== 1 ? 's' : ''}, de las cuales ${fallasSolucionadas} fueron solucionadas.`,
     };
   }
 
@@ -4631,9 +4623,8 @@ function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpda
     if (!r.visto && !readOnly) onUpdate({ ...r, visto: true });
   };
 
-  // KPI: tiempo promedio de solución (solo fallas con tiempo de respuesta calculable).
+  // Fallas con tiempo de respuesta calculable — base de la gráfica "Tiempo de atención por falla".
   const resueltas = list.map(r => ({ r, ms: tiempoRespuestaMs(r) })).filter(x => x.ms !== null);
-  const promedioMs = resueltas.length ? resueltas.reduce((acc, x) => acc + x.ms, 0) / resueltas.length : null;
 
   // Gráfica: tiempo de atención por falla (equipo · fecha del reporte · horas que tardó).
   const datosTiempo = resueltas
@@ -4650,10 +4641,7 @@ function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpda
       <h1 className="text-lg font-bold mb-1">Reportes de falla</h1>
       <p className={`text-xs mb-4 ${t.muted}`}>Solicitudes enviadas por los coordinadores de sede.</p>
 
-      <div className="grid sm:grid-cols-2 gap-3 mb-3">
-        <HeroStat t={t} label="Tiempo promedio de solución" color={accent}
-          value={promedioMs !== null ? formatDuracion(promedioMs) : '—'}
-          sub={resueltas.length ? `${resueltas.length} falla${resueltas.length !== 1 ? 's' : ''} solucionada${resueltas.length !== 1 ? 's' : ''}` : 'Sin fallas solucionadas todavía'} />
+      <div className="max-w-xs mb-3">
         <HeroStat t={t} label={filtroMes !== '' ? `Fallas en ${MONTHS[+filtroMes].full}` : 'Fallas reportadas (total)'} color={accent}
           value={totalMesSeleccionado}
           sub={filtroMes !== '' ? 'Clic en una barra para cambiar de mes' : 'Todos los meses'} />
