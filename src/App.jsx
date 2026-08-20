@@ -2030,11 +2030,11 @@ const DRAWER_TABS = ['Información General', 'Cronograma', 'Preventivos', 'Corre
 /* ---------------------------------------------------------------- */
 // Sigue guardando exactamente lo mismo que antes (un arreglo `equipo.documentos` dentro del
 // equipo, escrito con el mismo `onUpdate`/PATCH /api/equipos de siempre — nada nuevo en el
-// backend) — solo se agregan campos OPCIONALES (descripcion, extension, tamano, actualizadoEn,
-// archivoDatos, archivoNombre) que ya son válidos hoy porque el servidor guarda el objeto tal
-// cual llega, sin validar su forma. Los documentos guardados antes de este cambio (con
-// categorías viejas o con URL en vez de archivo) se siguen mostrando y descargando sin
-// problema — ver abrirDocumento() más abajo — así que no hay migración ni pérdida de datos.
+// backend). Cada documento nuevo solo guarda su URL externa (Drive/OneDrive/Dropbox/etc.),
+// nunca el archivo, así se evita consumir almacenamiento de la base de datos. Los documentos
+// guardados antes de este cambio (con archivo en base64 en `archivoDatos`) se siguen mostrando
+// y descargando sin problema — ver abrirDocumento() más abajo — así que no hay migración ni
+// pérdida de datos.
 const DOCUMENTO_TIPOS = [
   { key: 'Manual', icon: BookOpen, color: '#2F8FD1' },
   { key: 'Reporte de instalación', icon: ClipboardList, color: '#F59E0B' },
@@ -2046,50 +2046,36 @@ const DOCUMENTO_TIPO_POR_DEFECTO = { icon: Paperclip, color: '#64748B' };
 function documentoTipoInfo(tipo) {
   return DOCUMENTO_TIPOS.find(d => d.key === tipo) || DOCUMENTO_TIPO_POR_DEFECTO;
 }
-function formatBytes(bytes) {
-  if (!bytes && bytes !== 0) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)} KB`;
-  return `${(kb / 1024).toFixed(1)} MB`;
-}
 const DOCUMENTOS_ORDEN = [
   { key: 'recientes', label: 'Más recientes' },
   { key: 'antiguos', label: 'Más antiguos' },
   { key: 'az', label: 'Nombre A-Z' },
   { key: 'za', label: 'Nombre Z-A' },
 ];
-const DOCUMENTO_EXTENSIONES_ACEPTADAS = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png';
-// El archivo se guarda como Data URI dentro del propio documento (archivoDatos) — el mismo
-// mecanismo que ya usa FirmaInput más abajo para las firmas (FileReader.readAsDataURL,
-// guardado como string en el JSON del equipo vía el PATCH /api/equipos de siempre). No hay
-// almacenamiento de archivos en ningún otro lado del proyecto que se pudiera reutilizar en su
-// lugar.
-//
-// El límite de tamaño NO es arbitrario: las funciones serverless de Vercel rechazan
-// cualquier request cuyo body pase de ~4.5 MB (FUNCTION_PAYLOAD_TOO_LARGE, antes de que el
-// código del handler llegue a ejecutarse). Base64 infla el archivo original ~33%, y ese mismo
-// PATCH también lleva el resto del JSON del equipo (su historial de preventivos, correctivos,
-// etc.) — con el límite anterior de 5 MB, un PDF real de pocos MB ya superaba el máximo del
-// body: el PATCH fallaba en el servidor, el catch() de MainApp revertía el estado local
-// (por eso la tarjeta parecía guardarse un instante y el archivo desaparecía al recargar: en
-// realidad nunca había llegado a guardarse en el servidor). 2 MB de archivo → ~2.7 MB en
-// base64, con margen real bajo el tope de 4.5 MB.
-const DOCUMENTO_MAX_BYTES = 2 * 1024 * 1024;
-// Abre/descarga un documento: los nuevos (archivoDatos, un Data URI) se descargan de verdad
-// con el nombre de archivo original; los guardados antes de este cambio (con URL externa en
-// vez de archivo) se siguen abriendo igual que siempre — el atributo `download` no aplica a
-// enlaces de otro origen, así que para esos el navegador simplemente los abre en una pestaña.
+// Los documentos nuevos solo guardan su URL externa (Drive/OneDrive/Dropbox/etc.) — nunca el
+// archivo — para no consumir almacenamiento de la base de datos ni del servidor.
+function esUrlDocumentoValida(value) {
+  try {
+    const u = new URL((value || '').trim());
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+// Abre un documento: los nuevos solo tienen `url` (enlace externo) y se abren en una pestaña
+// nueva, sin descargar ni copiar nada localmente; los guardados antes de este cambio (con
+// archivo en `archivoDatos`, un Data URI) se siguen descargando igual que siempre, para no
+// perder acceso a lo que ya estaba guardado.
 function abrirDocumento(doc) {
-  if (doc.archivoDatos) {
+  if (doc.url) {
+    window.open(doc.url, '_blank', 'noopener,noreferrer');
+  } else if (doc.archivoDatos) {
     const a = document.createElement('a');
     a.href = doc.archivoDatos;
     a.download = doc.archivoNombre || doc.nombre || 'documento';
     document.body.appendChild(a);
     a.click();
     a.remove();
-  } else if (doc.url) {
-    window.open(doc.url, '_blank', 'noopener');
   }
 }
 
@@ -2228,43 +2214,21 @@ function DocumentFormModal({ mode, initial, onClose, onSave, t, accent }) {
   const [tipo, setTipo] = useState(initial?.tipo || DOCUMENTO_TIPOS[0].key);
   const [nombre, setNombre] = useState(initial?.nombre || '');
   const [descripcion, setDescripcion] = useState(initial?.descripcion || '');
-  // Al editar, si el documento ya tenía un archivo (o una URL antigua) se conserva tal cual
-  // a menos que el usuario lo reemplace o lo quite con "Eliminar archivo" — `datos`/`url` viajan
-  // en el estado aunque no se editen, para no perder el archivo ya guardado al solo corregir,
-  // por ejemplo, el nombre.
-  const [archivo, setArchivo] = useState(
-    (initial?.archivoDatos || initial?.url || initial?.extension || initial?.tamano)
-      ? { nombre: initial?.archivoNombre || null, extension: initial?.extension, tamano: initial?.tamano, datos: initial?.archivoDatos, url: initial?.url }
-      : null
-  );
+  // Solo se guarda la URL externa del documento (Drive/OneDrive/Dropbox/etc.) — nunca el
+  // archivo. Al editar un documento antiguo que sí tenía archivo (`archivoDatos`), ese campo
+  // no se toca aquí: `guardarDocumento` solo sobreescribe lo que este formulario envía, así
+  // que el archivo ya guardado no se pierde por editar el nombre o la URL.
+  const [url, setUrl] = useState(initial?.url || '');
   const [error, setError] = useState('');
-
-  const handleFile = (file) => {
-    if (!file) return;
-    if (file.size > DOCUMENTO_MAX_BYTES) {
-      setError(`El archivo pesa ${formatBytes(file.size)}; el máximo permitido es ${formatBytes(DOCUMENTO_MAX_BYTES)}.`);
-      return;
-    }
-    setError('');
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setArchivo({ nombre: file.name, extension: (file.name.split('.').pop() || '').toUpperCase(), tamano: formatBytes(file.size), datos: ev.target.result });
-    };
-    reader.onerror = () => setError('No se pudo leer el archivo. Intenta de nuevo.');
-    reader.readAsDataURL(file);
-    if (!nombre.trim()) setNombre(file.name.replace(/\.[^.]+$/, ''));
-  };
 
   const submit = (e) => {
     e.preventDefault();
     if (!tipo) { setError('Selecciona el tipo de documento.'); return; }
     if (!nombre.trim()) { setError('Escribe un nombre para el documento.'); return; }
+    if (!url.trim()) { setError('Ingresa el enlace externo del documento.'); return; }
+    if (!esUrlDocumentoValida(url)) { setError('El enlace no es una URL válida. Debe comenzar con https:// o http://.'); return; }
     setError('');
-    onSave({
-      tipo, nombre: nombre.trim(), descripcion: descripcion.trim(),
-      extension: archivo?.extension || '', tamano: archivo?.tamano || '',
-      archivoNombre: archivo?.nombre || '', archivoDatos: archivo?.datos || '', url: archivo?.url || '',
-    });
+    onSave({ tipo, nombre: nombre.trim(), descripcion: descripcion.trim(), url: url.trim() });
   };
 
   return (
@@ -2291,29 +2255,9 @@ function DocumentFormModal({ mode, initial, onClose, onSave, t, accent }) {
               placeholder="Descripción breve del documento" className={`w-full rounded-md px-2.5 py-2 text-xs border ${t.input}`} />
           </Field>
 
-          <Field label="Archivo">
-            {archivo ? (
-              <div className={`rounded-lg border p-2.5 flex items-center gap-2.5 ${t.panel3} ${t.border}`}>
-                <FileText size={16} className={`shrink-0 ${t.muted}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium truncate">{archivo.nombre || 'Archivo adjunto'}</div>
-                  {archivo.tamano && <div className={`text-3xs ${t.muted}`}>{archivo.tamano}</div>}
-                </div>
-                <button type="button" onClick={() => setArchivo(null)} className="text-2xs text-red-500 hover:opacity-70 shrink-0">Eliminar archivo</button>
-              </div>
-            ) : (
-              <label
-                onDragOver={e => e.preventDefault()}
-                onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files?.[0]); }}
-                className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed py-6 px-3 text-center cursor-pointer transition hover:opacity-80 ${t.border} ${t.panel3}`}>
-                <Upload size={18} className={t.muted} />
-                <span className="text-xs font-medium">Arrastra tu archivo aquí</span>
-                <span className={`text-2xs ${t.muted}`}>o selecciona un archivo</span>
-                <span className={`text-3xs mt-0.5 ${t.muted}`}>PDF, DOCX, XLSX, JPG, PNG</span>
-                <input type="file" accept={DOCUMENTO_EXTENSIONES_ACEPTADAS} className="hidden" onChange={e => handleFile(e.target.files[0])} />
-              </label>
-            )}
-            <p className={`text-3xs mt-1 ${t.muted}`}>Tamaño máximo {formatBytes(DOCUMENTO_MAX_BYTES)}.</p>
+          <Field label="Enlace del documento (URL externa)">
+            <TextInput t={t} value={url} placeholder="https://drive.google.com/..." onChange={setUrl} />
+            <p className={`text-3xs mt-1 ${t.muted}`}>Pega el enlace externo (Drive, OneDrive, Dropbox, etc.). El archivo no se sube a la aplicación.</p>
           </Field>
 
           {error && (
@@ -2995,8 +2939,8 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
               Los íconos decorativos se anclan a una caja del mismo tamaño visual del logo
               (no al alto completo del panel), para que la constelación quede pegada a la marca. */}
           <div className="relative flex-1 flex items-center justify-center min-h-57.5">
-            <div className="relative" style={{ width: 320, height: 300 }}>
-              <div className="login-glow absolute rounded-full" style={{ width: 260, height: 260, left: '50%', top: '44%', transform: 'translate(-50%, -50%)', background: 'radial-gradient(circle, rgba(47,143,209,0.18) 0%, rgba(60,170,85,0.10) 55%, transparent 75%)' }} aria-hidden="true" />
+            <div className="relative" style={{ width: 420, height: 394 }}>
+              <div className="login-glow absolute rounded-full" style={{ width: 342, height: 342, left: '50%', top: '44%', transform: 'translate(-50%, -50%)', background: 'radial-gradient(circle, rgba(47,143,209,0.18) 0%, rgba(60,170,85,0.10) 55%, transparent 75%)' }} aria-hidden="true" />
               {DECOR_ICONS.map(({ Icon, style, size, color, delay }, i) => (
                 <div key={i} className="login-decor absolute rounded-2xl flex items-center justify-center"
                   style={{ ...style, width: size, height: size, background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)', boxShadow: '0 10px 22px -10px rgba(23,59,108,0.28)', animationDelay: delay }}>
@@ -3004,7 +2948,7 @@ function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
                 </div>
               ))}
               <div className="login-illus absolute inset-0 flex items-center justify-center z-10">
-                <img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={232} height={232} style={{ objectFit: 'contain' }} />
+                <img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={300} height={300} style={{ objectFit: 'contain' }} />
               </div>
             </div>
           </div>
