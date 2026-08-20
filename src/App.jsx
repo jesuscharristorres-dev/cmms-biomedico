@@ -3280,7 +3280,7 @@ function AmbientBackground({ theme, dark }) {
         style={{ width: '26rem', height: '26rem', top: '30%', left: '42%', backgroundColor: c3, opacity: op * 0.65, filter: 'blur(110px)' }} />
       <div className="absolute inset-0 flex items-center justify-center">
         <img src={logoIngenieriaClinica} alt=""
-          style={{ width: 'min(65vw, 34rem)', height: 'min(65vw, 34rem)', objectFit: 'contain', opacity: logoOpacity, transition: 'opacity 500ms ease-out' }} />
+          style={{ width: 'min(112vw, 59rem)', height: 'min(112vw, 59rem)', objectFit: 'contain', opacity: logoOpacity, transition: 'opacity 500ms ease-out' }} />
       </div>
     </div>
   );
