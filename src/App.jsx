@@ -5,8 +5,7 @@ import {
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, AlertTriangle, Lock,
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
-  IdCard, Save, SprayCan, Target, ClipboardList, Award, Receipt, Paperclip, MoreVertical, Pencil,
-  Filter
+  IdCard, Save, SprayCan, ClipboardList, Paperclip, MoreVertical, Pencil, Filter, Zap
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -2039,32 +2038,22 @@ const DRAWER_TABS = ['Información General', 'Cronograma', 'Preventivos', 'Corre
 /* ---------------------------------------------------------------- */
 // Sigue guardando exactamente lo mismo que antes (un arreglo `equipo.documentos` dentro del
 // equipo, escrito con el mismo `onUpdate`/PATCH /api/equipos de siempre — nada nuevo en el
-// backend) — solo se agregan campos OPCIONALES (descripcion, extension, tamano, fecha,
-// actualizadoEn) que ya son válidos hoy porque el servidor guarda el objeto tal cual llega,
-// sin validar su forma. Los documentos guardados antes de este cambio (con las categorías
-// viejas: Manuales, Fichas técnicas, Guías de uso rápido, Acta de entrega, Factura...) se
-// siguen mostrando sin problema — DOCUMENTO_TIPO_POR_DEFECTO cubre cualquier tipo que no esté
-// en la lista nueva, así que no hay migración ni pérdida de datos.
+// backend) — solo se agregan campos OPCIONALES (descripcion, extension, tamano, actualizadoEn,
+// archivoDatos, archivoNombre) que ya son válidos hoy porque el servidor guarda el objeto tal
+// cual llega, sin validar su forma. Los documentos guardados antes de este cambio (con
+// categorías viejas o con URL en vez de archivo) se siguen mostrando y descargando sin
+// problema — ver abrirDocumento() más abajo — así que no hay migración ni pérdida de datos.
 const DOCUMENTO_TIPOS = [
-  { key: 'Manual de usuario', icon: BookOpen, color: '#2F8FD1' },
-  { key: 'Mantenimiento', icon: Wrench, color: '#F59E0B' },
-  { key: 'Calibración', icon: Target, color: '#22C55E' },
-  { key: 'Registro INVIMA', icon: ShieldCheck, color: '#8B5CF6' },
-  { key: 'Ficha técnica', icon: ClipboardList, color: '#0EA5E9' },
-  { key: 'Certificado', icon: Award, color: '#EC4899' },
-  { key: 'Garantía', icon: Receipt, color: '#14B8A6' },
-  { key: 'Otro', icon: Paperclip, color: '#64748B' },
+  { key: 'Manual', icon: BookOpen, color: '#2F8FD1' },
+  { key: 'Reporte de instalación', icon: ClipboardList, color: '#F59E0B' },
+  { key: 'INVIMA', icon: ShieldCheck, color: '#8B5CF6' },
+  { key: 'Guía de uso rápido', icon: Zap, color: '#22C55E' },
+  { key: 'Ficha técnica', icon: FileText, color: '#0EA5E9' },
 ];
 const DOCUMENTO_TIPO_POR_DEFECTO = { icon: Paperclip, color: '#64748B' };
 function documentoTipoInfo(tipo) {
   return DOCUMENTO_TIPOS.find(d => d.key === tipo) || DOCUMENTO_TIPO_POR_DEFECTO;
 }
-// Solo metadatos del archivo elegido (nombre/peso) para completar la tarjeta — el archivo en
-// sí NUNCA se sube a ningún backend (este proyecto no tiene almacenamiento de archivos en
-// ningún módulo: equipos, personal, planes, tecnovigilancia y limpieza también funcionan solo
-// con enlaces externos). Por eso el campo URL sigue siendo lo único que de verdad permite ver
-// o descargar el documento después — el selector de archivo es una ayuda de captura, no un
-// uploader real.
 function formatBytes(bytes) {
   if (!bytes && bytes !== 0) return '';
   if (bytes < 1024) return `${bytes} B`;
@@ -2079,6 +2068,38 @@ const DOCUMENTOS_ORDEN = [
   { key: 'za', label: 'Nombre Z-A' },
 ];
 const DOCUMENTO_EXTENSIONES_ACEPTADAS = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png';
+// El archivo se guarda como Data URI dentro del propio documento (archivoDatos) — el mismo
+// mecanismo que ya usa FirmaInput más abajo para las firmas (FileReader.readAsDataURL,
+// guardado como string en el JSON del equipo vía el PATCH /api/equipos de siempre). No hay
+// almacenamiento de archivos en ningún otro lado del proyecto que se pudiera reutilizar en su
+// lugar.
+//
+// El límite de tamaño NO es arbitrario: las funciones serverless de Vercel rechazan
+// cualquier request cuyo body pase de ~4.5 MB (FUNCTION_PAYLOAD_TOO_LARGE, antes de que el
+// código del handler llegue a ejecutarse). Base64 infla el archivo original ~33%, y ese mismo
+// PATCH también lleva el resto del JSON del equipo (su historial de preventivos, correctivos,
+// etc.) — con el límite anterior de 5 MB, un PDF real de pocos MB ya superaba el máximo del
+// body: el PATCH fallaba en el servidor, el catch() de MainApp revertía el estado local
+// (por eso la tarjeta parecía guardarse un instante y el archivo desaparecía al recargar: en
+// realidad nunca había llegado a guardarse en el servidor). 2 MB de archivo → ~2.7 MB en
+// base64, con margen real bajo el tope de 4.5 MB.
+const DOCUMENTO_MAX_BYTES = 2 * 1024 * 1024;
+// Abre/descarga un documento: los nuevos (archivoDatos, un Data URI) se descargan de verdad
+// con el nombre de archivo original; los guardados antes de este cambio (con URL externa en
+// vez de archivo) se siguen abriendo igual que siempre — el atributo `download` no aplica a
+// enlaces de otro origen, así que para esos el navegador simplemente los abre en una pestaña.
+function abrirDocumento(doc) {
+  if (doc.archivoDatos) {
+    const a = document.createElement('a');
+    a.href = doc.archivoDatos;
+    a.download = doc.archivoNombre || doc.nombre || 'documento';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } else if (doc.url) {
+    window.open(doc.url, '_blank', 'noopener');
+  }
+}
 
 function EmptyDocumentsState({ t, accent, readOnly, onAdd }) {
   return (
@@ -2098,6 +2119,7 @@ function EmptyDocumentsState({ t, accent, readOnly, onAdd }) {
 function DocumentCard({ doc, t, readOnly, menuOpen, onToggleMenu, onView, onEdit, onDelete }) {
   const info = documentoTipoInfo(doc.tipo);
   const Icon = info.icon;
+  const tieneArchivo = !!(doc.archivoDatos || doc.url);
   const fechaTexto = doc.actualizadoEn
     ? new Date(doc.actualizadoEn).toLocaleDateString('es-CO')
     : (doc.fecha ? new Date(doc.fecha + 'T00:00:00').toLocaleDateString('es-CO') : '');
@@ -2120,7 +2142,7 @@ function DocumentCard({ doc, t, readOnly, menuOpen, onToggleMenu, onView, onEdit
             <button onClick={onEdit} className={`w-full flex items-center gap-2 text-left px-3 py-1.5 text-xs hover:opacity-80 ${t.text}`}>
               <Pencil size={13} /> Editar
             </button>
-            <button onClick={() => window.open(doc.url, '_blank', 'noopener')} disabled={!doc.url}
+            <button onClick={() => abrirDocumento(doc)} disabled={!tieneArchivo}
               className={`w-full flex items-center gap-2 text-left px-3 py-1.5 text-xs hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed ${t.text}`}>
               <Download size={13} /> Descargar
             </button>
@@ -2144,22 +2166,26 @@ function DocumentCard({ doc, t, readOnly, menuOpen, onToggleMenu, onView, onEdit
       </div>
 
       <div className="flex items-center gap-2 pt-1">
-        <Button variant="outline" size="sm" t={t} icon={Eye} iconSize={12} disabled={!doc.url} onClick={onView} className="flex-1">Ver</Button>
-        <Button variant="outline" size="sm" t={t} icon={Download} iconSize={12} disabled={!doc.url}
-          onClick={() => window.open(doc.url, '_blank', 'noopener')} className="flex-1">Descargar</Button>
+        <Button variant="outline" size="sm" t={t} icon={Eye} iconSize={12} disabled={!tieneArchivo} onClick={onView} className="flex-1">Ver</Button>
+        <Button variant="outline" size="sm" t={t} icon={Download} iconSize={12} disabled={!tieneArchivo}
+          onClick={() => abrirDocumento(doc)} className="flex-1">Descargar</Button>
       </div>
     </div>
   );
 }
 
-// "Ver" — vista previa. Un PDF alojado en un enlace público (Drive/OneDrive/SharePoint en
-// modo "ver") normalmente sí se puede incrustar en un <iframe>; otros formatos (DOCX, XLSX)
-// no tienen forma confiable de previsualizarse sin un visor externo, así que van directo al
-// estado "no se puede previsualizar" que pide la especificación.
+// "Ver" — vista previa. Un PDF (guardado como Data URI, o una URL externa antigua) se puede
+// incrustar en un <iframe> — el navegador lo detecta por su MIME/extensión igual que abre
+// cualquier PDF. Otros formatos (DOCX, XLSX) no tienen forma confiable de previsualizarse sin
+// un visor externo, así que van directo al estado "no se puede previsualizar" de la especificación.
 function DocumentPreviewModal({ doc, onClose, t, accent }) {
   const info = documentoTipoInfo(doc.tipo);
   const Icon = info.icon;
-  const esPdf = (doc.extension || '').toUpperCase() === 'PDF' || /\.pdf(\?|#|$)/i.test(doc.url || '');
+  const fuente = doc.archivoDatos || doc.url || '';
+  const tieneArchivo = !!fuente;
+  const esPdf = doc.archivoDatos
+    ? doc.archivoDatos.startsWith('data:application/pdf')
+    : (doc.extension || '').toUpperCase() === 'PDF' || /\.pdf(\?|#|$)/i.test(doc.url || '');
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onClose} />
@@ -2178,14 +2204,14 @@ function DocumentPreviewModal({ doc, onClose, t, accent }) {
         </div>
 
         <div className={`flex-1 min-h-0 ${t.panel3}`}>
-          {doc.url && esPdf ? (
-            <iframe src={doc.url} title={doc.nombre} className="w-full h-full border-0" />
+          {tieneArchivo && esPdf ? (
+            <iframe src={fuente} title={doc.nombre} className="w-full h-full border-0" />
           ) : (
             <div className="h-full flex flex-col items-center justify-center gap-3 p-6 text-center">
               <FileText size={32} className={t.muted} />
               <p className={`text-xs ${t.muted}`}>Este archivo no puede previsualizarse.</p>
-              {doc.url && (
-                <Button variant="primary" accent={accent} icon={Download} iconSize={13} onClick={() => window.open(doc.url, '_blank', 'noopener')}>
+              {tieneArchivo && (
+                <Button variant="primary" accent={accent} icon={Download} iconSize={13} onClick={() => abrirDocumento(doc)}>
                   Descargar documento
                 </Button>
               )}
@@ -2195,7 +2221,7 @@ function DocumentPreviewModal({ doc, onClose, t, accent }) {
 
         <div className="flex items-center justify-end gap-2 p-4 border-t shrink-0" style={{ borderColor: 'inherit' }}>
           <Button variant="outline" t={t} onClick={onClose}>Cerrar</Button>
-          <Button variant="primary" accent={accent} icon={Download} iconSize={13} disabled={!doc.url} onClick={() => window.open(doc.url, '_blank', 'noopener')}>
+          <Button variant="primary" accent={accent} icon={Download} iconSize={13} disabled={!tieneArchivo} onClick={() => abrirDocumento(doc)}>
             Descargar
           </Button>
         </div>
@@ -2210,16 +2236,30 @@ function DocumentFormModal({ mode, initial, onClose, onSave, t, accent }) {
   const [tipo, setTipo] = useState(initial?.tipo || DOCUMENTO_TIPOS[0].key);
   const [nombre, setNombre] = useState(initial?.nombre || '');
   const [descripcion, setDescripcion] = useState(initial?.descripcion || '');
-  const [url, setUrl] = useState(initial?.url || '');
-  const [fecha, setFecha] = useState(initial?.fecha || '');
+  // Al editar, si el documento ya tenía un archivo (o una URL antigua) se conserva tal cual
+  // a menos que el usuario lo reemplace o lo quite con "Eliminar archivo" — `datos`/`url` viajan
+  // en el estado aunque no se editen, para no perder el archivo ya guardado al solo corregir,
+  // por ejemplo, el nombre.
   const [archivo, setArchivo] = useState(
-    (initial?.extension || initial?.tamano) ? { nombre: null, extension: initial.extension, tamano: initial.tamano } : null
+    (initial?.archivoDatos || initial?.url || initial?.extension || initial?.tamano)
+      ? { nombre: initial?.archivoNombre || null, extension: initial?.extension, tamano: initial?.tamano, datos: initial?.archivoDatos, url: initial?.url }
+      : null
   );
   const [error, setError] = useState('');
 
   const handleFile = (file) => {
     if (!file) return;
-    setArchivo({ nombre: file.name, extension: (file.name.split('.').pop() || '').toUpperCase(), tamano: formatBytes(file.size) });
+    if (file.size > DOCUMENTO_MAX_BYTES) {
+      setError(`El archivo pesa ${formatBytes(file.size)}; el máximo permitido es ${formatBytes(DOCUMENTO_MAX_BYTES)}.`);
+      return;
+    }
+    setError('');
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setArchivo({ nombre: file.name, extension: (file.name.split('.').pop() || '').toUpperCase(), tamano: formatBytes(file.size), datos: ev.target.result });
+    };
+    reader.onerror = () => setError('No se pudo leer el archivo. Intenta de nuevo.');
+    reader.readAsDataURL(file);
     if (!nombre.trim()) setNombre(file.name.replace(/\.[^.]+$/, ''));
   };
 
@@ -2229,8 +2269,9 @@ function DocumentFormModal({ mode, initial, onClose, onSave, t, accent }) {
     if (!nombre.trim()) { setError('Escribe un nombre para el documento.'); return; }
     setError('');
     onSave({
-      tipo, nombre: nombre.trim(), descripcion: descripcion.trim(), url: url.trim(), fecha,
+      tipo, nombre: nombre.trim(), descripcion: descripcion.trim(),
       extension: archivo?.extension || '', tamano: archivo?.tamano || '',
+      archivoNombre: archivo?.nombre || '', archivoDatos: archivo?.datos || '', url: archivo?.url || '',
     });
   };
 
@@ -2258,7 +2299,7 @@ function DocumentFormModal({ mode, initial, onClose, onSave, t, accent }) {
               placeholder="Descripción breve del documento" className={`w-full rounded-md px-2.5 py-2 text-xs border ${t.input}`} />
           </Field>
 
-          <Field label="Archivo (opcional)">
+          <Field label="Archivo">
             {archivo ? (
               <div className={`rounded-lg border p-2.5 flex items-center gap-2.5 ${t.panel3} ${t.border}`}>
                 <FileText size={16} className={`shrink-0 ${t.muted}`} />
@@ -2280,17 +2321,7 @@ function DocumentFormModal({ mode, initial, onClose, onSave, t, accent }) {
                 <input type="file" accept={DOCUMENTO_EXTENSIONES_ACEPTADAS} className="hidden" onChange={e => handleFile(e.target.files[0])} />
               </label>
             )}
-            <p className={`text-3xs mt-1 ${t.muted}`}>
-              Los documentos se guardan como enlace, no como archivo subido. Elegir un archivo aquí solo completa el nombre y el peso de la tarjeta — pega también la URL de abajo para poder verlo o descargarlo después.
-            </p>
-          </Field>
-
-          <Field label="URL (opcional)">
-            <TextInput t={t} type="url" value={url} placeholder="https://…" onChange={setUrl} />
-          </Field>
-
-          <Field label="Fecha del documento (opcional)">
-            <TextInput t={t} type="date" value={fecha} onChange={setFecha} />
+            <p className={`text-3xs mt-1 ${t.muted}`}>Tamaño máximo {formatBytes(DOCUMENTO_MAX_BYTES)}.</p>
           </Field>
 
           {error && (
