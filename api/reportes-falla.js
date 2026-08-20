@@ -65,7 +65,16 @@ export default async function handler(req, res) {
       return res.status(200).json({ reporte: actualizado, reportes: actualizados });
     }
 
-    res.setHeader('Allow', ['GET', 'POST', 'PATCH']);
+    if (req.method === 'DELETE') {
+      // Vacía TODO el histórico compartido — pensado para limpiar datos de prueba, no para
+      // uso rutinario. Solo admin, igual que PATCH; a diferencia de POST/PATCH (por id), aquí
+      // se reemplaza el arreglo completo porque el propósito es borrarlo entero.
+      if (!(await requireAdmin(req, res))) return;
+      await kv.set(KV_KEY, []);
+      return res.status(200).json({ reportes: [] });
+    }
+
+    res.setHeader('Allow', ['GET', 'POST', 'PATCH', 'DELETE']);
     return res.status(405).json({ error: 'Método no permitido.' });
   } catch (err) {
     console.error('[api/reportes-falla] Error:', err);

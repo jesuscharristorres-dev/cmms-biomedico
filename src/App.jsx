@@ -11,7 +11,11 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, LineChart, Line
 } from 'recharts';
-import readXlsxFile from 'read-excel-file/browser';
+// La v9 de `read-excel-file` movió la lectura de una sola hoja al export nombrado `readSheet`
+// (el default export ahora devuelve TODAS las hojas del libro, envueltas en `{ sheet, data }`,
+// no las filas directamente) — hay que usar `readSheet` para seguir recibiendo el arreglo de
+// filas plano que el resto de esta función espera.
+import { readSheet } from 'read-excel-file/browser';
 import writeXlsxFile from 'write-excel-file/browser';
 import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts } from './services/alertLogic';
 // Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
@@ -1587,6 +1591,15 @@ async function actualizarReporteFalla(id, patch) {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }),
   });
   if (!res.ok) throw new Error('No se pudo actualizar el reporte en la base de datos compartida.');
+  const { reportes } = await res.json();
+  cacheSet(REPORTES_KEY, reportes);
+  return reportes;
+}
+// Vacía TODO el histórico de reportes de falla en el servidor — pensado para limpiar datos
+// de prueba, no para uso rutinario. Mismo principio de caché que crear/actualizar.
+async function vaciarReportesFalla() {
+  const res = await fetch('/api/reportes-falla', { method: 'DELETE' });
+  if (!res.ok) throw new Error('No se pudo vaciar el histórico de reportes de falla.');
   const { reportes } = await res.json();
   cacheSet(REPORTES_KEY, reportes);
   return reportes;
@@ -3326,6 +3339,16 @@ function MainApp({ onLogout, readOnly }) {
     });
   };
   const nuevosReportes = reportesFalla.filter(r => !r.visto && (activeCompany === 'TODAS' || r.empresa === activeCompany)).length;
+  // Vacía el histórico completo (pensado para limpiar datos de prueba) — misma revert-on-fail
+  // que updateReporte: si el servidor rechaza el borrado, se restaura lo que había localmente.
+  const vaciarHistorialFallas = () => {
+    const previous = reportesFalla;
+    setReportesFalla([]);
+    vaciarReportesFalla().catch(err => {
+      console.error('No se pudo vaciar el histórico de reportes de falla en el servidor', err);
+      setReportesFalla(previous);
+    });
+  };
 
   useEffect(() => { loadPlanesProgramas().then(setPlanesProgramas); }, []);
   const updatePlanPrograma = (empresaKey, campo, valor) => {
@@ -3532,7 +3555,9 @@ await writeXlsxFile(data, {
   };
   const importExcel = async (file) => {
   try {
-    const rows = await readXlsxFile(file);
+    // `readSheet` solo lee valores ya calculados de la hoja (texto/número/fecha) — nunca
+    // fórmulas ni contenido activo del archivo, así que el Excel se trata siempre como datos.
+    const rows = await readSheet(file);
 
     if (!rows || rows.length < 2) {
       alert('El archivo Excel está vacío o no contiene datos.');
@@ -3543,6 +3568,11 @@ await writeXlsxFile(data, {
     const headers = rows[0].map(value =>
       (value ?? '').toString().trim()
     );
+
+    if (!headers.some(h => h.toUpperCase() === 'EQUIPO')) {
+      alert('El archivo no tiene el formato esperado: falta la columna "EQUIPO". Usa "Exportar Excel" para ver el formato correcto y cárgalo de nuevo.');
+      return;
+    }
 
     // Convertir las filas en objetos, igual que hacía sheet_to_json()
     const dataRows = rows.slice(1).map(row => {
@@ -3555,73 +3585,83 @@ await writeXlsxFile(data, {
       return obj;
     });
 
-    const imported = dataRows
-      .filter(r => r.EQUIPO)
-      .map(r => {
-        const empresaKey =
-          COMPANIES.find(
-            c =>
-              c.key.toUpperCase() ===
-              (r.EMPRESA || '')
-                .toString()
-                .trim()
-                .toUpperCase()
-          )?.key ||
-          (activeCompany === 'TODAS'
-            ? COMPANIES[0].key
-            : activeCompany);
+    // Fila real en el Excel (la 1 son los encabezados) — para reportar problemas fila por fila.
+    const errores = [];
+    const imported = [];
 
-        const co = companyOf(empresaKey);
+    dataRows.forEach((r, i) => {
+      const fila = i + 2;
+      const nombreEquipo = (r.EQUIPO ?? '').toString().trim();
+      if (!nombreEquipo) {
+        // Solo se reporta si la fila trae algún otro dato — una fila totalmente vacía
+        // (hueco al final de la hoja) no es un error, se ignora en silencio.
+        if (Object.values(r).some(v => (v ?? '').toString().trim())) {
+          errores.push(`fila ${fila}: falta el campo obligatorio EQUIPO`);
+        }
+        return;
+      }
 
-        const sedeVal =
-          co.sedes.find(
-            s =>
-              s.toUpperCase() ===
-              (r.SEDE || '')
-                .toString()
-                .trim()
-                .toUpperCase()
-          ) || co.sedes[0];
+      const empresaTexto = (r.EMPRESA || '').toString().trim();
+      const empresaMatch = COMPANIES.find(c => c.key.toUpperCase() === empresaTexto.toUpperCase());
+      const empresaKey = empresaMatch?.key || (activeCompany === 'TODAS' ? COMPANIES[0].key : activeCompany);
+      if (empresaTexto && !empresaMatch) {
+        errores.push(`fila ${fila}: EMPRESA "${empresaTexto}" no reconocida, se asignó a ${empresaKey}`);
+      }
 
-        return {
-          ...newEquipo(empresaKey),
+      const co = companyOf(empresaKey);
+      const sedeVal =
+        co.sedes.find(s => s.toUpperCase() === (r.SEDE || '').toString().trim().toUpperCase())
+        || co.sedes[0];
 
-          sede: sedeVal,
+      const fechaTexto = (r['FECHA DE ULTIMA CALIBRACION'] ?? '').toString().trim();
+      const fechaUltimaCalibracion = parseExcelDate(r['FECHA DE ULTIMA CALIBRACION']);
+      if (fechaTexto && !fechaUltimaCalibracion) {
+        errores.push(`fila ${fila}: fecha de última calibración inválida, se dejó vacía`);
+      }
 
-          equipo: r.EQUIPO || '',
-          marca: r.MARCA || '',
-          modelo: r.MODELO || '',
+      imported.push({
+        ...newEquipo(empresaKey),
 
-          numeroSerie: r['NUMERO DE SERIE'] || '',
-          registroInvima: r['REGISTRO INVIMA'] || '',
+        sede: sedeVal,
 
-          clasificacionRiesgo:
-            r['CLASIFICACION DE RIESGO'] || 'IIB',
+        equipo: nombreEquipo,
+        marca: r.MARCA || '',
+        modelo: r.MODELO || '',
 
-          inventario: r.INVENTARIO || '',
+        numeroSerie: r['NUMERO DE SERIE'] || '',
+        registroInvima: r['REGISTRO INVIMA'] || '',
 
-          periodicidadMantenimiento:
-            r['PERIODICIDAD DE MANTENIMIENTO'] || 'Anual',
+        clasificacionRiesgo:
+          r['CLASIFICACION DE RIESGO'] || 'IIB',
 
-          periodicidadCalibracion:
-            r['PERIODICIDAD DE CALIBRACION'] || 'Anual',
+        inventario: r.INVENTARIO || '',
 
-          ubicacion: r['UBICACIÃ“N'] || '',
+        periodicidadMantenimiento:
+          r['PERIODICIDAD DE MANTENIMIENTO'] || 'Anual',
 
-          fechaUltimaCalibracion:
-            parseExcelDate(
-              r['FECHA DE ULTIMA CALIBRACION']
-            ),
+        periodicidadCalibracion:
+          r['PERIODICIDAD DE CALIBRACION'] || 'Anual',
 
-          estado: r.ESTADO || 'Operativo',
+        ubicacion: r['UBICACIÓN'] || '',
 
-          certificadoUrl:
-            r['CERTIFICADO DE CALIBRACION'] || '',
+        fechaUltimaCalibracion,
 
-          observaciones:
-            r.OBSERVACIONES || '',
-        };
+        estado: r.ESTADO || 'Operativo',
+
+        certificadoUrl:
+          r['CERTIFICADO DE CALIBRACION'] || '',
+
+        observaciones:
+          r.OBSERVACIONES || '',
       });
+    });
+
+    if (imported.length === 0) {
+      alert(errores.length
+        ? `No se importó ningún equipo:\n\n${errores.join('\n')}`
+        : 'El archivo no tiene filas con el campo EQUIPO lleno.');
+      return;
+    }
 
     setEquipos(prev => [...prev, ...imported]);
 
@@ -3629,7 +3669,10 @@ await writeXlsxFile(data, {
       imported.map(e => e.id)
     );
 
-    crearEquipos(imported).catch(err => {
+    crearEquipos(imported).then(() => {
+      const resumen = `Se importaron ${imported.length} equipo${imported.length !== 1 ? 's' : ''} correctamente.`;
+      alert(errores.length ? `${resumen}\n\nFilas con observaciones:\n${errores.join('\n')}` : resumen);
+    }).catch(err => {
       console.error(
         'No se pudo importar los equipos al servidor compartido',
         err
@@ -3638,6 +3681,7 @@ await writeXlsxFile(data, {
       setEquipos(prev =>
         prev.filter(e => !idsImportados.has(e.id))
       );
+      alert('No se pudo guardar la importación en la base de datos compartida. Verifica tu conexión e intenta de nuevo.');
     });
 
   } catch (err) {
@@ -3728,7 +3772,7 @@ await writeXlsxFile(data, {
             }}
           />
         )}
-        {menu === 'fallas' && !readOnly && <ReportesFallaPage reportes={reportesFalla} equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} readOnly={readOnly} />}
+        {menu === 'fallas' && !readOnly && <ReportesFallaPage reportes={reportesFalla} equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} onVaciarHistorial={vaciarHistorialFallas} readOnly={readOnly} />}
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
@@ -4348,7 +4392,8 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
             {!readOnly && (
               <label className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs border cursor-pointer ${t.border}`}>
                 <Upload size={13} /> Importar Excel
-                <input type="file" accept=".xlsx" className="hidden" onChange={e => e.target.files[0] && onImport(e.target.files[0])} />
+                <input type="file" accept=".xlsx" className="hidden"
+                  onChange={e => { const f = e.target.files[0]; if (f) onImport(f); e.target.value = ''; }} />
               </label>
             )}
           </div>
@@ -4527,7 +4572,27 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
 /* ---------------------------------------------------------------- */
 /* PÁGINA: REPORTES DE FALLA (Ingeniería Biomédica)                   */
 /* ---------------------------------------------------------------- */
-function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpdate, readOnly }) {
+// Confirmación para "Vaciar histórico" — mismo patrón que DeleteDocumentDialog, pero
+// advirtiendo que es TODO el histórico compartido, no un solo registro.
+function VaciarHistorialFallasDialog({ total, onCancel, onConfirm, t }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onCancel} />
+      <div className={`animate-modal-in relative w-full max-w-xs rounded-xl border p-4 ${t.panel} ${t.border}`}>
+        <div className="text-sm font-bold mb-1">¿Vaciar todo el histórico de fallas?</div>
+        <p className={`text-2xs mb-4 ${t.muted}`}>
+          Se eliminarán los {total} reporte{total !== 1 ? 's' : ''} de falla de la base de datos compartida, para todos los usuarios. Esta acción no se puede deshacer.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" t={t} onClick={onCancel}>Cancelar</Button>
+          <Button variant="danger" onClick={onConfirm}>Vaciar histórico</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpdate, onVaciarHistorial, readOnly }) {
   // El reporte solo guarda equipoId + equipoNombre (foto del nombre al momento de crearse) —
   // para mostrar marca/modelo/serie se consulta el inventario ACTUAL por id, sin tocar lo
   // que ya está guardado en el reporte. Si el equipo ya no existe en el inventario (borrado
@@ -4541,6 +4606,7 @@ function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpda
   const [filtroPrioridad, setFiltroPrioridad] = useState('');
   const [filtroMes, setFiltroMes] = useState('');
   const [openId, setOpenId] = useState(null);
+  const [confirmarVaciar, setConfirmarVaciar] = useState(false);
 
   // Respeta el contexto global de empresa (selector superior) y estado/prioridad,
   // ANTES del filtro de mes — así el conteo mensual de abajo siempre refleja los
@@ -4582,8 +4648,17 @@ function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpda
 
   return (
     <div>
-      <h1 className="text-lg font-bold mb-1">Reportes de falla</h1>
-      <p className={`text-xs mb-4 ${t.muted}`}>Solicitudes enviadas por los coordinadores de sede.</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-lg font-bold mb-1">Reportes de falla</h1>
+          <p className={`text-xs mb-4 ${t.muted}`}>Solicitudes enviadas por los coordinadores de sede.</p>
+        </div>
+        {!readOnly && reportes.length > 0 && (
+          <Button variant="danger" icon={Trash2} iconSize={13} onClick={() => setConfirmarVaciar(true)}>
+            Vaciar histórico
+          </Button>
+        )}
+      </div>
 
       <div className="max-w-xs mb-3">
         <HeroStat t={t} label={filtroMes !== '' ? `Fallas en ${MONTHS[+filtroMes].full}` : 'Fallas reportadas (total)'} color={accent}
@@ -4657,6 +4732,12 @@ function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpda
           </div>
         ))}
       </div>
+
+      {confirmarVaciar && (
+        <VaciarHistorialFallasDialog t={t} total={reportes.length}
+          onCancel={() => setConfirmarVaciar(false)}
+          onConfirm={() => { onVaciarHistorial(); setConfirmarVaciar(false); }} />
+      )}
     </div>
   );
 }
