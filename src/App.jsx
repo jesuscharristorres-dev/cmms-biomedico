@@ -197,9 +197,9 @@ const MENU = [
   { key: 'limpieza', label: 'Formatos de limpieza y desinfección', icon: SprayCan },
   { key: 'empresas', label: 'Empresas', icon: Building2 },
   { key: 'inventario', label: 'Inventario', icon: ListTree },
-  { key: 'mantenimientos', label: 'Mantenimientos', icon: CalendarClock, guestHidden: true },
+  { key: 'mantenimientos', label: 'Mantenimiento preventivo', icon: CalendarClock, guestHidden: true },
+  { key: 'correctivos', label: 'Mantenimiento correctivo', icon: Wrench, guestHidden: true },
   { key: 'calibraciones', label: 'Calibraciones', icon: ShieldCheck, guestHidden: true },
-  { key: 'correctivos', label: 'Correctivos', icon: Wrench, guestHidden: true },
   { key: 'reportes', label: 'Reportes', icon: FileBarChart, guestHidden: true },
   { key: 'configuracion', label: 'Configuración', icon: Settings, guestHidden: true },
 ];
@@ -2797,6 +2797,13 @@ function AmbientBackground({ theme, dark }) {
   const c2 = isNeutral ? '#94A3B8' : theme.light; // "gris claro" neutro, o variante clara de marca
   const c3 = isNeutral ? '#CBD5E1' : theme.dark;  // variante suave adicional, o variante oscura de marca
   const op = dark ? 0.24 : 0.14; // intensidad baja — la legibilidad manda
+  // Marca de agua institucional — el mismo logo del login, grande y muy sutil, centrada en
+  // el área de contenido. Vive aquí (y no en un componente nuevo) porque esta ya es la capa
+  // decorativa que corre detrás de todo el contenido de MainApp: un único <img>, sin
+  // repetirse, sin bloquear clics (pointer-events-none heredado del contenedor) y recortada
+  // por overflow-hidden si la ventana es más chica que el logo. Un poco más opaca en modo
+  // oscuro para que siga siendo perceptible sobre el fondo sólido oscuro.
+  const logoOpacity = dark ? 0.08 : 0.06;
 
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
@@ -2806,6 +2813,10 @@ function AmbientBackground({ theme, dark }) {
         style={{ width: '30rem', height: '30rem', bottom: '-12rem', left: '-8rem', backgroundColor: c2, opacity: op, filter: 'blur(100px)' }} />
       <div className="absolute rounded-full transition-colors duration-500 ease-out"
         style={{ width: '26rem', height: '26rem', top: '30%', left: '42%', backgroundColor: c3, opacity: op * 0.65, filter: 'blur(110px)' }} />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <img src={logoIngenieriaClinica} alt=""
+          style={{ width: 'min(65vw, 34rem)', height: 'min(65vw, 34rem)', objectFit: 'contain', opacity: logoOpacity, transition: 'opacity 500ms ease-out' }} />
+      </div>
     </div>
   );
 }
