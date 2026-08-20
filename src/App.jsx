@@ -109,6 +109,17 @@ function uiTheme(dark) {
     ? { bg: 'bg-slate-950', panel: 'bg-slate-900', panel3: 'bg-slate-800/60', border: 'border-slate-700/60', text: 'text-slate-100', muted: 'text-slate-400', input: 'bg-slate-950 border-slate-700 text-slate-100' }
     : { bg: 'bg-slate-50', panel: 'bg-white', panel3: 'bg-slate-100', border: 'border-slate-200', text: 'text-slate-900', muted: 'text-slate-500', input: 'bg-white border-slate-300 text-slate-900' };
 }
+// Fondo de la barra lateral en modo claro — antes usaba el mismo `t.panel` (bg-white) que
+// cualquier otro panel de la app; ahora es un degradado propio (verde menta → azul muy
+// claro) para darle una identidad visual distinta, más "tecnológica", sin tocar `uiTheme`
+// (que sigue rigiendo el resto de tarjetas/paneles). Modo oscuro no se toca — sigue con
+// `t.panel` (bg-slate-900) tal como estaba, porque el pedido era específicamente sobre el
+// fondo blanco/pálido del modo claro.
+const SIDEBAR_GRADIENT_LIGHT = 'linear-gradient(180deg, #D9F7EF 0%, #E4F3FA 100%)';
+// Ítem activo del menú (solo modo claro): el mismo degradado en un tono más intenso, para
+// diferenciarse del resto sin recurrir a un color saturado ni al acento de la empresa activa.
+const SIDEBAR_ACTIVE_GRADIENT_LIGHT = 'linear-gradient(135deg, #BFEEDF 0%, #CDE8F6 100%)';
+const SIDEBAR_ACTIVE_ACCENT_LIGHT = '#1F9C82';
 
 const MONTHS = [
   { k: 'ene', l: 'Ene', full: 'Enero', idx: 0 }, { k: 'feb', l: 'Feb', full: 'Febrero', idx: 1 }, { k: 'mar', l: 'Mar', full: 'Marzo', idx: 2 },
@@ -2852,7 +2863,11 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
           return (
             <button key={m.key} onClick={() => onNavigate(m.key)}
               className={`w-full flex items-center gap-2.5 px-4 min-h-11 text-xs text-left transition ${active ? 'font-semibold' : t.muted}`}
-              style={active ? { background: accent + '1A', color: accent, borderRight: `2px solid ${accent}` } : {}}>
+              style={active
+                ? (dark
+                    ? { background: accent + '1A', color: accent, borderRight: `2px solid ${accent}` }
+                    : { background: SIDEBAR_ACTIVE_GRADIENT_LIGHT, color: SIDEBAR_ACTIVE_ACCENT_LIGHT, borderRight: `2px solid ${SIDEBAR_ACTIVE_ACCENT_LIGHT}` })
+                : {}}>
               <Icon size={15} /> {m.label}
               {m.key === 'fallas' && nuevosReportes > 0 && (
                 <span className="ml-auto rounded-full text-3xs font-mono px-1.5 py-0.5" style={{ background: '#EF4444', color: '#fff' }}>{nuevosReportes}</span>
@@ -3262,14 +3277,18 @@ await writeXlsxFile(data, {
       )}
 
       {/* SIDEBAR — escritorio: columna fija en el flujo normal, oculta en <lg */}
-      <div className={`hidden lg:flex lg:w-56 lg:shrink-0 border-r flex-col ${t.panel} ${t.border}`}>
+      <div className={`hidden lg:flex lg:w-56 lg:shrink-0 border-r flex-col ${t.panel} ${t.border}`}
+        style={!dark ? { background: SIDEBAR_GRADIENT_LIGHT } : undefined}>
         <SidebarNav menu={menu} onNavigate={setMenu} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
           t={t} dark={dark} setDark={setDark} onLogout={onLogout} readOnly={readOnly} />
       </div>
 
       {/* SIDEBAR — móvil: drawer superpuesto, invisible por completo en lg+ */}
       <div className={`lg:hidden fixed inset-y-0 left-0 z-50 w-64 border-r flex flex-col ${t.panel} ${t.border}`}
-        style={{ transform: mobileNavOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 300ms cubic-bezier(0.23,1,0.32,1)' }}>
+        style={{
+          transform: mobileNavOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 300ms cubic-bezier(0.23,1,0.32,1)',
+          ...(!dark ? { background: SIDEBAR_GRADIENT_LIGHT } : {}),
+        }}>
         <SidebarNav menu={menu} onNavigate={(k) => { setMenu(k); setMobileNavOpen(false); }} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
           t={t} dark={dark} setDark={setDark} onLogout={onLogout} readOnly={readOnly} onCloseMobile={() => setMobileNavOpen(false)} />
       </div>
