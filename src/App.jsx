@@ -2797,13 +2797,15 @@ function AmbientBackground({ theme, dark }) {
   const c2 = isNeutral ? '#94A3B8' : theme.light; // "gris claro" neutro, o variante clara de marca
   const c3 = isNeutral ? '#CBD5E1' : theme.dark;  // variante suave adicional, o variante oscura de marca
   const op = dark ? 0.24 : 0.14; // intensidad baja — la legibilidad manda
-  // Marca de agua institucional — el mismo logo del login, grande y muy sutil, centrada en
-  // el área de contenido. Vive aquí (y no en un componente nuevo) porque esta ya es la capa
-  // decorativa que corre detrás de todo el contenido de MainApp: un único <img>, sin
-  // repetirse, sin bloquear clics (pointer-events-none heredado del contenedor) y recortada
-  // por overflow-hidden si la ventana es más chica que el logo. Un poco más opaca en modo
-  // oscuro para que siga siendo perceptible sobre el fondo sólido oscuro.
-  const logoOpacity = dark ? 0.08 : 0.06;
+  // Marca de agua institucional — el mismo logo del login, grande y centrada en el área de
+  // contenido. Vive aquí (y no en un componente nuevo) porque esta ya es la capa decorativa
+  // que corre detrás de todo el contenido de MainApp: un único <img>, sin repetirse, sin
+  // bloquear clics (pointer-events-none heredado del contenedor) y recortada por
+  // overflow-hidden si la ventana es más chica que el logo. Opacidad deliberadamente alta
+  // dentro de "sutil" (18–22%, no el 6–8% inicial) para que se identifique con claridad sin
+  // competir con el contenido; un poco más en modo oscuro para que siga siendo perceptible
+  // sobre el fondo sólido oscuro.
+  const logoOpacity = dark ? 0.22 : 0.18;
 
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
