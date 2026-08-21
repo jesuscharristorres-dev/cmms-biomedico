@@ -3469,7 +3469,7 @@ function MainApp({ onLogout, readOnly }) {
   const uniqueOptions = useMemo(() => {
     const scoped = activeCompany === 'TODAS' ? equipos : equipos.filter(e => e.empresa === activeCompany);
     const out = {};
-    ['sede', 'ubicacion', 'marca'].forEach(field => {
+    ['equipo', 'sede', 'ubicacion', 'marca'].forEach(field => {
       out[field] = [...new Set(scoped.map(e => e[field]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
     });
     return out;
@@ -4404,7 +4404,10 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
       <div className="flex flex-wrap gap-2 mb-4">
         <div className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 border ${t.border} ${t.panel}`}>
           <Search size={13} className={t.muted} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar equipo, marca, serie…" className={`bg-transparent text-xs w-40 ${t.text}`} />
+          <select value={search} onChange={e => setSearch(e.target.value)} className={`bg-transparent text-xs w-40 outline-none ${t.text}`}>
+            <option value="">Todos los equipos</option>
+            {uniqueVals('equipo').map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
         </div>
         <select value={filters.sede} onChange={e => setFilters({ ...filters, sede: e.target.value })} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
           <option value="">Todas las sedes</option>
