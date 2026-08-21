@@ -1902,27 +1902,27 @@ function Badge({ color, mono = true, children }) {
   );
 }
 
-function Field({ label, children }) {
+function Field({ label, children, dense }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className={`flex flex-col ${dense ? 'gap-0.5' : 'gap-1'}`}>
       <label className="text-3xs uppercase tracking-wide text-slate-400">{label}</label>
       {children}
     </div>
   );
 }
 
-function TextInput({ value, onChange, t, type = 'text', placeholder, disabled }) {
+function TextInput({ value, onChange, t, type = 'text', placeholder, disabled, dense }) {
   return (
     <input
       type={type} value={value || ''} placeholder={placeholder} disabled={disabled}
       onChange={e => onChange(e.target.value)}
-      className={`w-full rounded-md px-2.5 py-1.5 text-xs border ${t.input} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+      className={`w-full rounded-md border ${dense ? 'px-2 py-1 text-2xs' : 'px-2.5 py-1.5 text-xs'} ${t.input} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
     />
   );
 }
-function SelectInput({ value, onChange, options, t, disabled }) {
+function SelectInput({ value, onChange, options, t, disabled, dense }) {
   return (
-    <select value={value || ''} onChange={e => onChange(e.target.value)} disabled={disabled} className={`rounded-md px-2.5 py-1.5 text-xs border ${t.input} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
+    <select value={value || ''} onChange={e => onChange(e.target.value)} disabled={disabled} className={`rounded-md border ${dense ? 'px-2 py-1 text-2xs' : 'px-2.5 py-1.5 text-xs'} ${t.input} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
       {options.map(o => <option key={o} value={o}>{o}</option>)}
     </select>
   );
@@ -2489,46 +2489,47 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
 
         <div className="p-5">
           {tab === 'Información General' && (
-            <div className="relative pr-52">
+            <div className="relative pr-40 sm:pr-72">
               {/* Fotografía — flotante en la esquina superior derecha, fuera del flujo de la grilla
-                  para que los campos de la izquierda no dependan de su altura. */}
-              <div className="absolute top-0 right-0 w-48">
-                <div className={`w-48 h-48 rounded-lg border overflow-hidden flex items-center justify-center ${t.panel3} ${t.border}`}>
+                  para que los campos de la izquierda no dependan de su altura. Más pequeña en
+                  pantallas angostas (drawer a ancho completo) para no aplastar la grilla. */}
+              <div className="absolute top-0 right-0 w-36 sm:w-64">
+                <div className={`w-36 h-36 sm:w-64 sm:h-64 rounded-lg border overflow-hidden flex items-center justify-center ${t.panel3} ${t.border}`}>
                   {equipo.fotografiaUrl
                     ? <img src={equipo.fotografiaUrl} alt="Equipo" className="w-full h-full object-contain" />
                     : (
                       <div className={`flex flex-col items-center gap-1 text-center px-2 ${t.muted}`}>
-                        <ImageIcon size={28} />
+                        <ImageIcon size={36} />
                         <span className="text-3xs leading-tight">Sin fotografía</span>
                       </div>
                     )}
                 </div>
                 {!readOnly && (
                   <input value={equipo.fotografiaUrl || ''} placeholder="URL de la foto" onChange={e => patch('fotografiaUrl', e.target.value)}
-                    className={`mt-1.5 w-48 rounded-md px-1.5 py-1 text-3xs border ${t.input}`} />
+                    className={`mt-1.5 w-36 sm:w-64 rounded-md px-1.5 py-1 text-3xs border ${t.input}`} />
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Empresa"><SelectInput t={t} disabled={readOnly} value={equipo.empresa} options={COMPANIES.map(c => c.key)} onChange={v => onUpdate({ ...equipo, empresa: v, sede: companyOf(v).sedes[0] })} /></Field>
-                <Field label="Sede"><SelectInput t={t} disabled={readOnly} value={equipo.sede} options={companyOf(equipo.empresa).sedes} onChange={v => patch('sede', v)} /></Field>
-                <Field label="Equipo"><TextInput t={t} disabled={readOnly} value={equipo.equipo} onChange={v => patch('equipo', v)} /></Field>
-                <Field label="Marca"><TextInput t={t} disabled={readOnly} value={equipo.marca} onChange={v => patch('marca', v)} /></Field>
-                <Field label="Modelo"><TextInput t={t} disabled={readOnly} value={equipo.modelo} onChange={v => patch('modelo', v)} /></Field>
-                <Field label="Serie"><TextInput t={t} disabled={readOnly} value={equipo.numeroSerie} onChange={v => patch('numeroSerie', v)} /></Field>
-                <Field label="Registro INVIMA"><TextInput t={t} disabled={readOnly} value={equipo.registroInvima} onChange={v => patch('registroInvima', v)} /></Field>
-                <Field label="Clasificación de riesgo"><SelectInput t={t} disabled={readOnly} value={equipo.clasificacionRiesgo} options={CLASIFICACIONES} onChange={v => patch('clasificacionRiesgo', v)} /></Field>
-                <Field label="Inventario"><TextInput t={t} disabled={readOnly} value={equipo.inventario} onChange={v => patch('inventario', v)} /></Field>
-                <Field label="Estado"><TextInput t={t} value={equipo.estado} disabled onChange={() => {}} /></Field>
-                <Field label="Fecha de instalación"><TextInput t={t} disabled={readOnly} type="date" value={equipo.fechaInstalacion} onChange={v => patch('fechaInstalacion', v)} /></Field>
-                <Field label="Ubicación"><TextInput t={t} disabled={readOnly} value={equipo.ubicacion} onChange={v => patch('ubicacion', v)} /></Field>
-                <Field label="Periodicidad de mantenimiento"><SelectInput t={t} disabled={readOnly} value={equipo.periodicidadMantenimiento} options={PERIODICIDADES} onChange={v => patch('periodicidadMantenimiento', v)} /></Field>
-                <Field label="Periodicidad de calibración"><TextInput t={t} value="Anual" disabled onChange={() => {}} /></Field>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+                <Field dense label="Empresa"><SelectInput dense t={t} disabled={readOnly} value={equipo.empresa} options={COMPANIES.map(c => c.key)} onChange={v => onUpdate({ ...equipo, empresa: v, sede: companyOf(v).sedes[0] })} /></Field>
+                <Field dense label="Sede"><SelectInput dense t={t} disabled={readOnly} value={equipo.sede} options={companyOf(equipo.empresa).sedes} onChange={v => patch('sede', v)} /></Field>
+                <Field dense label="Equipo"><TextInput dense t={t} disabled={readOnly} value={equipo.equipo} onChange={v => patch('equipo', v)} /></Field>
+                <Field dense label="Marca"><TextInput dense t={t} disabled={readOnly} value={equipo.marca} onChange={v => patch('marca', v)} /></Field>
+                <Field dense label="Modelo"><TextInput dense t={t} disabled={readOnly} value={equipo.modelo} onChange={v => patch('modelo', v)} /></Field>
+                <Field dense label="Serie"><TextInput dense t={t} disabled={readOnly} value={equipo.numeroSerie} onChange={v => patch('numeroSerie', v)} /></Field>
+                <Field dense label="Registro INVIMA"><TextInput dense t={t} disabled={readOnly} value={equipo.registroInvima} onChange={v => patch('registroInvima', v)} /></Field>
+                <Field dense label="Clasificación de riesgo"><SelectInput dense t={t} disabled={readOnly} value={equipo.clasificacionRiesgo} options={CLASIFICACIONES} onChange={v => patch('clasificacionRiesgo', v)} /></Field>
+                <Field dense label="Inventario"><TextInput dense t={t} disabled={readOnly} value={equipo.inventario} onChange={v => patch('inventario', v)} /></Field>
+                <Field dense label="Estado"><TextInput dense t={t} value={equipo.estado} disabled onChange={() => {}} /></Field>
+                <Field dense label="Fecha de instalación"><TextInput dense t={t} disabled={readOnly} type="date" value={equipo.fechaInstalacion} onChange={v => patch('fechaInstalacion', v)} /></Field>
+                <Field dense label="Ubicación"><TextInput dense t={t} disabled={readOnly} value={equipo.ubicacion} onChange={v => patch('ubicacion', v)} /></Field>
+                <Field dense label="Periodicidad de mantenimiento"><SelectInput dense t={t} disabled={readOnly} value={equipo.periodicidadMantenimiento} options={PERIODICIDADES} onChange={v => patch('periodicidadMantenimiento', v)} /></Field>
+                <Field dense label="Periodicidad de calibración"><TextInput dense t={t} value="Anual" disabled onChange={() => {}} /></Field>
 
                 <div>
-                  <Field label="Hoja de vida (URL)">
+                  <Field dense label="Hoja de vida (URL)">
                     <div className="flex gap-2">
-                      <div className="flex-1 min-w-0"><TextInput t={t} disabled={readOnly} value={equipo.hojaVidaUrl} placeholder="https://drive.google.com/..." onChange={v => patch('hojaVidaUrl', v)} /></div>
+                      <div className="flex-1 min-w-0"><TextInput dense t={t} disabled={readOnly} value={equipo.hojaVidaUrl} placeholder="https://drive.google.com/..." onChange={v => patch('hojaVidaUrl', v)} /></div>
                       <PdfLink url={equipo.hojaVidaUrl} title="Ver hoja de vida" t={t} />
                     </div>
                   </Field>
