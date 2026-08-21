@@ -66,10 +66,20 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'DELETE') {
-      // Vacía TODO el histórico compartido — pensado para limpiar datos de prueba, no para
-      // uso rutinario. Solo admin, igual que PATCH; a diferencia de POST/PATCH (por id), aquí
-      // se reemplaza el arreglo completo porque el propósito es borrarlo entero.
+      // Solo admin, igual que PATCH. Con ?id=... borra UN reporte puntual (uso rutinario,
+      // p. ej. una falla duplicada o registrada por error); sin id, vacía TODO el histórico
+      // compartido (pensado para limpiar datos de prueba) reemplazando el arreglo completo.
       if (!(await requireAdmin(req, res))) return;
+      const { id } = req.query || {};
+      if (id) {
+        const reportes = (await kv.get(KV_KEY)) || [];
+        const actualizados = reportes.filter(r => r.id !== id);
+        if (actualizados.length === reportes.length) {
+          return res.status(404).json({ error: 'No existe un reporte con ese id.' });
+        }
+        await kv.set(KV_KEY, actualizados);
+        return res.status(200).json({ reportes: actualizados });
+      }
       await kv.set(KV_KEY, []);
       return res.status(200).json({ reportes: [] });
     }

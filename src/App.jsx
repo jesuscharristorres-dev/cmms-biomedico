@@ -1595,6 +1595,15 @@ async function actualizarReporteFalla(id, patch) {
   cacheSet(REPORTES_KEY, reportes);
   return reportes;
 }
+// Elimina UN reporte de falla por id (p. ej. uno duplicado o registrado por error) — a
+// diferencia de vaciarReportesFalla(), no toca el resto del histórico.
+async function eliminarReporteFalla(id) {
+  const res = await fetch(`/api/reportes-falla?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('No se pudo eliminar el reporte de falla.');
+  const { reportes } = await res.json();
+  cacheSet(REPORTES_KEY, reportes);
+  return reportes;
+}
 // Vacía TODO el histórico de reportes de falla en el servidor — pensado para limpiar datos
 // de prueba, no para uso rutinario. Mismo principio de caché que crear/actualizar.
 async function vaciarReportesFalla() {
@@ -3341,6 +3350,16 @@ function MainApp({ onLogout, readOnly }) {
     });
   };
   const nuevosReportes = reportesFalla.filter(r => !r.visto && (activeCompany === 'TODAS' || r.empresa === activeCompany)).length;
+  // Elimina UN reporte de falla puntual (elegido por el usuario) — mismo revert-on-fail que
+  // updateReporte/vaciarHistorialFallas: si el servidor rechaza el borrado, se restaura.
+  const eliminarReporte = (id) => {
+    const previous = reportesFalla;
+    setReportesFalla(prev => prev.filter(r => r.id !== id));
+    eliminarReporteFalla(id).catch(err => {
+      console.error('No se pudo eliminar el reporte de falla en el servidor compartido', err);
+      setReportesFalla(previous);
+    });
+  };
   // Vacía el histórico completo (pensado para limpiar datos de prueba) — misma revert-on-fail
   // que updateReporte: si el servidor rechaza el borrado, se restaura lo que había localmente.
   const vaciarHistorialFallas = () => {
@@ -3774,7 +3793,7 @@ await writeXlsxFile(data, {
             }}
           />
         )}
-        {menu === 'fallas' && !readOnly && <ReportesFallaPage reportes={reportesFalla} equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} onVaciarHistorial={vaciarHistorialFallas} readOnly={readOnly} />}
+        {menu === 'fallas' && !readOnly && <ReportesFallaPage reportes={reportesFalla} equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} onEliminarReporte={eliminarReporte} onVaciarHistorial={vaciarHistorialFallas} readOnly={readOnly} />}
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
@@ -4597,7 +4616,25 @@ function VaciarHistorialFallasDialog({ total, onCancel, onConfirm, t }) {
   );
 }
 
-function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpdate, onVaciarHistorial, readOnly }) {
+function EliminarFallaDialog({ equipoLabel, fecha, onCancel, onConfirm, t }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onCancel} />
+      <div className={`animate-modal-in relative w-full max-w-xs rounded-xl border p-4 ${t.panel} ${t.border}`}>
+        <div className="text-sm font-bold mb-1">¿Eliminar este reporte?</div>
+        <p className={`text-2xs mb-4 ${t.muted}`}>
+          El reporte de falla de <strong>{equipoLabel}</strong> ({fecha}) se eliminará de la base de datos compartida, para todos los usuarios. Esta acción no se puede deshacer.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" t={t} onClick={onCancel}>Cancelar</Button>
+          <Button variant="danger" onClick={onConfirm}>Eliminar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpdate, onEliminarReporte, onVaciarHistorial, readOnly }) {
   // El reporte solo guarda equipoId + equipoNombre (foto del nombre al momento de crearse) —
   // para mostrar marca/modelo/serie se consulta el inventario ACTUAL por id, sin tocar lo
   // que ya está guardado en el reporte. Si el equipo ya no existe en el inventario (borrado
@@ -4612,6 +4649,7 @@ function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpda
   const [filtroMes, setFiltroMes] = useState('');
   const [openId, setOpenId] = useState(null);
   const [confirmarVaciar, setConfirmarVaciar] = useState(false);
+  const [porEliminar, setPorEliminar] = useState(null); // reporte individual a confirmar
 
   // Respeta el contexto global de empresa (selector superior) y estado/prioridad,
   // ANTES del filtro de mes — así el conteo mensual de abajo siempre refleja los
@@ -4732,11 +4770,23 @@ function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpda
               </div>
               <Badge color={REPORTE_ESTADO_HEX[r.estado]}>{r.estado}</Badge>
               <span className="text-2xs font-mono">{r.fecha}</span>
+              {!readOnly && (
+                <button onClick={(e) => { e.stopPropagation(); setPorEliminar(r); }} aria-label="Eliminar este reporte"
+                  title="Eliminar este reporte" className="text-red-400 hover:text-red-300 p-1 shrink-0">
+                  <Trash2 size={14} />
+                </button>
+              )}
             </div>
             {openId === r.id && <ReporteFallaDetalle r={r} onUpdate={onUpdate} readOnly={readOnly} t={t} accent={accent} />}
           </div>
         ))}
       </div>
+
+      {porEliminar && (
+        <EliminarFallaDialog t={t} equipoLabel={equipoLabel(porEliminar)} fecha={porEliminar.fecha}
+          onCancel={() => setPorEliminar(null)}
+          onConfirm={() => { onEliminarReporte(porEliminar.id); setPorEliminar(null); }} />
+      )}
 
       {confirmarVaciar && (
         <VaciarHistorialFallasDialog t={t} total={reportes.length}
