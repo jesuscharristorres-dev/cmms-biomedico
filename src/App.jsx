@@ -2639,7 +2639,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
               fields={[
                 { key: 'fecha', label: 'Fecha', type: 'date' },
                 { key: 'proveedor', label: 'Proveedor' },
-                { key: 'acta', label: 'Acta' },
+                { key: 'acta', label: 'Acta (URL)', type: 'url' },
                 { key: 'garantia', label: 'Garantía' },
                 { key: 'observaciones', label: 'Observaciones' },
               ]}
