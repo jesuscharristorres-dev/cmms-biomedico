@@ -2489,23 +2489,23 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
 
         <div className="p-5">
           {tab === 'Información General' && (
-            <div className="relative pr-36">
+            <div className="relative pr-52">
               {/* Fotografía — flotante en la esquina superior derecha, fuera del flujo de la grilla
                   para que los campos de la izquierda no dependan de su altura. */}
-              <div className="absolute top-0 right-0 w-32">
-                <div className={`w-32 h-32 rounded-lg border overflow-hidden flex items-center justify-center ${t.panel3} ${t.border}`}>
+              <div className="absolute top-0 right-0 w-48">
+                <div className={`w-48 h-48 rounded-lg border overflow-hidden flex items-center justify-center ${t.panel3} ${t.border}`}>
                   {equipo.fotografiaUrl
                     ? <img src={equipo.fotografiaUrl} alt="Equipo" className="w-full h-full object-contain" />
                     : (
                       <div className={`flex flex-col items-center gap-1 text-center px-2 ${t.muted}`}>
-                        <ImageIcon size={20} />
+                        <ImageIcon size={28} />
                         <span className="text-3xs leading-tight">Sin fotografía</span>
                       </div>
                     )}
                 </div>
                 {!readOnly && (
                   <input value={equipo.fotografiaUrl || ''} placeholder="URL de la foto" onChange={e => patch('fotografiaUrl', e.target.value)}
-                    className={`mt-1.5 w-32 rounded-md px-1.5 py-1 text-3xs border ${t.input}`} />
+                    className={`mt-1.5 w-48 rounded-md px-1.5 py-1 text-3xs border ${t.input}`} />
                 )}
               </div>
 
