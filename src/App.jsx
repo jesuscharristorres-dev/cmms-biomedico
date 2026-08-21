@@ -2054,6 +2054,7 @@ const DOCUMENTO_TIPOS = [
   { key: 'INVIMA', icon: ShieldCheck, color: '#8B5CF6' },
   { key: 'Guía de uso rápido', icon: Zap, color: '#22C55E' },
   { key: 'Ficha técnica', icon: FileText, color: '#0EA5E9' },
+  { key: 'Otros', icon: Paperclip, color: '#64748B' },
 ];
 const DOCUMENTO_TIPO_POR_DEFECTO = { icon: Paperclip, color: '#64748B' };
 function documentoTipoInfo(tipo) {
