@@ -2466,7 +2466,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className={`animate-drawer-in relative w-full sm:w-[640px] h-full overflow-y-auto ${t.panel} border-l ${t.border}`}>
+      <div className={`animate-drawer-in relative w-full sm:w-1/2 sm:min-w-[640px] max-w-full h-full overflow-y-auto ${t.panel} border-l ${t.border}`}>
         <div className="sticky top-0 z-10 px-5 py-4 border-b flex items-center justify-between" style={{ background: accentBg, borderColor: accent }}>
           <div>
             <div className="text-white/70 text-3xs uppercase tracking-wide flex items-center gap-1.5">
