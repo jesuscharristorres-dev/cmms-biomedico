@@ -152,6 +152,19 @@ function formatMesAnio(fechaStr) {
   const d = new Date(iso + 'T00:00:00');
   return isNaN(d.getTime()) ? fechaStr : `${MONTHS[d.getMonth()].full} ${d.getFullYear()}`;
 }
+// ÚNICA función de la app para mostrarle una fecha al usuario (ej. "24/08/2026") — todo
+// componente que necesite pintar una fecha en pantalla, tabla, PDF o exportación debe
+// pasar por aquí, en vez de interpolar `equipo.fecha` (AAAA-MM-DD) directamente. Acepta
+// tanto un string ISO ("AAAA-MM-DD" o con hora) como un objeto Date ya construido (p. ej.
+// `calibStatus(...).next`). Ancla los strings de solo fecha a medianoche LOCAL — sin esto,
+// `new Date('2026-08-24')` se interpreta como medianoche UTC, que en Colombia (UTC-5) cae
+// la tarde/noche del día 23, mostrando la fecha equivocada.
+function formatFechaCorta(fecha) {
+  if (!fecha) return '';
+  const d = fecha instanceof Date ? fecha : new Date(fecha.length === 10 ? `${fecha}T00:00:00` : fecha);
+  if (isNaN(d.getTime())) return '';
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
 // Fecha y hora legibles (ej. "10/08/2026 15:45") a partir de un timestamp ISO completo.
 function formatFechaHora(iso) {
   if (!iso) return '';
@@ -227,7 +240,15 @@ const STATUS_LABEL = { realizado: 'Realizado', programado: 'Programado', vencido
 const CAL_HEX = { vigente: SEMANTIC_HEX.ok, proximo: SEMANTIC_HEX.warn, vencido: SEMANTIC_HEX.danger, sin_dato: SEMANTIC_HEX.neutral };
 
 const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// Fecha de HOY en formato AAAA-MM-DD, usando el reloj LOCAL del navegador. A propósito
+// no usa `new Date().toISOString()` (que da la fecha en UTC): Colombia es UTC-5, así que
+// entre las 7:00 p. m. y la medianoche locales, el UTC ya cayó en el día siguiente — con
+// toISOString(), cualquier registro nuevo (preventivo, correctivo, reporte de falla, etc.)
+// creado en esa ventana horaria se guardaba fechado un día por delante.
+const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 function newEquipo(empresaKey) {
   const c = companyOf(empresaKey) || COMPANIES[0];
@@ -431,7 +452,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
       <table class="info">
         <tr><td class="label">EQUIPO</td><td>${esc(equipo.equipo)}</td><td class="label">MARCA</td><td>${esc(equipo.marca)}</td><td class="label">N° ACTIVO</td><td>${esc(equipo.inventario)}</td></tr>
         <tr><td class="label">SERIE</td><td>${esc(equipo.numeroSerie)}</td><td class="label">MODELO</td><td>${esc(equipo.modelo)}</td><td class="label">UBICACIÓN</td><td>${esc(equipo.ubicacion)}</td></tr>
-        <tr><td class="label">FECHA DE MANTENIMIENTO</td><td>${esc(rep.fecha)}</td><td class="label">FECHA PRÓX. MANTENIMIENTO</td><td colspan="3">${esc(fechaProximoTxt)}</td></tr>
+        <tr><td class="label">FECHA DE MANTENIMIENTO</td><td>${esc(formatFechaCorta(rep.fecha))}</td><td class="label">FECHA PRÓX. MANTENIMIENTO</td><td colspan="3">${esc(fechaProximoTxt)}</td></tr>
       </table>
       <div class="tipos">
         <span>${box(tipoKey === 'Preventivo')} PREVENTIVO</span>
@@ -934,18 +955,18 @@ function generarF140PDF(empresaKey, datos, form) {
     </div>`;
 
   const cronogramaRows = datos.cronograma.length
-    ? datos.cronograma.map(f => `<tr><td>${f.id}</td><td>${esc(f.actividad)}</td><td>${esc(f.fechaPlaneada)}</td><td>${esc(f.fechaEjecutada)}</td><td>${esc(f.resultado)}</td></tr>`).join('')
+    ? datos.cronograma.map(f => `<tr><td>${f.id}</td><td>${esc(f.actividad)}</td><td>${esc(formatFechaCorta(f.fechaPlaneada))}</td><td>${esc(formatFechaCorta(f.fechaEjecutada))}</td><td>${esc(f.resultado)}</td></tr>`).join('')
     : `<tr><td colspan="5" class="sin-datos">Sin actividades registradas durante el periodo.</td></tr>`;
 
   const accionesRows = form.acciones.length
     ? form.acciones.map(a => `<tr>
         <td>${esc(a.indicador)}</td><td>${esc(a.accion)}${a.origen === 'sugerencia' ? ' <em>(sugerencia generada por el sistema)</em>' : ''}</td>
-        <td>${esc(a.meta)}</td><td>${esc(a.fechaMax)}</td><td>${esc(a.responsable)}</td>
+        <td>${esc(a.meta)}</td><td>${esc(formatFechaCorta(a.fechaMax))}</td><td>${esc(a.responsable)}</td>
       </tr>`).join('')
     : `<tr><td colspan="5" class="sin-datos">Indicadores en zona aceptable y estable — no se registran acciones de mejora para este periodo.</td></tr>`;
 
   const planeacionRows = datos.planeacion.length
-    ? datos.planeacion.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.actividad)}</td><td>${esc(p.fecha)}</td><td>${esc(p.responsable)}</td></tr>`).join('')
+    ? datos.planeacion.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.actividad)}</td><td>${esc(formatFechaCorta(p.fecha))}</td><td>${esc(p.responsable)}</td></tr>`).join('')
     : `<tr><td colspan="4" class="sin-datos">Sin actividades programadas para el siguiente mes registradas en el sistema.</td></tr>`;
 
   const nextMesLabel = `${MONTHS[datos.nextMonth].full} de ${datos.nextYear}`;
@@ -1060,7 +1081,7 @@ function generarF140PDF(empresaKey, datos, form) {
           <div class="firma-slot"></div>
           <div>RESPONSABLE: ${esc(form.recibioNombre)}</div>
           <div>CARGO: ${esc(form.recibioCargo)}</div>
-          <div>FECHA DE RECEPCIÓN DEL INFORME: ${esc(form.fechaEntrega)}</div>
+          <div>FECHA DE RECEPCIÓN DEL INFORME: ${esc(formatFechaCorta(form.fechaEntrega))}</div>
         </div>
       </div>
 
@@ -1193,8 +1214,8 @@ function InformeF140Modal({ empresaKey, monthIdx, year, equipos, reportesFalla, 
                   {datos.cronograma.map(f => (
                     <tr key={f.id} className={`border-t ${t.border}`}>
                       <td className="px-2 py-1.5">{f.actividad}</td>
-                      <td className="px-2 py-1.5 font-mono">{f.fechaPlaneada || '—'}</td>
-                      <td className="px-2 py-1.5 font-mono">{f.fechaEjecutada || '—'}</td>
+                      <td className="px-2 py-1.5 font-mono">{formatFechaCorta(f.fechaPlaneada) || '—'}</td>
+                      <td className="px-2 py-1.5 font-mono">{formatFechaCorta(f.fechaEjecutada) || '—'}</td>
                       <td className="px-2 py-1.5">{f.resultado}</td>
                     </tr>
                   ))}
@@ -1238,7 +1259,7 @@ function InformeF140Modal({ empresaKey, monthIdx, year, equipos, reportesFalla, 
                     className={`w-full rounded-md px-2 py-1.5 text-2xs border mb-1.5 ${t.input}`} />
                   <div className="grid grid-cols-3 gap-1.5">
                     <input value={a.meta} onChange={e => actualizarAccion(a.id, 'meta', e.target.value)} placeholder="Meta" className={`rounded-md px-2 py-1 text-2xs border ${t.input}`} />
-                    <input type="date" value={a.fechaMax} onChange={e => actualizarAccion(a.id, 'fechaMax', e.target.value)} className={`rounded-md px-2 py-1 text-2xs border ${t.input}`} />
+                    <TextInput dense t={t} type="date" value={a.fechaMax} onChange={v => actualizarAccion(a.id, 'fechaMax', v)} />
                     <input value={a.responsable} onChange={e => actualizarAccion(a.id, 'responsable', e.target.value)} placeholder="Responsable" className={`rounded-md px-2 py-1 text-2xs border ${t.input}`} />
                   </div>
                 </div>
@@ -1266,7 +1287,7 @@ function InformeF140Modal({ empresaKey, monthIdx, year, equipos, reportesFalla, 
                   {datos.planeacion.map((p, i) => (
                     <tr key={i} className={`border-t ${t.border}`}>
                       <td className="px-2 py-1.5">{p.actividad}</td>
-                      <td className="px-2 py-1.5 font-mono">{p.fecha}</td>
+                      <td className="px-2 py-1.5 font-mono">{formatFechaCorta(p.fecha)}</td>
                       <td className="px-2 py-1.5">{p.responsable || '—'}</td>
                     </tr>
                   ))}
@@ -1920,7 +1941,33 @@ function Field({ label, children, dense }) {
   );
 }
 
+// El <input type="date"> nativo del navegador muestra su valor con el formato del
+// idioma del navegador (a menudo mm/dd/aaaa en inglés) — eso no se puede forzar tocando
+// su estructura interna sin arriesgar romper la edición (ver el intento anterior:
+// reordenar sus segmentos con CSS bloqueó la casilla del mes). En vez de eso, el
+// <input> real sigue exactamente igual — mismo calendario nativo, mismo tecleo, mismas
+// flechas — solo que su texto se vuelve invisible (clase .date-native-hidden-text, ver
+// index.css) y ENCIMA se dibuja un texto propio ya formateado dd/mm/aaaa. El valor que
+// entra/sale de este componente sigue siendo el mismo string ISO (aaaa-mm-dd) de
+// siempre — el almacenamiento no cambia. Nota: la ventana emergente del calendario en sí
+// (nombres de mes al hacer clic en el ícono) la dibuja el sistema operativo, no la
+// página — eso ningún sitio web puede re-formatearlo.
+function DateInput({ value, onChange, t, disabled, dense }) {
+  const display = formatFechaCorta(value);
+  const sizeCls = dense ? 'px-2 py-1 text-2xs' : 'px-2.5 py-1.5 text-xs';
+  return (
+    <div className={`relative w-full rounded-md border ${t.input} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
+      <div aria-hidden className={`${sizeCls} ${display ? '' : 'opacity-50'}`}>{display || 'dd/mm/aaaa'}</div>
+      <input
+        type="date" value={value || ''} disabled={disabled}
+        onChange={e => onChange(e.target.value)}
+        className={`date-native-hidden-text absolute inset-0 w-full h-full bg-transparent border-0 outline-none ${sizeCls} ${disabled ? 'cursor-not-allowed' : 'cursor-text'}`}
+      />
+    </div>
+  );
+}
 function TextInput({ value, onChange, t, type = 'text', placeholder, disabled, dense }) {
+  if (type === 'date') return <DateInput value={value} onChange={onChange} t={t} disabled={disabled} dense={dense} />;
   return (
     <input
       type={type} value={value || ''} placeholder={placeholder} disabled={disabled}
@@ -2690,7 +2737,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
               {historialDe(equipo).length === 0 && <div className={`text-xs text-center py-6 ${t.muted}`}>Sin eventos registrados todavía</div>}
               {historialDe(equipo).map((r, i) => (
                 <div key={i} className={`rounded-lg border p-2.5 flex gap-3 items-start ${t.panel3} ${t.border}`}>
-                  <div className="text-2xs font-mono w-20 shrink-0 pt-0.5">{r.fecha}</div>
+                  <div className="text-2xs font-mono w-20 shrink-0 pt-0.5">{formatFechaCorta(r.fecha)}</div>
                   <div className="flex-1">
                     <div className="text-2xs font-semibold uppercase" style={{ color: accent }}>{r.tipo}</div>
                     <div className="text-xs">{r.detalle}</div>
@@ -3535,9 +3582,9 @@ function MainApp({ onLogout, readOnly }) {
       row['PERIODICIDAD DE MANTENIMIENTO'] = e.periodicidadMantenimiento;
       row['PERIODICIDAD DE CALIBRACION'] = e.periodicidadCalibracion;
       row['UBICACIÓN'] = e.ubicacion;
-      row['FECHA DE ULTIMA CALIBRACION'] = e.fechaUltimaCalibracion;
+      row['FECHA DE ULTIMA CALIBRACION'] = formatFechaCorta(e.fechaUltimaCalibracion);
       const cs = calibStatus(e);
-      row['PRÓXIMA CALIBRACIÓN'] = cs.next ? cs.next.toISOString().slice(0, 10) : '';
+      row['PRÓXIMA CALIBRACIÓN'] = cs.next ? formatFechaCorta(cs.next) : '';
       row.ESTADO = e.estado;
       row['CERTIFICADO DE CALIBRACION'] = e.certificadoUrl;
       row.OBSERVACIONES = e.observaciones;
@@ -3569,8 +3616,15 @@ await writeXlsxFile(data, {
     }
     const str = val.toString().trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str; // ya viene en AAAA-MM-DD
-    const dmy = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/); // DD/MM/AAAA
-    if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+    const dmy = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/); // se asume DD/MM/AAAA, como el resto de la app
+    if (dmy) {
+      let [, d, m] = dmy;
+      // Si el "mes" no es un mes válido (>12) pero el "día" sí podría serlo, la celda
+      // venía en MM/DD/AAAA (p. ej. de un Excel en inglés) — se corrige el orden en vez
+      // de generar una fecha inválida.
+      if (+m > 12 && +d <= 12) [d, m] = [m, d];
+      return `${dmy[3]}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
     const d = new Date(str);
     return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
   };
@@ -4501,7 +4555,7 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                     {MONTHS.map(m => {
                       const st = getMonthStatus(e, m.idx, year);
                       const items = (e.preventivos || []).filter(p => p.fecha && new Date(p.fecha + 'T00:00:00').getMonth() === m.idx && new Date(p.fecha + 'T00:00:00').getFullYear() === year);
-                      const tip = `${STATUS_LABEL[st]}${items.length ? ' — ' + items.map(p => p.fecha).join(', ') : ''}`;
+                      const tip = `${STATUS_LABEL[st]}${items.length ? ' — ' + items.map(p => formatFechaCorta(p.fecha)).join(', ') : ''}`;
                       return <td key={m.k} className="px-2 py-2 text-center" title={tip}><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: STATUS_HEX[st] }} role="img" aria-label={tip} /></td>;
                     })}
                     <td className="px-3 py-2 text-center">{e.aplicaCalibracion ? '✓' : '—'}</td>
@@ -4509,7 +4563,7 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                     <td className="px-3 py-2">{e.periodicidadMantenimiento || '—'}</td>
                     <td className="px-3 py-2">{e.periodicidadCalibracion || '—'}</td>
                     <td className="px-3 py-2">{e.ubicacion || '—'}</td>
-                    <td className="px-3 py-2">{cs.next ? cs.next.toISOString().slice(0, 10) : '—'}</td>
+                    <td className="px-3 py-2">{cs.next ? formatFechaCorta(cs.next) : '—'}</td>
                     <td className="px-3 py-2">
                       <Badge mono={false} color={e.estado === 'Operativo' ? '#22C55E' : e.estado === 'Dado de baja' ? '#EF4444' : '#F59E0B'}>{e.estado}</Badge>
                     </td>
@@ -4564,7 +4618,7 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                   <div className="text-xs font-semibold">{p.equipoNombre}</div>
                   <div className={`text-2xs ${t.muted}`}>{p.empresa} · {p.sede} · {p.responsable || 'sin responsable'}</div>
                 </div>
-                <div className="text-2xs font-mono">{p.fecha}</div>
+                <div className="text-2xs font-mono">{formatFechaCorta(p.fecha)}</div>
               </div>
             ))}
         </div>
@@ -4581,7 +4635,7 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                   <div className="text-xs font-semibold">{c.equipoNombre}</div>
                   <div className={`text-2xs ${t.muted}`}>{c.empresa} · {c.sede} · {c.responsable || 'sin responsable'}</div>
                 </div>
-                <div className="text-2xs font-mono">{c.fecha}</div>
+                <div className="text-2xs font-mono">{formatFechaCorta(c.fecha)}</div>
               </div>
             ))}
         </div>
@@ -4769,7 +4823,7 @@ function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpda
                 <div className={`text-2xs ${t.muted}`}>{r.empresa} · {r.sede} · reportó {r.personaReporta || 'sin nombre'}</div>
               </div>
               <Badge color={REPORTE_ESTADO_HEX[r.estado]}>{r.estado}</Badge>
-              <span className="text-2xs font-mono">{r.fecha}</span>
+              <span className="text-2xs font-mono">{formatFechaCorta(r.fecha)}</span>
               {!readOnly && (
                 <button onClick={(e) => { e.stopPropagation(); setPorEliminar(r); }} aria-label="Eliminar este reporte"
                   title="Eliminar este reporte" className="text-red-400 hover:text-red-300 p-1 shrink-0">
@@ -4783,7 +4837,7 @@ function ReportesFallaPage({ reportes, equipos, activeCompany, t, accent, onUpda
       </div>
 
       {porEliminar && (
-        <EliminarFallaDialog t={t} equipoLabel={equipoLabel(porEliminar)} fecha={porEliminar.fecha}
+        <EliminarFallaDialog t={t} equipoLabel={equipoLabel(porEliminar)} fecha={formatFechaCorta(porEliminar.fecha)}
           onCancel={() => setPorEliminar(null)}
           onConfirm={() => { onEliminarReporte(porEliminar.id); setPorEliminar(null); }} />
       )}
