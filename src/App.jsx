@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X, Menu,
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
@@ -1941,28 +1941,61 @@ function Field({ label, children, dense }) {
   );
 }
 
-// El <input type="date"> nativo del navegador muestra su valor con el formato del
-// idioma del navegador (a menudo mm/dd/aaaa en inglés) — eso no se puede forzar tocando
-// su estructura interna sin arriesgar romper la edición (ver el intento anterior:
-// reordenar sus segmentos con CSS bloqueó la casilla del mes). En vez de eso, el
-// <input> real sigue exactamente igual — mismo calendario nativo, mismo tecleo, mismas
-// flechas — solo que su texto se vuelve invisible (clase .date-native-hidden-text, ver
-// index.css) y ENCIMA se dibuja un texto propio ya formateado dd/mm/aaaa. El valor que
-// entra/sale de este componente sigue siendo el mismo string ISO (aaaa-mm-dd) de
-// siempre — el almacenamiento no cambia. Nota: la ventana emergente del calendario en sí
-// (nombres de mes al hacer clic en el ícono) la dibuja el sistema operativo, no la
-// página — eso ningún sitio web puede re-formatearlo.
+// Campo de fecha con máscara dd/mm/aaaa que se arma EN VIVO mientras el usuario escribe
+// (a diferencia de un <input type="date"> nativo, cuyo valor no existe hasta completar
+// los 3 segmentos — con eso, la pantalla parecía "no agregar nada" mientras se tecleaba).
+// Es un <input type="text"> normal: cada tecla inserta un dígito y las diagonales se
+// insertan solas; al completar los 8 dígitos (dd+mm+aaaa) con una fecha real, se confirma
+// como ISO (aaaa-mm-dd, mismo formato de siempre para guardar). El ícono de calendario
+// sigue abriendo el selector nativo del sistema para quien prefiera elegir en vez de
+// escribir — ese <input type="date"> de respaldo queda invisible, del mismo tamaño que el
+// ícono, y solo se usa vía showPicker().
 function DateInput({ value, onChange, t, disabled, dense }) {
-  const display = formatFechaCorta(value);
-  const sizeCls = dense ? 'px-2 py-1 text-2xs' : 'px-2.5 py-1.5 text-xs';
+  const [text, setText] = useState(() => formatFechaCorta(value));
+  const [prevValue, setPrevValue] = useState(value);
+  // Si el valor llega/cambia desde afuera (se cargó el registro, o se eligió con el
+  // calendario), resincroniza el texto visible — pero nunca mientras el usuario está a
+  // mitad de tecleo (eso solo pasaría si `value` cambiara sin que este componente lo
+  // haya pedido).
+  if (value !== prevValue) { setPrevValue(value); setText(formatFechaCorta(value)); }
+
+  const aplicarDigitos = (digits) => {
+    let formatted = digits;
+    if (digits.length > 4) formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    else if (digits.length > 2) formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    setText(formatted);
+    if (digits.length === 8) {
+      const dd = digits.slice(0, 2), mm = digits.slice(2, 4), yyyy = digits.slice(4, 8);
+      const iso = `${yyyy}-${mm}-${dd}`;
+      const d = new Date(`${iso}T00:00:00`);
+      // Solo se confirma si día/mes/año forman una fecha real (evita guardar, p. ej., 31/02).
+      if (!isNaN(d.getTime()) && d.getDate() === +dd && d.getMonth() + 1 === +mm) onChange(iso);
+    } else if (digits.length === 0) {
+      onChange('');
+    }
+  };
+
+  const pickerRef = useRef(null);
+  const abrirCalendario = () => { try { pickerRef.current?.showPicker?.(); } catch { /* navegador sin soporte para showPicker() — se sigue pudiendo escribir la fecha a mano */ } };
+
+  const sizeCls = dense ? 'py-1 text-2xs' : 'py-1.5 text-xs';
   return (
-    <div className={`relative w-full rounded-md border ${t.input} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
-      <div aria-hidden className={`${sizeCls} ${display ? '' : 'opacity-50'}`}>{display || 'dd/mm/aaaa'}</div>
+    <div className={`flex items-center w-full rounded-md border ${t.input} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
       <input
-        type="date" value={value || ''} disabled={disabled}
-        onChange={e => onChange(e.target.value)}
-        className={`date-native-hidden-text absolute inset-0 w-full h-full bg-transparent border-0 outline-none ${sizeCls} ${disabled ? 'cursor-not-allowed' : 'cursor-text'}`}
+        type="text" inputMode="numeric" autoComplete="off" placeholder="dd/mm/aaaa"
+        value={text} disabled={disabled}
+        onChange={e => aplicarDigitos(e.target.value.replace(/\D/g, '').slice(0, 8))}
+        className={`flex-1 min-w-0 bg-transparent outline-none ${dense ? 'pl-2' : 'pl-2.5'} ${sizeCls} ${disabled ? 'cursor-not-allowed' : ''}`}
       />
+      <div className="relative shrink-0">
+        <button type="button" tabIndex={-1} disabled={disabled} onClick={abrirCalendario} aria-label="Elegir del calendario"
+          className={`px-2 flex items-center ${dense ? 'py-1' : 'py-1.5'} ${disabled ? 'cursor-not-allowed' : ''} ${t.muted}`}>
+          <CalendarClock size={dense ? 12 : 13} />
+        </button>
+        <input ref={pickerRef} type="date" tabIndex={-1} value={value || ''} disabled={disabled}
+          onChange={e => { onChange(e.target.value); setText(formatFechaCorta(e.target.value)); }}
+          className="absolute inset-0 opacity-0 pointer-events-none" aria-hidden="true" />
+      </div>
     </div>
   );
 }

@@ -37,22 +37,6 @@
   }
 }
 
-/* Usada por <DateInput> (App.jsx) para mostrar siempre dd/mm/aaaa sobre un
-   <input type="date"> nativo intacto: SOLO cambia el color del texto a transparente
-   (nunca `order`/layout — eso fue lo que rompió la casilla del mes en un intento
-   anterior), así que no puede afectar el clic, el tecleo ni el calendario del input;
-   el texto legible que sí ve el usuario lo dibuja un <div> propio encima. */
-.date-native-hidden-text {
-  color: transparent;
-}
-.date-native-hidden-text::-webkit-datetime-edit-fields-wrapper,
-.date-native-hidden-text::-webkit-datetime-edit-text,
-.date-native-hidden-text::-webkit-datetime-edit-day-field,
-.date-native-hidden-text::-webkit-datetime-edit-month-field,
-.date-native-hidden-text::-webkit-datetime-edit-year-field {
-  color: transparent;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .animate-modal-in,
   .animate-drawer-in {
