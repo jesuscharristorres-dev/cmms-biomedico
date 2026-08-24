@@ -35,6 +35,21 @@
   button:not(:disabled):active {
     transform: scale(0.97);
   }
+
+  /* Los <input type="date"> nativos muestran mm/dd/aaaa cuando el idioma del navegador
+     está en inglés (Chrome/Edge lo deciden por su idioma de interfaz, no por el `lang`
+     de la página ni por la zona horaria de Colombia) — reordena los campos internos a
+     dd/mm/aaaa para que coincida con el resto de fechas de la app. Solo funciona en
+     navegadores basados en Chromium (los pseudo-elementos ::-webkit-datetime-edit-*
+     no son estándar); en Firefox/Safari el navegador ya suele mostrar dd/mm/aaaa según
+     el idioma configurado del sistema. */
+  input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+    display: flex;
+  }
+  input[type="date"]::-webkit-datetime-edit-day-field { order: 1; }
+  input[type="date"]::-webkit-datetime-edit-text { order: 2; }
+  input[type="date"]::-webkit-datetime-edit-month-field { order: 3; }
+  input[type="date"]::-webkit-datetime-edit-year-field { order: 4; }
 }
 
 @media (prefers-reduced-motion: reduce) {
