@@ -79,6 +79,92 @@ const ReadOnlyContext = React.createContext(false);
 // que el navegador está sirviendo la versión más reciente y no una copia en caché.
 const APP_BUILD = '2026-08-02 · Resumen diario automático de alertas (8am, Vercel Cron + KV)';
 
+// Cierre de sesión por inactividad (ver useInactivityLogout más abajo, y AppInner donde
+// se usa): 15 minutos sin actividad real cierran la sesión; el aviso aparece 1 minuto
+// antes para dar oportunidad de seguir trabajando.
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+const IDLE_WARNING_MS = 60 * 1000;
+const IDLE_ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'];
+
+// Detecta inactividad del usuario (mouse, teclado, clics, toques, scroll) y dispara un
+// aviso `onWarn` un minuto antes de `onTimeout` — este último es responsable de invalidar
+// la sesión de verdad (ver `cerrarSesion` en AppInner: llama a POST /api/logout, que
+// destruye el token en el servidor, no solo oculta la interfaz). `onActivity` se dispara
+// en cada interacción real, para que quien esté mostrando el aviso pueda ocultarlo.
+// Los callbacks se leen desde refs (no desde las dependencias del efecto) para poder
+// reprogramar los timers sin desmontar/volver a montar los listeners en cada render.
+function useInactivityLogout({ active, onWarn, onActivity, onTimeout }) {
+  const warnTimer = useRef(null);
+  const logoutTimer = useRef(null);
+  const callbacks = useRef({ onWarn, onActivity, onTimeout });
+  // Sincroniza en un efecto, no durante el render (mutar un ref mientras se renderiza es
+  // un anti-patrón que React ya marca como error) — así los timers, que viven fuera del
+  // ciclo de render, siempre llaman a la versión más reciente de cada callback.
+  useEffect(() => {
+    callbacks.current = { onWarn, onActivity, onTimeout };
+  });
+
+  useEffect(() => {
+    if (!active) return undefined;
+
+    const clearTimers = () => {
+      clearTimeout(warnTimer.current);
+      clearTimeout(logoutTimer.current);
+    };
+
+    const schedule = () => {
+      clearTimers();
+      warnTimer.current = setTimeout(() => callbacks.current.onWarn(), IDLE_TIMEOUT_MS - IDLE_WARNING_MS);
+      logoutTimer.current = setTimeout(() => callbacks.current.onTimeout(), IDLE_TIMEOUT_MS);
+    };
+
+    // mousemove/scroll disparan decenas de eventos por segundo — se limita a reprogramar
+    // como máximo una vez por segundo, sin perder precisión real (el usuario sigue activo).
+    let lastActivity = 0;
+    const handleActivity = () => {
+      const now = Date.now();
+      if (now - lastActivity < 1000) return;
+      lastActivity = now;
+      callbacks.current.onActivity();
+      schedule();
+    };
+
+    IDLE_ACTIVITY_EVENTS.forEach(ev => window.addEventListener(ev, handleActivity, { passive: true }));
+    schedule();
+
+    return () => {
+      clearTimers();
+      IDLE_ACTIVITY_EVENTS.forEach(ev => window.removeEventListener(ev, handleActivity));
+    };
+  }, [active]);
+}
+
+// Modal de aviso previo al cierre por inactividad — el conteo regresivo es solo visual
+// (se deriva de `segundos`, que ya trae AppInner); "Seguir trabajando" cuenta como
+// actividad real, así que basta con que el usuario haga clic aquí para reiniciar el
+// temporizador completo.
+function SessionWarningModal({ segundos, onContinuar, onCerrarAhora }) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" />
+      <div className="animate-modal-in relative w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 text-slate-100 p-5 shadow-2xl">
+        <div className="flex items-center gap-2 mb-2 text-amber-400">
+          <AlertTriangle size={18} />
+          <div className="text-sm font-bold">Tu sesión está por cerrarse</div>
+        </div>
+        <p className="text-xs text-slate-300 mb-4">
+          Por seguridad, la sesión se cierra automáticamente tras un período de inactividad.
+          Se cerrará en <span className="font-mono font-bold text-amber-400">{segundos}s</span> si no hay actividad.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onCerrarAhora}>Cerrar sesión ahora</Button>
+          <Button variant="primary" accent="#2F8FD1" onClick={onContinuar}>Seguir trabajando</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const COMPANIES = [
   { key: 'MACROMED', color: '#002485', gradient: 'linear-gradient(135deg, #002485 0%, #1F4FB8 100%)', sedes: ['Bogotá'], logo: '/logos/MACROMED.png' },
   { key: 'MEIDE', color: '#24546A', gradient: 'linear-gradient(135deg, #24546A 0%, #3B7088 100%)', sedes: ['Armenia Berlín','Armenia Fundadores','Manizales Belén','Manizales Arboleda','La Dorada','Unidad Móvil'], logo: '/logos/MEIDE.png' },
@@ -2943,11 +3029,14 @@ const LOGIN_SCREEN_STYLES = `
     .login-illus, .login-decor, .login-glow, .login-bg-blob, .login-card-wrap, .login-field-in { animation: none; }
   }
 `;
-function LoginScreen({ onLogin, onGuest, onReportarFalla }) {
+function LoginScreen({ notice, onLogin, onGuest, onReportarFalla }) {
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [showPass, setShowPass] = useState(false);
-  const [error, setError] = useState('');
+  // `notice` llega desde AppInner cuando el cierre de sesión fue automático (por
+  // inactividad) — se muestra en el mismo cuadro que los errores de credenciales, y
+  // desaparece apenas el usuario empieza a escribir de nuevo (igual que un error normal).
+  const [error, setError] = useState(notice || '');
   const [remember, setRemember] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -5711,6 +5800,11 @@ function AppInner() {
   const [authed, setAuthed] = useState(null);
   const [guestMode, setGuestMode] = useState(false);
   const [publicView, setPublicView] = useState(null); // null | 'reporte'
+  // Aviso de cierre por inactividad y mensaje que se muestra luego en LoginScreen —
+  // ver useInactivityLogout más abajo.
+  const [sessionWarning, setSessionWarning] = useState(false);
+  const [warningSegundos, setWarningSegundos] = useState(IDLE_WARNING_MS / 1000);
+  const [sessionNotice, setSessionNotice] = useState('');
 
   // Extraída para poder reusarla exactamente igual en dos momentos: al cargar la página
   // (efecto de abajo) y justo después de un login exitoso (ver checkSession() más abajo).
@@ -5728,6 +5822,40 @@ function AppInner() {
 
   useEffect(() => { checkSession(); }, []);
 
+  // Cierre de sesión REAL (no solo ocultar la interfaz): POST /api/logout destruye el
+  // token en Vercel KV y borra la cookie HttpOnly en el servidor (ver lib/auth.js →
+  // destroySession/clearSessionCookie) — una sesión robada o una pestaña olvidada deja de
+  // servir de inmediato, no solo hasta que el navegador decida limpiar su propio estado.
+  // `motivo` es opcional: lo usa el cierre automático por inactividad para explicarle al
+  // usuario, en la pantalla de login, por qué se cerró su sesión.
+  const cerrarSesion = async (motivo = '') => {
+    setSessionWarning(false);
+    if (authed) {
+      try { await fetch('/api/logout', { method: 'POST' }); } catch { /* igual limpiamos el estado local */ }
+    }
+    setAuthed(false);
+    setGuestMode(false);
+    setSessionNotice(motivo);
+  };
+
+  // Activo tanto para sesión real como para modo invitado — una pantalla de solo lectura
+  // olvidada y abierta también expone datos del inventario. `active` en false mientras se
+  // está en la pantalla de login (no hay nada que cerrar todavía).
+  useInactivityLogout({
+    active: authed === true || guestMode,
+    onActivity: () => setSessionWarning(false),
+    onWarn: () => { setWarningSegundos(IDLE_WARNING_MS / 1000); setSessionWarning(true); },
+    onTimeout: () => cerrarSesion('Tu sesión se cerró automáticamente por inactividad.'),
+  });
+
+  // Cuenta regresiva SOLO visual del aviso (el cierre real lo dispara el timer de
+  // useInactivityLogout, no este intervalo) — se detiene apenas se oculta el aviso.
+  useEffect(() => {
+    if (!sessionWarning) return undefined;
+    const id = setInterval(() => setWarningSegundos(s => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(id);
+  }, [sessionWarning]);
+
   if (publicView === 'reporte' && !authed && !guestMode) {
     return <ReporteFallaForm onBack={() => setPublicView(null)} />;
   }
@@ -5741,18 +5869,17 @@ function AppInner() {
   }
 
   if (!authed && !guestMode) {
-    return <LoginScreen onLogin={checkSession} onGuest={() => setGuestMode(true)} onReportarFalla={() => setPublicView('reporte')} />;
+    return (
+      <LoginScreen notice={sessionNotice} onLogin={checkSession} onGuest={() => setGuestMode(true)} onReportarFalla={() => setPublicView('reporte')} />
+    );
   }
-
-  const salir = async () => {
-    try { await fetch('/api/logout', { method: 'POST' }); } catch { /* igual limpiamos el estado local */ }
-    setAuthed(false);
-    setGuestMode(false);
-  };
 
   return (
     <ReadOnlyContext.Provider value={guestMode}>
-      <MainApp onLogout={salir} readOnly={guestMode} />
+      <MainApp onLogout={() => cerrarSesion()} readOnly={guestMode} />
+      {sessionWarning && (
+        <SessionWarningModal segundos={warningSegundos} onContinuar={() => setSessionWarning(false)} onCerrarAhora={() => cerrarSesion()} />
+      )}
     </ReadOnlyContext.Provider>
   );
 }
