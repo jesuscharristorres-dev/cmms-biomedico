@@ -168,7 +168,7 @@ function SessionWarningModal({ segundos, onContinuar, onCerrarAhora }) {
 const COMPANIES = [
   { key: 'MACROMED', color: '#002485', gradient: 'linear-gradient(135deg, #002485 0%, #1F4FB8 100%)', sedes: ['Bogotá'], logo: '/logos/MACROMED.png' },
   { key: 'MEIDE', color: '#24546A', gradient: 'linear-gradient(135deg, #24546A 0%, #3B7088 100%)', sedes: ['Armenia Berlín','Armenia Fundadores','Manizales Belén','Manizales Arboleda','La Dorada','Unidad Móvil'], logo: '/logos/MEIDE.png' },
-  { key: 'NP MEDICAL', color: '#3F8E6F', gradient: 'linear-gradient(135deg, #3F8E6F 0%, #63B48F 100%)', sedes: ['Bogotá Samper','Bogotá Sur','Fontibón','Girardot'], logo: '/logos/NP_MEDICAL.png' },
+  { key: 'NP MEDICAL', color: '#3F8E6F', gradient: 'linear-gradient(135deg, #3F8E6F 0%, #63B48F 100%)', sedes: ['Bogotá Samper','Bogotá Sur','Fontibón','Girardot','Tunja'], logo: '/logos/NP_MEDICAL.png' },
   { key: 'DIAGNOSTIK', color: '#C62828', gradient: 'linear-gradient(135deg, #C62828 0%, #E53935 100%)', sedes: ['Armenia Berlín','Armenia Fundadores','Manizales Berlín','Manizales Belén','Bogotá','Chapinero','Villavicencio','La Dorada'], logo: '/logos/DIAGNOSTIK.png' },
   { key: 'AUNAR SALUD', color: '#009EB7', gradient: 'linear-gradient(135deg, #009EB7 0%, #33C4D8 100%)', sedes: ['Bogotá','Villavicencio','Neiva'], logo: '/logos/AUNAR.png' },
 ];
@@ -1815,9 +1815,12 @@ async function actualizarTecnoTransversal(docKey, empresaKey, valor) {
   cacheSet(TECNO_TRANSVERSAL_KEY, data);
   return data;
 }
+// `porEmpresa: false` = un único documento/URL compartido por las 5 empresas (p. ej. un
+// formato regulatorio de INVIMA, igual para todas); `porEmpresa: true` = cada empresa
+// guarda su propia URL (p. ej. el manual interno, que puede variar por empresa).
 const TECNO_DOCS = [
-  { key: 'invima', label: 'ABC-Tecnovigilancia-INVIMA', icon: FileText },
-  { key: 'manual', label: 'DLC-GEB-MN-01 — Manual de Tecnovigilancia', icon: BookOpen },
+  { key: 'invima', label: 'ABC-Tecnovigilancia-INVIMA', icon: FileText, porEmpresa: false },
+  { key: 'manual', label: 'DLC-GEB-MN-01 — Manual de Tecnovigilancia', icon: BookOpen, porEmpresa: true },
 ];
 
 // Fuente de verdad COMPARTIDA: api/tecno-reportes.js (Vercel KV).
@@ -3557,9 +3560,14 @@ function MainApp({ onLogout, readOnly }) {
   // Cada documento guarda una URL distinta por empresa (ver api/tecno-transversal.js) —
   // mismo principio de merge puntual que updateTecnoReporte: solo se toca la hoja
   // [docKey][empresaKey], nunca se sobrescriben las URLs de las demás empresas.
+  // `empresaKey` en null/undefined = documento único compartido por las 5 empresas (p. ej.
+  // el formato de INVIMA): se guarda como un valor plano, igual que antes de diferenciar
+  // por empresa. Con `empresaKey`, solo se toca la hoja [docKey][empresaKey] — nunca se
+  // sobrescriben las URLs de las demás empresas (mismo principio que updateTecnoReporte).
   const updateTecnoTransversal = (docKey, empresaKey, valor) => {
     const previous = tecnoTransversal;
     setTecnoTransversal(prev => {
+      if (!empresaKey) return { ...prev, [docKey]: valor };
       const docObj = (prev[docKey] && typeof prev[docKey] === 'object') ? prev[docKey] : {};
       return { ...prev, [docKey]: { ...docObj, [empresaKey]: valor } };
     });
@@ -5178,12 +5186,15 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
   const modoGlobal = activeCompany !== 'TODAS';
   const empresaSel = modoGlobal ? activeCompany : empresaSelLocal;
 
-  // Lee la URL de un documento para una empresa puntual. `transversal[doc.key]` puede ser
-  // un string suelto (formato heredado de antes de diferenciar por empresa, o el resultado
-  // de la migración desde localStorage) — en ese caso se muestra ese mismo valor como
-  // "por defecto" para cualquier empresa que todavía no tenga su propia URL guardada.
+  // Lee la URL de un documento. Si `doc.porEmpresa` es false (p. ej. el formato de
+  // INVIMA, único para las 5 empresas), ignora `empresaKey` y siempre devuelve el mismo
+  // valor plano. Si es true, busca la URL de esa empresa puntual — `transversal[doc.key]`
+  // también puede ser un string suelto (formato heredado, o resultado de la migración
+  // desde localStorage): en ese caso se muestra como "por defecto" para cualquier empresa
+  // que todavía no tenga su propia URL guardada.
   const urlDeDoc = (doc, empresaKey) => {
     const v = transversal[doc.key];
+    if (!doc.porEmpresa) return (v && typeof v === 'object') ? '' : (v || '');
     if (v && typeof v === 'object') return v[empresaKey] || '';
     return v || '';
   };
@@ -5196,14 +5207,15 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
     setOpenTrimestre(null);
   }
 
-  // Con una empresa activa, cuenta los documentos cargados PARA ESA empresa; en "todas las
-  // empresas" cuenta cuántas combinaciones documento×empresa ya tienen URL, sobre el total
-  // posible (mismo criterio que el KPI de "Reportes del año" más abajo).
+  // Los documentos únicos (porEmpresa: false) cuentan como 1 solo slot, sin importar
+  // cuántas empresas haya; los documentos por empresa cuentan uno por cada empresa visible
+  // (con una empresa activa, solo esa; en "todas las empresas", las 5).
   const empresasKpi = modoGlobal ? COMPANIES.filter(c => c.key === activeCompany) : COMPANIES;
-  const cargadosTransversal = modoGlobal
-    ? TECNO_DOCS.filter(d => urlDeDoc(d, activeCompany)).length
-    : TECNO_DOCS.reduce((acc, d) => acc + COMPANIES.filter(c => urlDeDoc(d, c.key)).length, 0);
-  const totalSlotsTransversal = TECNO_DOCS.length * empresasKpi.length;
+  const cargadosTransversal = TECNO_DOCS.reduce((acc, d) => {
+    if (!d.porEmpresa) return acc + (urlDeDoc(d) ? 1 : 0);
+    return acc + (modoGlobal ? (urlDeDoc(d, activeCompany) ? 1 : 0) : COMPANIES.filter(c => urlDeDoc(d, c.key)).length);
+  }, 0);
+  const totalSlotsTransversal = TECNO_DOCS.reduce((acc, d) => acc + (d.porEmpresa ? empresasKpi.length : 1), 0);
   const totalCiudades = empresasKpi.reduce((acc, c) => acc + (TECNO_CIUDADES[c.key] || []).length, 0);
   const anioActual = new Date().getFullYear();
   let cargadosAnioActual = 0;
@@ -5255,10 +5267,22 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-semibold wrap-break-word">{doc.label}</div>
-                      <div className={`text-2xs mt-0.5 ${t.muted}`}>{modoGlobal ? activeCompany : 'URL por empresa'}</div>
+                      <div className={`text-2xs mt-0.5 ${t.muted}`}>
+                        {!doc.porEmpresa ? 'Documento único (todas las empresas)' : (modoGlobal ? activeCompany : 'URL por empresa')}
+                      </div>
                     </div>
                   </div>
-                  {modoGlobal ? (
+                  {!doc.porEmpresa ? (
+                    // Documento único para las 5 empresas (p. ej. un formato regulatorio de
+                    // INVIMA): una sola URL, sin distinción por empresa activa.
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex-1 min-w-40">
+                        <TextInput t={t} value={urlDeDoc(doc)} disabled={readOnly} placeholder="URL del documento"
+                          onChange={v => onUpdateTransversal(doc.key, null, v)} />
+                      </div>
+                      <PdfLink url={urlDeDoc(doc)} t={t} title={doc.label} emptyLabel="Documento no cargado" />
+                    </div>
+                  ) : modoGlobal ? (
                     // Con una empresa activa en el selector superior, solo se ve/edita el
                     // enlace de esa empresa — el resto quedan ocultos, como pide el requisito.
                     <div className="flex items-center gap-2 flex-wrap">
