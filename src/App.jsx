@@ -3690,7 +3690,15 @@ function MainApp({ onLogout, readOnly }) {
   const obsEquipo = equipos.find(e => e.id === obsModalId);
 
   /* ---- Excel export / import ---- */
+  // `filtered` (definido arriba) ya es el resultado de aplicar empresa activa + todos los
+  // filtros del panel (sede, ubicación, estado, marca, clasificación) + búsqueda — por eso
+  // basta con exportar esa misma lista para que el Excel respete exactamente lo que se ve
+  // en pantalla, sin repetir la lógica de filtrado aquí.
   const exportExcel = async () => {
+    if (filtered.length === 0) {
+      alert('No hay equipos para exportar con los filtros actuales.');
+      return;
+    }
     const year = new Date().getFullYear();
     const rows = filtered.map(e => {
       const row = {
@@ -3714,19 +3722,29 @@ function MainApp({ onLogout, readOnly }) {
     });
     const headers = Object.keys(rows[0] || {});
 
-const data = [
-  headers.map(header => ({ value: header, fontWeight: 'bold' })),
-  ...rows.map(row =>
-    headers.map(header => ({
-      value: row[header] ?? ''
-    }))
-  )
-];
+    const data = [
+      headers.map(header => ({ value: header, fontWeight: 'bold' })),
+      // Celda vacía en vez de "undefined"/"null" literal — y se deja como cadena vacía
+      // (no "N/R") a propósito: estas mismas columnas son las que lee importExcel() más
+      // abajo, así que un equipo exportado sin, p. ej., marca y reimportado sin tocar debe
+      // seguir sin marca, no terminar con el texto "N/R" guardado como si fuera un dato real.
+      ...rows.map(row =>
+        headers.map(header => ({ value: row[header] ?? '' }))
+      ),
+    ];
 
-await writeXlsxFile(data, {
-  fileName: 'inventario-biomedico.xlsx',
-  sheet: 'Inventario',
-});
+    // write-excel-file 4.x ya no descarga el archivo solo con pasarle `fileName` en las
+    // opciones (eso es de la API vieja, 3.x) — ahora writeXlsxFile(...) devuelve un objeto
+    // con métodos async `toFile()`/`toBlob()`, y hay que encadenar `.toFile(nombre)` para
+    // que de verdad dispare la descarga en el navegador. Sin ese encadenado (como estaba
+    // antes) la llamada no lanza ningún error, pero tampoco genera ni descarga nada — por
+    // eso el botón "parecía" no hacer nada.
+    try {
+      await writeXlsxFile(data, { sheet: 'Inventario' }).toFile('inventario-biomedico.xlsx');
+    } catch (err) {
+      console.error('No se pudo generar el Excel del inventario', err);
+      alert('No se pudo generar el archivo Excel. Intenta de nuevo; si el problema continúa, contacta al administrador.');
+    }
   };
   const parseExcelDate = (val) => {
     if (!val) return '';
