@@ -5204,7 +5204,7 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
       <h1 className="text-lg font-bold mb-1 flex items-center gap-2">
         <ShieldAlert size={19} style={{ color: accent }} /> Tecnovigilancia
       </h1>
-      <p className={`text-xs mb-5 ${t.muted}`}>Documentación transversal y reportes trimestrales de tecnovigilancia por empresa y ciudad/departamento.</p>
+      <p className={`text-xs mb-5 ${t.muted}`}>Documentación y reportes trimestrales de tecnovigilancia por empresa y ciudad/departamento.</p>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <HeroStat t={t} label="Documentos transversales" color={accent}
@@ -5218,7 +5218,7 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
       </div>
 
       <div className="mb-6">
-        <div className="text-xs font-semibold uppercase tracking-wide mb-3">Documentación transversal</div>
+        <div className="text-xs font-semibold uppercase tracking-wide mb-3">Documentación</div>
         <div className="grid sm:grid-cols-2 gap-4">
           {TECNO_DOCS.map(doc => {
             const Icon = doc.icon;
