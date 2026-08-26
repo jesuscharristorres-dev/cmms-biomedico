@@ -1774,8 +1774,8 @@ const PLANES_CATEGORIAS = [
   ] },
 ];
 
-// Tecnovigilancia — documentación transversal (única, compartida por todas las empresas)
-// y reportes trimestrales que sí se organizan por empresa · sede · año.
+// Tecnovigilancia — documentación con una URL propia por empresa, y reportes trimestrales
+// que se organizan por empresa · sede · año.
 // Fuente de verdad COMPARTIDA: api/tecno-transversal.js (Vercel KV).
 const TECNO_TRANSVERSAL_KEY = 'cmms-tecno-transversal';
 async function loadTecnoTransversal() {
@@ -1789,7 +1789,7 @@ async function loadTecnoTransversal() {
         if (Object.keys(local).length > 0) {
           try {
             let migrado = data;
-            for (const docKey of Object.keys(local)) migrado = await actualizarTecnoTransversal(docKey, local[docKey]);
+            for (const docKey of Object.keys(local)) migrado = await actualizarTecnoTransversal(docKey, undefined, local[docKey]);
             return migrado;
           } catch (err) { console.error('No se pudo migrar la documentación transversal local al servidor compartido', err); }
         }
@@ -1803,9 +1803,12 @@ async function loadTecnoTransversal() {
   }
   return cacheGet(TECNO_TRANSVERSAL_KEY, {});
 }
-async function actualizarTecnoTransversal(docKey, valor) {
+// `empresaKey` en undefined solo lo usa la migración puntual desde localStorage (ver
+// arriba) — para el uso normal (guardar la URL de UN documento para UNA empresa) siempre
+// se pasan los tres argumentos.
+async function actualizarTecnoTransversal(docKey, empresaKey, valor) {
   const res = await fetch('/api/tecno-transversal', {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ docKey, valor }),
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ docKey, empresaKey, valor }),
   });
   if (!res.ok) throw new Error('No se pudo guardar en la base de datos compartida.');
   const { data } = await res.json();
@@ -3551,10 +3554,16 @@ function MainApp({ onLogout, readOnly }) {
   };
 
   useEffect(() => { loadTecnoTransversal().then(setTecnoTransversal); }, []);
-  const updateTecnoTransversal = (docKey, valor) => {
+  // Cada documento guarda una URL distinta por empresa (ver api/tecno-transversal.js) —
+  // mismo principio de merge puntual que updateTecnoReporte: solo se toca la hoja
+  // [docKey][empresaKey], nunca se sobrescriben las URLs de las demás empresas.
+  const updateTecnoTransversal = (docKey, empresaKey, valor) => {
     const previous = tecnoTransversal;
-    setTecnoTransversal(prev => ({ ...prev, [docKey]: valor }));
-    actualizarTecnoTransversal(docKey, valor).catch(err => {
+    setTecnoTransversal(prev => {
+      const docObj = (prev[docKey] && typeof prev[docKey] === 'object') ? prev[docKey] : {};
+      return { ...prev, [docKey]: { ...docObj, [empresaKey]: valor } };
+    });
+    actualizarTecnoTransversal(docKey, empresaKey, valor).catch(err => {
       console.error('No se pudo sincronizar el documento con el servidor compartido', err);
       setTecnoTransversal(previous);
     });
@@ -5164,9 +5173,20 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
   const [openTrimestre, setOpenTrimestre] = useState(null);
   // Igual que en Planes y programas: con una empresa activa en el selector superior, los
   // reportes de tecnovigilancia quedan fijos en ella (sin selector propio desincronizado).
-  // Los documentos transversales de arriba nunca se filtran: son compartidos por todas las empresas.
+  // La documentación de arriba ahora también respeta esa misma empresa activa: cada
+  // documento tiene su propia URL por empresa (ver api/tecno-transversal.js).
   const modoGlobal = activeCompany !== 'TODAS';
   const empresaSel = modoGlobal ? activeCompany : empresaSelLocal;
+
+  // Lee la URL de un documento para una empresa puntual. `transversal[doc.key]` puede ser
+  // un string suelto (formato heredado de antes de diferenciar por empresa, o el resultado
+  // de la migración desde localStorage) — en ese caso se muestra ese mismo valor como
+  // "por defecto" para cualquier empresa que todavía no tenga su propia URL guardada.
+  const urlDeDoc = (doc, empresaKey) => {
+    const v = transversal[doc.key];
+    if (v && typeof v === 'object') return v[empresaKey] || '';
+    return v || '';
+  };
   // Si cambia la empresa activa del selector superior, se limpia la sede/trimestre ya
   // elegidos (ajuste de estado durante el render, como recomienda React, en vez de un efecto).
   const [prevActiveCompany, setPrevActiveCompany] = useState(activeCompany);
@@ -5176,11 +5196,14 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
     setOpenTrimestre(null);
   }
 
-  const cargadosTransversal = TECNO_DOCS.filter(d => transversal[d.key]).length;
-
-  // Los KPI de reportes trimestrales sí respetan la empresa activa (los documentos
-  // transversales de arriba no, porque son compartidos por todas las empresas).
+  // Con una empresa activa, cuenta los documentos cargados PARA ESA empresa; en "todas las
+  // empresas" cuenta cuántas combinaciones documento×empresa ya tienen URL, sobre el total
+  // posible (mismo criterio que el KPI de "Reportes del año" más abajo).
   const empresasKpi = modoGlobal ? COMPANIES.filter(c => c.key === activeCompany) : COMPANIES;
+  const cargadosTransversal = modoGlobal
+    ? TECNO_DOCS.filter(d => urlDeDoc(d, activeCompany)).length
+    : TECNO_DOCS.reduce((acc, d) => acc + COMPANIES.filter(c => urlDeDoc(d, c.key)).length, 0);
+  const totalSlotsTransversal = TECNO_DOCS.length * empresasKpi.length;
   const totalCiudades = empresasKpi.reduce((acc, c) => acc + (TECNO_CIUDADES[c.key] || []).length, 0);
   const anioActual = new Date().getFullYear();
   let cargadosAnioActual = 0;
@@ -5207,8 +5230,8 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
       <p className={`text-xs mb-5 ${t.muted}`}>Documentación y reportes trimestrales de tecnovigilancia por empresa y ciudad/departamento.</p>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <HeroStat t={t} label="Documentos transversales" color={accent}
-          value={`${cargadosTransversal}/${TECNO_DOCS.length}`} sub="cargados" />
+        <HeroStat t={t} label="Documentos" color={accent}
+          value={`${cargadosTransversal}/${totalSlotsTransversal}`} sub={modoGlobal ? `cargados · ${activeCompany}` : 'cargados (todas las empresas)'} />
         <HeroStat t={t} label="Empresas" color={accent}
           value={empresasKpi.length} sub="con módulo de tecnovigilancia" />
         <HeroStat t={t} label="Reportes del año" color="#22C55E"
@@ -5232,16 +5255,35 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-semibold wrap-break-word">{doc.label}</div>
-                      <div className={`text-2xs mt-0.5 ${t.muted}`}>Documento transversal</div>
+                      <div className={`text-2xs mt-0.5 ${t.muted}`}>{modoGlobal ? activeCompany : 'URL por empresa'}</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="flex-1 min-w-40">
-                      <TextInput t={t} value={transversal[doc.key]} disabled={readOnly} placeholder="URL del documento"
-                        onChange={v => onUpdateTransversal(doc.key, v)} />
+                  {modoGlobal ? (
+                    // Con una empresa activa en el selector superior, solo se ve/edita el
+                    // enlace de esa empresa — el resto quedan ocultos, como pide el requisito.
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex-1 min-w-40">
+                        <TextInput t={t} value={urlDeDoc(doc, activeCompany)} disabled={readOnly} placeholder="URL del documento"
+                          onChange={v => onUpdateTransversal(doc.key, activeCompany, v)} />
+                      </div>
+                      <PdfLink url={urlDeDoc(doc, activeCompany)} t={t} title={`${doc.label} · ${activeCompany}`} emptyLabel="Documento no cargado" />
                     </div>
-                    <PdfLink url={transversal[doc.key]} t={t} title={doc.label} emptyLabel="Documento no cargado" />
-                  </div>
+                  ) : (
+                    // Sin empresa activa ("Todas las empresas"): se configuran las URLs de
+                    // las 5 empresas desde el mismo lugar.
+                    <div className="space-y-2">
+                      {COMPANIES.map(c => (
+                        <div key={c.key} className="flex items-center gap-2 flex-wrap">
+                          <span className="text-2xs font-semibold w-28 shrink-0 truncate" style={{ color: c.color }}>{c.key}</span>
+                          <div className="flex-1 min-w-40">
+                            <TextInput dense t={t} value={urlDeDoc(doc, c.key)} disabled={readOnly} placeholder="URL del documento"
+                              onChange={v => onUpdateTransversal(doc.key, c.key, v)} />
+                          </div>
+                          <PdfLink url={urlDeDoc(doc, c.key)} t={t} title={`${doc.label} · ${c.key}`} emptyLabel="No cargado" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             );
