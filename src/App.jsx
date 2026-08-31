@@ -18,6 +18,7 @@ import {
 import { readSheet } from 'read-excel-file/browser';
 import writeXlsxFile from 'write-excel-file/browser';
 import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts } from './services/alertLogic';
+import { preventivoDelMes } from './services/preventivoSchedule';
 // Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
 import logoIngenieriaClinica from './assets/logo-ingenieria-clinica.png';
@@ -356,18 +357,12 @@ function newEquipo(empresaKey) {
 /* HELPERS DE CÁLCULO                                                 */
 /* ---------------------------------------------------------------- */
 
+// Delegado a preventivoSchedule.js (única fuente de verdad): la próxima fecha se calcula
+// automáticamente a partir de la periodicidad del equipo y el último preventivo EJECUTADO
+// (o su fecha de instalación si nunca ha tenido uno) — ya no depende de que exista un
+// registro manual "programado" para ese mes exacto.
 function getMonthStatus(equipo, monthIdx, year) {
-  if (!equipo.aplicaPreventivo) return 'no_aplica';
-  const items = (equipo.preventivos || []).filter(p => {
-    if (!p.fecha) return false;
-    const d = new Date(p.fecha + 'T00:00:00');
-    return d.getFullYear() === year && d.getMonth() === monthIdx;
-  });
-  if (items.length === 0) return 'no_aplica';
-  if (items.some(p => p.estado === 'Ejecutado')) return 'realizado';
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  if (items.some(p => new Date(p.fecha + 'T00:00:00') < today)) return 'vencido';
-  return 'programado';
+  return preventivoDelMes(equipo, monthIdx, year).status;
 }
 
 // Transformación EXCLUSIVA de la pestaña "Cronograma" del equipo (historial, no
@@ -4673,6 +4668,22 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
       </div>
 
       {mode === 'inventario' && (
+        <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-3xs ${t.muted}`}>
+          {[
+            { st: 'realizado', label: 'Realizado' },
+            { st: 'programado', label: 'Programado' },
+            { st: 'vencido', label: 'Vencido' },
+            { st: 'no_aplica', label: 'Sin programación' },
+          ].map(({ st, label }) => (
+            <span key={st} className="inline-flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: STATUS_HEX[st] }} />
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {mode === 'inventario' && (
         <div className={`rounded-xl border overflow-x-auto ${t.panel} ${t.border}`}>
           <table className="w-full text-xs whitespace-nowrap">
             <thead>
@@ -4710,9 +4721,8 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                     <td className="px-3 py-2">{e.clasificacionRiesgo}</td>
                     <td className="px-3 py-2">{e.inventario || '—'}</td>
                     {MONTHS.map(m => {
-                      const st = getMonthStatus(e, m.idx, year);
-                      const items = (e.preventivos || []).filter(p => p.fecha && new Date(p.fecha + 'T00:00:00').getMonth() === m.idx && new Date(p.fecha + 'T00:00:00').getFullYear() === year);
-                      const tip = `${STATUS_LABEL[st]}${items.length ? ' — ' + items.map(p => formatFechaCorta(p.fecha)).join(', ') : ''}`;
+                      const { status: st, fecha } = preventivoDelMes(e, m.idx, year);
+                      const tip = `${STATUS_LABEL[st]}${fecha ? ' — ' + formatFechaCorta(fecha) : ''}`;
                       return <td key={m.k} className="px-2 py-2 text-center" title={tip}><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: STATUS_HEX[st] }} role="img" aria-label={tip} /></td>;
                     })}
                     <td className="px-3 py-2 text-center">{e.aplicaCalibracion ? '✓' : '—'}</td>
