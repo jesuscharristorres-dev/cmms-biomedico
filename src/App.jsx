@@ -3497,6 +3497,7 @@ function MainApp({ onLogout, readOnly }) {
   const [activeCompany, setActiveCompany] = useState('TODAS');
   const [filters, setFilters] = useState({ sede: '', ubicacion: '', estado: '', marca: '', clasificacion: '' });
   const [search, setSearch] = useState('');
+  const [searchText, setSearchText] = useState('');
   const [sort, setSort] = useState({ key: 'equipo', dir: 1 });
   const [drawerId, setDrawerId] = useState(null);
   const [obsModalId, setObsModalId] = useState(null);
@@ -3696,6 +3697,10 @@ function MainApp({ onLogout, readOnly }) {
     if (filters.clasificacion) list = list.filter(e => e.clasificacionRiesgo === filters.clasificacion);
     if (search.trim()) {
       const s = search.toLowerCase();
+      list = list.filter(e => [e.equipo, e.marca, e.modelo, e.numeroSerie, e.inventario].join(' ').toLowerCase().includes(s));
+    }
+    if (searchText.trim()) {
+      const s = searchText.toLowerCase();
       list = list.filter(e => [
         e.equipo, e.marca, e.modelo, e.numeroSerie, e.inventario, e.registroInvima,
         e.ubicacion, e.empresa, e.sede, e.estado, e.clasificacionRiesgo,
@@ -3708,7 +3713,7 @@ function MainApp({ onLogout, readOnly }) {
       return av < bv ? -sort.dir : av > bv ? sort.dir : 0;
     });
     return list;
-  }, [equipos, activeCompany, filters, search, sort]);
+  }, [equipos, activeCompany, filters, search, searchText, sort]);
 
   const drawerEquipo = equipos.find(e => e.id === drawerId);
   const obsEquipo = equipos.find(e => e.id === obsModalId);
@@ -3999,6 +4004,7 @@ function MainApp({ onLogout, readOnly }) {
           <InventarioPage
             mode={menu} equipos={filtered} t={t} accent={accent} accentBg={accentBg}
             filters={filters} setFilters={setFilters} search={search} setSearch={setSearch}
+            searchText={searchText} setSearchText={setSearchText}
             sort={sort} setSort={setSort} uniqueVals={uniqueVals} activeCompany={activeCompany}
             onOpen={setDrawerId} onObs={setObsModalId}
             onAdd={addEquipo} onDuplicate={duplicateEquipo} onRemove={removeEquipo}
@@ -4007,6 +4013,7 @@ function MainApp({ onLogout, readOnly }) {
               setActiveCompany('TODAS');
               setFilters({ sede: '', ubicacion: '', estado: '', marca: '', clasificacion: '' });
               setSearch('');
+              setSearchText('');
               setSort({ key: 'equipo', dir: 1 });
             }}
           />
@@ -4607,14 +4614,14 @@ const INVENTORY_HEAD = [
   { key: 'clasificacionRiesgo', label: 'RIESGO' }, { key: 'inventario', label: 'INVENTARIO' },
 ];
 
-function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilters, search, setSearch, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport, activeCompany, onClearFilters, readOnly }) {
+function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilters, search, setSearch, searchText, setSearchText, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport, activeCompany, onClearFilters, readOnly }) {
   const year = new Date().getFullYear();
   const title = { inventario: 'Inventario de equipos', mantenimientos: 'Mantenimientos preventivos', calibraciones: 'Calibraciones', correctivos: 'Correctivos' }[mode];
   // Filtro por mes del mantenimiento — exclusivo de la vista "Mantenimientos preventivos",
   // no forma parte del objeto `filters` compartido porque no aplica a las demás vistas.
   const [filtroMes, setFiltroMes] = useState('');
   const hayFiltrosActivos = Boolean(
-    (activeCompany && activeCompany !== 'TODAS') || search.trim() ||
+    (activeCompany && activeCompany !== 'TODAS') || search.trim() || searchText.trim() ||
     filters.sede || filters.ubicacion || filters.estado || filters.marca || filters.clasificacion || filtroMes
   );
 
@@ -4643,11 +4650,18 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
       <div className="flex flex-wrap gap-2 mb-4">
         <div className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 border ${t.border} ${t.panel}`}>
           <Search size={13} className={t.muted} />
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar equipo, marca, serie, INVIMA, ubicación..."
-            className={`bg-transparent text-xs w-56 outline-none ${t.text}`} />
-          {search.trim() && (
-            <button onClick={() => setSearch('')} aria-label="Limpiar búsqueda" className={t.muted}><X size={13} /></button>
+          <select value={search} onChange={e => setSearch(e.target.value)} className={`bg-transparent text-xs w-40 outline-none ${t.text}`}>
+            <option value="">Todos los equipos</option>
+            {uniqueVals('equipo').map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        <div className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 border ${t.border} ${t.panel}`}>
+          <Search size={13} className={t.muted} />
+          <input type="text" value={searchText} onChange={e => setSearchText(e.target.value)}
+            placeholder="Buscar equipo..."
+            className={`bg-transparent text-xs w-48 outline-none ${t.text}`} />
+          {searchText.trim() && (
+            <button onClick={() => setSearchText('')} aria-label="Limpiar búsqueda" className={t.muted}><X size={13} /></button>
           )}
         </div>
         <select value={filters.sede} onChange={e => setFilters({ ...filters, sede: e.target.value })} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
