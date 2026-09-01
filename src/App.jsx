@@ -293,7 +293,7 @@ function tiempoRespuestaMs(r) {
 // navegador. Ahora la verificación real ocurre en el servidor (api/login.js), usando las
 // variables de entorno AUTH_USER / AUTH_PASSWORD_HASH configuradas en Vercel.
 
-const CLASIFICACIONES = ['I', 'IIA', 'IIB', 'III'];
+const CLASIFICACIONES = ['I', 'IIA', 'IIB', 'III', 'N/A'];
 const ESTADOS_EQUIPO = ['Operativo', 'Fuera de servicio', 'En mantenimiento', 'Dado de baja'];
 // La vista "Mantenimientos preventivos" solo ofrece estos dos — "Dado de baja" únicamente
 // aparece seleccionable en un equipo cuando ya tiene un reporte de baja (mismo campo
@@ -3696,7 +3696,11 @@ function MainApp({ onLogout, readOnly }) {
     if (filters.clasificacion) list = list.filter(e => e.clasificacionRiesgo === filters.clasificacion);
     if (search.trim()) {
       const s = search.toLowerCase();
-      list = list.filter(e => [e.equipo, e.marca, e.modelo, e.numeroSerie, e.inventario].join(' ').toLowerCase().includes(s));
+      list = list.filter(e => [
+        e.equipo, e.marca, e.modelo, e.numeroSerie, e.inventario, e.registroInvima,
+        e.ubicacion, e.empresa, e.sede, e.estado, e.clasificacionRiesgo,
+        e.periodicidadMantenimiento, e.observaciones,
+      ].filter(Boolean).join(' ').toLowerCase().includes(s));
     }
     list = [...list].sort((a, b) => {
       const av = (a[sort.key] || '').toString().toLowerCase();
@@ -4639,10 +4643,12 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
       <div className="flex flex-wrap gap-2 mb-4">
         <div className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 border ${t.border} ${t.panel}`}>
           <Search size={13} className={t.muted} />
-          <select value={search} onChange={e => setSearch(e.target.value)} className={`bg-transparent text-xs w-40 outline-none ${t.text}`}>
-            <option value="">Todos los equipos</option>
-            {uniqueVals('equipo').map(v => <option key={v} value={v}>{v}</option>)}
-          </select>
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar equipo, marca, serie, INVIMA, ubicación..."
+            className={`bg-transparent text-xs w-56 outline-none ${t.text}`} />
+          {search.trim() && (
+            <button onClick={() => setSearch('')} aria-label="Limpiar búsqueda" className={t.muted}><X size={13} /></button>
+          )}
         </div>
         <select value={filters.sede} onChange={e => setFilters({ ...filters, sede: e.target.value })} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
           <option value="">Todas las sedes</option>
