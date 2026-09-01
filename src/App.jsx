@@ -2171,8 +2171,11 @@ function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, renderExtra
                     ? <SelectInput t={t} value={r[f.key]} options={f.options} disabled={readOnly} onChange={v => onUpdate(i, f.key, v)} />
                     : f.type === 'url'
                       ? (
+                        // Una vez agregado el registro, la URL queda fija: no se puede editar ni
+                        // borrar parte del enlace desde aquí — solo eliminar el registro completo
+                        // (botón de la papelera) y volver a agregarlo si hace falta corregirla.
                         <div className="flex gap-1.5">
-                          <div className="flex-1 min-w-0"><TextInput t={t} value={r[f.key]} disabled={readOnly} onChange={v => onUpdate(i, f.key, v)} /></div>
+                          <div className="flex-1 min-w-0"><TextInput t={t} value={r[f.key]} disabled onChange={() => {}} /></div>
                           <PdfLink url={r[f.key]} title={`Ver ${f.label.replace(' (URL)', '')}`} t={t} />
                         </div>
                       )
