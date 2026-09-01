@@ -2096,9 +2096,9 @@ function TextInput({ value, onChange, t, type = 'text', placeholder, disabled, d
     />
   );
 }
-function SelectInput({ value, onChange, options, t, disabled, dense }) {
+function SelectInput({ value, onChange, options, t, disabled, dense, upper }) {
   return (
-    <select value={value || ''} onChange={e => onChange(e.target.value)} disabled={disabled} className={`rounded-md border ${dense ? 'px-2 py-1 text-2xs' : 'px-2.5 py-1.5 text-xs'} ${t.input} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
+    <select value={value || ''} onChange={e => onChange(e.target.value)} disabled={disabled} className={`rounded-md border ${dense ? 'px-2 py-1 text-2xs' : 'px-2.5 py-1.5 text-xs'} ${upper ? 'uppercase' : ''} ${t.input} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
       {options.map(o => <option key={o} value={o}>{o}</option>)}
     </select>
   );
@@ -2697,7 +2697,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
 
               <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
                 <Field dense label="Empresa"><SelectInput dense t={t} disabled={readOnly} value={equipo.empresa} options={COMPANIES.map(c => c.key)} onChange={v => onUpdate({ ...equipo, empresa: v, sede: companyOf(v).sedes[0] })} /></Field>
-                <Field dense label="Sede"><SelectInput dense t={t} disabled={readOnly} value={equipo.sede} options={companyOf(equipo.empresa).sedes} onChange={v => patch('sede', v)} /></Field>
+                <Field dense label="Sede"><SelectInput dense upper t={t} disabled={readOnly} value={equipo.sede} options={companyOf(equipo.empresa).sedes} onChange={v => patch('sede', v)} /></Field>
                 <Field dense label="Equipo"><TextInput dense t={t} disabled={readOnly} value={equipo.equipo} onChange={v => patch('equipo', v)} /></Field>
                 <Field dense label="Marca"><TextInput dense t={t} disabled={readOnly} value={equipo.marca} onChange={v => patch('marca', v)} /></Field>
                 <Field dense label="Modelo"><TextInput dense t={t} disabled={readOnly} value={equipo.modelo} onChange={v => patch('modelo', v)} /></Field>
@@ -3341,7 +3341,7 @@ function ReporteFallaForm({ onBack }) {
                   onChange={v => { setEmpresa(v); setSede(companyOf(v).sedes[0]); setEquipoId(''); }} />
               </Field>
               <Field label="Sede">
-                <SelectInput t={t} value={sede} options={companyOf(empresa).sedes}
+                <SelectInput upper t={t} value={sede} options={companyOf(empresa).sedes}
                   onChange={v => { setSede(v); setEquipoId(''); }} />
               </Field>
             </div>
@@ -4367,7 +4367,7 @@ function HeatmapMantenimientos({ scoped, activeCompany, t, accent }) {
         <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Mapa de calor — mantenimientos ejecutados</div>
         <div className="flex gap-2">
           {activeCompany !== 'TODAS' && (
-            <select value={sede} onChange={e => setSede(e.target.value)} className={`rounded-md px-2 py-1 text-2xs border ${t.input}`}>
+            <select value={sede} onChange={e => setSede(e.target.value)} className={`rounded-md px-2 py-1 text-2xs border uppercase ${t.input}`}>
               <option value="TODAS">Todas las sedes</option>
               {sedesDisponibles.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -4453,7 +4453,7 @@ function EvolucionAnual({ scoped, activeCompany, theme, t, accent }) {
         <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Evolución anual de mantenimientos</div>
         <div className="flex gap-2">
           {isCompanyView && (
-            <select value={sede} onChange={e => setSede(e.target.value)} className={`rounded-md px-2 py-1 text-2xs border ${t.input}`}>
+            <select value={sede} onChange={e => setSede(e.target.value)} className={`rounded-md px-2 py-1 text-2xs border uppercase ${t.input}`}>
               <option value="TODAS">Todas las sedes</option>
               {sedesDisponibles.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -4664,7 +4664,7 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
             <button onClick={() => setSearchText('')} aria-label="Limpiar búsqueda" className={t.muted}><X size={13} /></button>
           )}
         </div>
-        <select value={filters.sede} onChange={e => setFilters({ ...filters, sede: e.target.value })} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+        <select value={filters.sede} onChange={e => setFilters({ ...filters, sede: e.target.value })} className={`rounded-md px-2 py-1.5 text-xs border uppercase ${t.input}`}>
           <option value="">Todas las sedes</option>
           {uniqueVals('sede').map(v => <option key={v} value={v}>{v}</option>)}
         </select>
