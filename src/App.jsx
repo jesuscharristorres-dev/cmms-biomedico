@@ -5,7 +5,7 @@ import {
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, AlertTriangle, Lock,
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
-  IdCard, Save, SprayCan, ClipboardList, Paperclip, MoreVertical, Pencil, Filter, Zap
+  IdCard, Save, SprayCan, ClipboardList, Paperclip, MoreVertical, Pencil, Filter, Zap, ExternalLink
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -2651,7 +2651,15 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
             </div>
             <div className="text-white text-lg font-bold">{equipo.equipo || 'Equipo sin nombre'}</div>
           </div>
-          <button onClick={onClose} aria-label="Cerrar" className="flex items-center justify-center w-11 h-11 -mr-2 text-white/80 hover:text-white"><X size={20} /></button>
+          <div className="flex items-center gap-1.5">
+            {equipo.empresa === 'MACROMED' && (
+              <button onClick={() => window.open('https://kawak.com.co/macromed/main/home.php', '_blank', 'noopener,noreferrer')}
+                className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold bg-black/20 text-white hover:bg-black/30 transition">
+                <ExternalLink size={13} /> KAWAK
+              </button>
+            )}
+            <button onClick={onClose} aria-label="Cerrar" className="flex items-center justify-center w-11 h-11 -mr-2 text-white/80 hover:text-white"><X size={20} /></button>
+          </div>
         </div>
 
         <div className="flex overflow-x-auto border-b sticky top-[60px] z-10 bg-inherit" style={{ borderColor: 'inherit' }}>
