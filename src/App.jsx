@@ -5377,7 +5377,7 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
 
       <div className="mb-6">
         <div className="text-xs font-semibold uppercase tracking-wide mb-3">Documentación</div>
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid sm:grid-cols-2 gap-4 items-start">
           {TECNO_DOCS.map(doc => {
             const Icon = doc.icon;
             return (
