@@ -5592,28 +5592,38 @@ function PersonalPage({ personal, activeCompany, t, accent, onAdd, onUpdate, rea
 
       {list.length === 0 && <div className={`text-sm text-center py-10 ${t.muted}`}>Sin personal registrado con estos filtros.</div>}
 
-      <div className="space-y-2">
+      {/* Cada persona es una tarjeta compacta (avatar + nombre + cargo + estado), del mismo
+          estilo usado en Planes y programas / Tecnovigilancia: barra de acento superior,
+          bordes redondeados, altura según su propio contenido (no se estiran entre sí). Al
+          abrir una para editar, ocupa el ancho completo de la fila para no apretar el
+          formulario contra sus vecinas. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
         {list.map(p => {
           const empresaCfg = companyOf(p.empresa);
           const empresaColor = empresaCfg ? empresaCfg.color : '#64748B';
           const open = openId === p.id;
           const initials = (p.nombreCompleto || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
           return (
-            <div key={p.id} className={`rounded-lg border overflow-hidden shadow-sm hover:shadow-md transition ${t.panel} ${t.border}`}>
-              <div onClick={() => setOpenId(open ? null : p.id)} className="p-3 flex items-center gap-3 cursor-pointer flex-wrap">
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 text-white" style={{ background: empresaColor }}>
-                  {initials || <User size={14} />}
+            <div key={p.id} className={`rounded-xl border overflow-hidden shadow-sm hover:shadow-md transition ${t.panel} ${t.border} ${open ? 'sm:col-span-2 lg:col-span-3' : ''}`}>
+              <div className="h-1" style={{ background: empresaColor }} />
+              <div onClick={() => setOpenId(open ? null : p.id)} className="p-3.5 flex items-center gap-3 cursor-pointer">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold shrink-0 text-white" style={{ background: empresaColor }}>
+                  {initials || <User size={16} />}
                 </div>
-                <div className="flex-1 min-w-40">
-                  <div className="text-xs font-semibold">{p.nombreCompleto || 'Sin nombre'}</div>
-                  <div className={`text-2xs ${t.muted}`}>{p.cargo || 'Cargo sin definir'}{p.profesion ? ` · ${p.profesion}` : ''}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold truncate">{p.nombreCompleto || 'Sin nombre'}</div>
+                  <div className={`text-2xs truncate ${t.muted}`}>{p.cargo || 'Cargo sin definir'}{p.profesion ? ` · ${p.profesion}` : ''}</div>
                 </div>
+              </div>
+              <div className="px-3.5 pb-3 flex items-center gap-1.5 flex-wrap">
                 <Badge color={empresaColor}>{p.empresa}</Badge>
                 <Badge color={ESTADO_PERSONAL_HEX[p.estado]}>{p.estado}</Badge>
+              </div>
+              <div className="px-3.5 pb-3.5">
                 <PdfLink url={p.hojaVidaUrl} t={t} label="Ver hoja de vida" title={`Hoja de vida — ${p.nombreCompleto}`} emptyLabel="Pendiente de hoja de vida" />
               </div>
               {open && (
-                <div className={`p-3 border-t space-y-3 ${t.border} ${t.panel3}`}>
+                <div className={`p-3.5 border-t space-y-3 ${t.border} ${t.panel3}`}>
                   <div className="grid sm:grid-cols-2 gap-3">
                     <Field label="Nombre completo"><TextInput t={t} value={p.nombreCompleto} disabled={readOnly} onChange={v => onUpdate({ ...p, nombreCompleto: v })} /></Field>
                     <Field label="Cargo"><TextInput t={t} value={p.cargo} disabled={readOnly} onChange={v => onUpdate({ ...p, cargo: v })} /></Field>
