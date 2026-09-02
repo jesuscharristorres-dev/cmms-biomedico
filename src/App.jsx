@@ -1764,8 +1764,11 @@ const PLANES_CATEGORIAS = [
     { key: 'planMantenimiento', label: 'Plan de mantenimiento', descripcion: 'Documento institucional para la planeación del mantenimiento' },
   ] },
   { key: 'capacitaciones', label: 'Capacitaciones', icon: '🎓', documentos: [
-    { key: 'programaCapacitaciones', label: 'Programa de capacitaciones', descripcion: 'Documento institucional para la gestión de capacitaciones' },
     { key: 'planCapacitaciones', label: 'Plan de capacitaciones', descripcion: 'Documento institucional para la planeación de capacitaciones' },
+    // La clave interna sigue siendo `programaCapacitaciones` (así se guardó siempre en la
+    // base de datos compartida) — solo cambia la etiqueta visible a "Cronograma de
+    // capacitaciones" para no perder los documentos ya cargados bajo esa clave.
+    { key: 'programaCapacitaciones', label: 'Cronograma de capacitaciones', descripcion: 'Documento institucional con el cronograma de capacitaciones' },
   ] },
 ];
 
