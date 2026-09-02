@@ -2176,6 +2176,25 @@ function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, renderExtra
   }, [records, dateKey]);
   return (
     <div>
+      {!readOnly && (
+        <div className={`rounded-lg border p-2.5 mb-3 ${t.panel3} ${t.border}`}>
+          <div className="flex flex-wrap gap-2">
+            {fields.map(f => (
+              <div key={f.key} className="flex-1 min-w-[120px]">
+                <label className="text-3xs uppercase text-slate-400">{f.label}</label>
+                {f.type === 'select'
+                  ? <SelectInput t={t} value={draft[f.key] || f.options[0]} options={f.options} onChange={v => setDraft({ ...draft, [f.key]: v })} />
+                  : <TextInput t={t} type={f.type || 'text'} value={draft[f.key]} onChange={v => setDraft({ ...draft, [f.key]: v })} />}
+              </div>
+            ))}
+            <button
+              onClick={() => { onAdd(draft); setDraft({}); }}
+              className="self-end rounded-md px-3 py-1.5 text-xs font-semibold flex items-center gap-1"
+              style={{ background: '#4FD1C5', color: '#0F1419' }}
+            ><Plus size={13} /> Agregar</button>
+          </div>
+        </div>
+      )}
       <div className="space-y-2 mb-3">
         {records.length === 0 && <div className={`text-xs text-center py-4 ${t.muted}`}>Sin registros todavía</div>}
         {sortedRecords.map(({ r, i }) => (
@@ -2205,25 +2224,6 @@ function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, renderExtra
           </div>
         ))}
       </div>
-      {!readOnly && (
-        <div className={`rounded-lg border p-2.5 ${t.panel3} ${t.border}`}>
-          <div className="flex flex-wrap gap-2">
-            {fields.map(f => (
-              <div key={f.key} className="flex-1 min-w-[120px]">
-                <label className="text-3xs uppercase text-slate-400">{f.label}</label>
-                {f.type === 'select'
-                  ? <SelectInput t={t} value={draft[f.key] || f.options[0]} options={f.options} onChange={v => setDraft({ ...draft, [f.key]: v })} />
-                  : <TextInput t={t} type={f.type || 'text'} value={draft[f.key]} onChange={v => setDraft({ ...draft, [f.key]: v })} />}
-              </div>
-            ))}
-            <button
-              onClick={() => { onAdd(draft); setDraft({}); }}
-              className="self-end rounded-md px-3 py-1.5 text-xs font-semibold flex items-center gap-1"
-              style={{ background: '#4FD1C5', color: '#0F1419' }}
-            ><Plus size={13} /> Agregar</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
