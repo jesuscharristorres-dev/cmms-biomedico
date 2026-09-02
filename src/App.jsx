@@ -1759,13 +1759,13 @@ async function actualizarPlanPrograma(empresaKey, campo, valor) {
   return data;
 }
 const PLANES_CATEGORIAS = [
-  { key: 'mantenimiento', label: 'Mantenimiento', icon: '🔧', documentos: [
-    { key: 'programaMantenimiento', label: 'Programa de mantenimiento' },
-    { key: 'planMantenimiento', label: 'Plan de mantenimiento' },
+  { key: 'mantenimiento', label: 'Mantenimiento', icon: '📋', documentos: [
+    { key: 'programaMantenimiento', label: 'Programa de mantenimiento', descripcion: 'Documento institucional para la gestión del mantenimiento' },
+    { key: 'planMantenimiento', label: 'Plan de mantenimiento', descripcion: 'Documento institucional para la planeación del mantenimiento' },
   ] },
   { key: 'capacitaciones', label: 'Capacitaciones', icon: '🎓', documentos: [
-    { key: 'programaCapacitaciones', label: 'Programa de capacitaciones' },
-    { key: 'planCapacitaciones', label: 'Plan de capacitaciones' },
+    { key: 'programaCapacitaciones', label: 'Programa de capacitaciones', descripcion: 'Documento institucional para la gestión de capacitaciones' },
+    { key: 'planCapacitaciones', label: 'Plan de capacitaciones', descripcion: 'Documento institucional para la planeación de capacitaciones' },
   ] },
 ];
 
@@ -5159,6 +5159,63 @@ function ReporteFallaDetalle({ r, onUpdate, readOnly, t, accent }) {
   );
 }
 
+// Tarjeta de un documento institucional (Planes y programas). Presentación únicamente:
+// la URL sigue siendo la única fuente de datos (misma clave `doc.key` de siempre, mismo
+// `onChange` que llama a onUpdate(empresaSel, doc.key, v)) — solo se deja de mostrar el
+// campo de texto con la URL cruda en todo momento; para cargar/reemplazar se abre un modo
+// de edición puntual que se cierra al guardar.
+function PlanDocumentoCard({ doc, url, onChange, readOnly, t, accent }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(url || '');
+  const tieneDocumento = Boolean((url || '').trim());
+
+  const abrirEdicion = () => { setDraft(url || ''); setEditing(true); };
+  const guardar = () => { onChange(draft.trim()); setEditing(false); };
+  const cancelar = () => { setDraft(url || ''); setEditing(false); };
+
+  return (
+    <div className={`rounded-xl border p-4 flex flex-col gap-3 ${t.panel} ${t.border}`}>
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: accent + '1A', color: accent }}>
+          <FileText size={20} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">{doc.label}</div>
+          <div className={`text-2xs mt-0.5 ${t.muted}`}>{doc.descripcion}</div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1.5 text-2xs">
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: tieneDocumento ? '#22C55E' : '#94A3B8' }} />
+        <span className={tieneDocumento ? 'font-medium' : t.muted}>{tieneDocumento ? 'Documento disponible' : 'Sin documento'}</span>
+      </div>
+
+      {editing ? (
+        <div className="flex flex-col gap-2 pt-1 border-t border-dashed border-slate-700/30">
+          <TextInput t={t} value={draft} placeholder="https://drive.google.com/..." onChange={setDraft} />
+          <div className="flex gap-2">
+            <Button variant="primary" size="sm" accent={accent} icon={Save} iconSize={12} onClick={guardar}>Guardar</Button>
+            <Button variant="outline" size="sm" t={t} icon={X} iconSize={12} onClick={cancelar}>Cancelar</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-2 mt-auto pt-1">
+          {tieneDocumento && (
+            <Button variant="outline" size="sm" t={t} icon={FileText} iconSize={12}
+              onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>Ver documento</Button>
+          )}
+          {!readOnly && (
+            <Button variant={tieneDocumento ? 'ghost' : 'primary'} size="sm" accent={accent} t={t}
+              icon={tieneDocumento ? Pencil : Upload} iconSize={12} onClick={abrirEdicion}>
+              {tieneDocumento ? 'Reemplazar' : 'Cargar documento'}
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Documentación institucional que NO es transversal: cada empresa tiene sus propios
 // documentos de Mantenimiento y Capacitaciones, nunca mezclados entre sí. Distinta de
 // la pestaña "Documentos" de cada equipo (esa es por equipo; esta es por empresa).
@@ -5204,23 +5261,16 @@ function PlanesProgramasPage({ planesProgramas, activeCompany, t, onUpdate, read
       <h1 className="text-lg font-bold mb-1" style={{ color: empresa.color }}>{empresa.key}</h1>
       <p className={`text-xs mb-4 ${t.muted}`}>Planes y programas — documentación institucional exclusiva de esta empresa.</p>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         {PLANES_CATEGORIAS.map(cat => (
-          <div key={cat.key} className={`rounded-xl border p-4 ${t.panel} ${t.border}`}>
-            <div className="text-xs font-semibold uppercase tracking-wide mb-3 flex items-center gap-2">
+          <div key={cat.key}>
+            <div className="text-xs font-semibold uppercase tracking-wide mb-3 flex items-center gap-2" style={{ color: empresa.color }}>
               <span>{cat.icon}</span> {cat.label}
             </div>
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {cat.documentos.map(doc => (
-                <div key={doc.key} className="flex items-end gap-2 flex-wrap">
-                  <div className="flex-1 min-w-55">
-                    <Field label={doc.label}>
-                      <TextInput t={t} value={datos[doc.key]} disabled={readOnly} placeholder="URL del documento"
-                        onChange={v => onUpdate(empresaSel, doc.key, v)} />
-                    </Field>
-                  </div>
-                  <PdfLink url={datos[doc.key]} t={t} title={doc.label} emptyLabel="Documento no cargado" />
-                </div>
+                <PlanDocumentoCard key={doc.key} doc={doc} url={datos[doc.key]} readOnly={readOnly} t={t} accent={empresa.color}
+                  onChange={v => onUpdate(empresaSel, doc.key, v)} />
               ))}
             </div>
           </div>
