@@ -5162,12 +5162,14 @@ function ReporteFallaDetalle({ r, onUpdate, readOnly, t, accent }) {
   );
 }
 
-// Tarjeta de un documento institucional (Planes y programas). Presentación únicamente:
-// la URL sigue siendo la única fuente de datos (misma clave `doc.key` de siempre, mismo
-// `onChange` que llama a onUpdate(empresaSel, doc.key, v)) — solo se deja de mostrar el
-// campo de texto con la URL cruda en todo momento; para cargar/reemplazar se abre un modo
-// de edición puntual que se cierra al guardar.
-function PlanDocumentoCard({ doc, url, onChange, readOnly, t, accent }) {
+// Estado + acciones de un documento institucional con URL externa (Drive/OneDrive/etc.):
+// punto de estado (🟢 disponible / ⚪ sin documento), botón "Ver documento" cuando existe,
+// y "Cargar documento"/"Reemplazar" que abre un modo de edición puntual — la URL cruda
+// nunca se muestra fuera de ese modo. Presentación únicamente: `onChange` sigue siendo el
+// mismo callback de siempre que guarda la URL en su fuente de datos original, sin cambiar
+// dónde ni cómo se almacena. Compartido por Planes y programas y Tecnovigilancia para no
+// duplicar esta lógica.
+function DocumentoEstadoAcciones({ url, onChange, readOnly, t, accent }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(url || '');
   const tieneDocumento = Boolean((url || '').trim());
@@ -5177,17 +5179,7 @@ function PlanDocumentoCard({ doc, url, onChange, readOnly, t, accent }) {
   const cancelar = () => { setDraft(url || ''); setEditing(false); };
 
   return (
-    <div className={`rounded-xl border p-4 flex flex-col gap-3 ${t.panel} ${t.border}`}>
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: accent + '1A', color: accent }}>
-          <FileText size={20} />
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm font-semibold">{doc.label}</div>
-          <div className={`text-2xs mt-0.5 ${t.muted}`}>{doc.descripcion}</div>
-        </div>
-      </div>
-
+    <>
       <div className="flex items-center gap-1.5 text-2xs">
         <span className="w-2 h-2 rounded-full shrink-0" style={{ background: tieneDocumento ? '#22C55E' : '#94A3B8' }} />
         <span className={tieneDocumento ? 'font-medium' : t.muted}>{tieneDocumento ? 'Documento disponible' : 'Sin documento'}</span>
@@ -5202,7 +5194,7 @@ function PlanDocumentoCard({ doc, url, onChange, readOnly, t, accent }) {
           </div>
         </div>
       ) : (
-        <div className="flex gap-2 mt-auto pt-1">
+        <div className="flex gap-2 flex-wrap pt-1">
           {tieneDocumento && (
             <Button variant="outline" size="sm" t={t} icon={FileText} iconSize={12}
               onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>Ver documento</Button>
@@ -5215,6 +5207,26 @@ function PlanDocumentoCard({ doc, url, onChange, readOnly, t, accent }) {
           )}
         </div>
       )}
+    </>
+  );
+}
+
+// Tarjeta de un documento institucional (Planes y programas). Reutiliza
+// DocumentoEstadoAcciones para el estado/botones; solo aporta el encabezado
+// (ícono, título, descripción corta).
+function PlanDocumentoCard({ doc, url, onChange, readOnly, t, accent }) {
+  return (
+    <div className={`rounded-xl border p-4 flex flex-col gap-3 ${t.panel} ${t.border}`}>
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: accent + '1A', color: accent }}>
+          <FileText size={20} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">{doc.label}</div>
+          <div className={`text-2xs mt-0.5 ${t.muted}`}>{doc.descripcion}</div>
+        </div>
+      </div>
+      <DocumentoEstadoAcciones url={url} onChange={onChange} readOnly={readOnly} t={t} accent={accent} />
     </div>
   );
 }
@@ -5386,35 +5398,19 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
                   {!doc.porEmpresa ? (
                     // Documento único para las 5 empresas (p. ej. un formato regulatorio de
                     // INVIMA): una sola URL, sin distinción por empresa activa.
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <div className="flex-1 min-w-40">
-                        <TextInput t={t} value={urlDeDoc(doc)} disabled={readOnly} placeholder="URL del documento"
-                          onChange={v => onUpdateTransversal(doc.key, null, v)} />
-                      </div>
-                      <PdfLink url={urlDeDoc(doc)} t={t} title={doc.label} emptyLabel="Documento no cargado" />
-                    </div>
+                    <DocumentoEstadoAcciones url={urlDeDoc(doc)} onChange={v => onUpdateTransversal(doc.key, null, v)} readOnly={readOnly} t={t} accent={accent} />
                   ) : modoGlobal ? (
                     // Con una empresa activa en el selector superior, solo se ve/edita el
                     // enlace de esa empresa — el resto quedan ocultos, como pide el requisito.
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <div className="flex-1 min-w-40">
-                        <TextInput t={t} value={urlDeDoc(doc, activeCompany)} disabled={readOnly} placeholder="URL del documento"
-                          onChange={v => onUpdateTransversal(doc.key, activeCompany, v)} />
-                      </div>
-                      <PdfLink url={urlDeDoc(doc, activeCompany)} t={t} title={`${doc.label} · ${activeCompany}`} emptyLabel="Documento no cargado" />
-                    </div>
+                    <DocumentoEstadoAcciones url={urlDeDoc(doc, activeCompany)} onChange={v => onUpdateTransversal(doc.key, activeCompany, v)} readOnly={readOnly} t={t} accent={accent} />
                   ) : (
                     // Sin empresa activa ("Todas las empresas"): se configuran las URLs de
-                    // las 5 empresas desde el mismo lugar.
+                    // las 5 empresas desde el mismo lugar, cada una en su propia mini-tarjeta.
                     <div className="space-y-2">
                       {COMPANIES.map(c => (
-                        <div key={c.key} className="flex items-center gap-2 flex-wrap">
-                          <span className="text-2xs font-semibold w-28 shrink-0 truncate" style={{ color: c.color }}>{c.key}</span>
-                          <div className="flex-1 min-w-40">
-                            <TextInput dense t={t} value={urlDeDoc(doc, c.key)} disabled={readOnly} placeholder="URL del documento"
-                              onChange={v => onUpdateTransversal(doc.key, c.key, v)} />
-                          </div>
-                          <PdfLink url={urlDeDoc(doc, c.key)} t={t} title={`${doc.label} · ${c.key}`} emptyLabel="No cargado" />
+                        <div key={c.key} className={`rounded-lg border p-2.5 ${t.panel3} ${t.border}`}>
+                          <div className="text-2xs font-semibold mb-1.5" style={{ color: c.color }}>{c.key}</div>
+                          <DocumentoEstadoAcciones url={urlDeDoc(doc, c.key)} onChange={v => onUpdateTransversal(doc.key, c.key, v)} readOnly={readOnly} t={t} accent={c.color} />
                         </div>
                       ))}
                     </div>
