@@ -5377,44 +5377,45 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
 
       <div className="mb-6">
         <div className="text-xs font-semibold uppercase tracking-wide mb-3">Documentación</div>
-        <div className="grid sm:grid-cols-2 gap-4 items-start">
-          {TECNO_DOCS.map(doc => {
-            const Icon = doc.icon;
+        {/* Cada tarjeta representa un único documento+empresa: el documento único (INVIMA)
+            y, para el documento por empresa, una tarjeta por cada empresa — todas del mismo
+            tamaño, como hermanas en la misma cuadrícula. Así ninguna tarjeta queda obligada a
+            estirarse a la altura de una vecina más alta (antes las 5 empresas vivían apiladas
+            dentro de una sola tarjeta "Manual", mucho más alta que la de INVIMA al lado). */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
+          {TECNO_DOCS.flatMap(doc => {
+            if (!doc.porEmpresa) {
+              return [{
+                cardKey: doc.key, icon: doc.icon, titulo: doc.label, subtitulo: 'Documento único (todas las empresas)',
+                url: urlDeDoc(doc), onChange: v => onUpdateTransversal(doc.key, null, v), color: accent,
+              }];
+            }
+            if (modoGlobal) {
+              return [{
+                cardKey: `${doc.key}-${activeCompany}`, icon: doc.icon, titulo: doc.label, subtitulo: activeCompany,
+                url: urlDeDoc(doc, activeCompany), onChange: v => onUpdateTransversal(doc.key, activeCompany, v), color: accent,
+              }];
+            }
+            return COMPANIES.map(c => ({
+              cardKey: `${doc.key}-${c.key}`, icon: doc.icon, titulo: doc.label, subtitulo: c.key,
+              url: urlDeDoc(doc, c.key), onChange: v => onUpdateTransversal(doc.key, c.key, v), color: c.color,
+            }));
+          }).map(card => {
+            const Icon = card.icon;
             return (
-              <div key={doc.key} className={`rounded-xl border overflow-hidden shadow-sm hover:shadow-md transition ${t.panel} ${t.border}`}>
-                <div className="h-1" style={{ background: accent }} />
-                <div className="p-4">
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: accent + '1A', color: accent }}>
-                      <Icon size={18} />
+              <div key={card.cardKey} className={`rounded-xl border overflow-hidden shadow-sm hover:shadow-md transition ${t.panel} ${t.border}`}>
+                <div className="h-1" style={{ background: card.color }} />
+                <div className="p-3.5 flex flex-col gap-2.5">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: card.color + '1A', color: card.color }}>
+                      <Icon size={16} />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-xs font-semibold wrap-break-word">{doc.label}</div>
-                      <div className={`text-2xs mt-0.5 ${t.muted}`}>
-                        {!doc.porEmpresa ? 'Documento único (todas las empresas)' : (modoGlobal ? activeCompany : 'URL por empresa')}
-                      </div>
+                      <div className="text-xs font-semibold wrap-break-word">{card.titulo}</div>
+                      <div className="text-2xs mt-0.5 font-semibold" style={{ color: card.color }}>{card.subtitulo}</div>
                     </div>
                   </div>
-                  {!doc.porEmpresa ? (
-                    // Documento único para las 5 empresas (p. ej. un formato regulatorio de
-                    // INVIMA): una sola URL, sin distinción por empresa activa.
-                    <DocumentoEstadoAcciones url={urlDeDoc(doc)} onChange={v => onUpdateTransversal(doc.key, null, v)} readOnly={readOnly} t={t} accent={accent} />
-                  ) : modoGlobal ? (
-                    // Con una empresa activa en el selector superior, solo se ve/edita el
-                    // enlace de esa empresa — el resto quedan ocultos, como pide el requisito.
-                    <DocumentoEstadoAcciones url={urlDeDoc(doc, activeCompany)} onChange={v => onUpdateTransversal(doc.key, activeCompany, v)} readOnly={readOnly} t={t} accent={accent} />
-                  ) : (
-                    // Sin empresa activa ("Todas las empresas"): se configuran las URLs de
-                    // las 5 empresas desde el mismo lugar, cada una en su propia mini-tarjeta.
-                    <div className="space-y-2">
-                      {COMPANIES.map(c => (
-                        <div key={c.key} className={`rounded-lg border p-2.5 ${t.panel3} ${t.border}`}>
-                          <div className="text-2xs font-semibold mb-1.5" style={{ color: c.color }}>{c.key}</div>
-                          <DocumentoEstadoAcciones url={urlDeDoc(doc, c.key)} onChange={v => onUpdateTransversal(doc.key, c.key, v)} readOnly={readOnly} t={t} accent={c.color} />
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <DocumentoEstadoAcciones url={card.url} onChange={card.onChange} readOnly={readOnly} t={t} accent={card.color} />
                 </div>
               </div>
             );
