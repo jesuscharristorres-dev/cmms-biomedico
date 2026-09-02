@@ -2157,11 +2157,28 @@ function FirmaInput({ value, onChange, readOnly, alt, t }) {
 /** Editor genérico de listas de registros (preventivos, correctivos, etc.) */
 function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, renderExtra, readOnly }) {
   const [draft, setDraft] = useState({});
+  // Orden de visualización, no de los datos: siempre el registro con fecha más reciente
+  // primero (descendente); los que no tienen fecha van al final, sin alterar el arreglo
+  // original — `i` conserva el índice real para que onUpdate/onRemove/renderExtra sigan
+  // apuntando al registro correcto.
+  const dateKey = fields.find(f => f.type === 'date')?.key || 'fecha';
+  const sortedRecords = useMemo(() => {
+    return records
+      .map((r, i) => ({ r, i }))
+      .sort((a, b) => {
+        const da = a.r[dateKey];
+        const db = b.r[dateKey];
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return new Date(db) - new Date(da);
+      });
+  }, [records, dateKey]);
   return (
     <div>
       <div className="space-y-2 mb-3">
         {records.length === 0 && <div className={`text-xs text-center py-4 ${t.muted}`}>Sin registros todavía</div>}
-        {records.map((r, i) => (
+        {sortedRecords.map(({ r, i }) => (
           <div key={r.id} className={`rounded-lg border p-2.5 ${t.panel3} ${t.border}`}>
             <div className="flex flex-wrap gap-2">
               {fields.map(f => (
