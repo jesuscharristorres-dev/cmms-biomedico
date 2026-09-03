@@ -2698,6 +2698,10 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
         <div className="p-5">
           {tab === 'Información General' && (
             <div className="relative pr-40 sm:pr-72">
+              <div className="flex items-center gap-2 mb-3">
+                <IdCard size={16} style={{ color: accent }} />
+                <h2 className="text-sm font-bold uppercase tracking-wide" style={{ color: accent }}>Hoja de vida</h2>
+              </div>
               {/* Fotografía — flotante en la esquina superior derecha, fuera del flujo de la grilla
                   para que los campos de la izquierda no dependan de su altura. Más pequeña en
                   pantallas angostas (drawer a ancho completo) para no aplastar la grilla. */}
