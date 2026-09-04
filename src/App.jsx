@@ -1961,6 +1961,51 @@ async function actualizarLimpiezaDesinfeccion(empresaKey, sede, anio, mes, url) 
   cacheSet(LIMPIEZA_KEY, data);
   return data;
 }
+
+// Plantilla del formato de limpieza y desinfección: UN archivo real (PDF/Word/Excel) por
+// empresa — a diferencia de arriba (que es solo un enlace externo por sede·mes), aquí el
+// archivo se guarda tal cual en la base de datos compartida, como Data URI base64 (mismo
+// mecanismo ya usado antes para documentos de equipo vía `archivoDatos`, ver abrirDocumento()
+// más abajo), así que sí se puede ver/descargar sin depender de un servicio externo.
+// Cargar/reemplazar/eliminar SÍ requieren sesión de admin (api/limpieza-plantillas.js usa
+// requireAdmin) — a diferencia del enlace por sede·mes de arriba, aquí el Modo Invitado solo
+// puede consultar/descargar, nunca modificar. Fuente de verdad: api/limpieza-plantillas.js.
+const LIMPIEZA_PLANTILLAS_KEY = 'cmms-limpieza-plantillas';
+async function loadLimpiezaPlantillas() {
+  try {
+    const res = await fetch('/api/limpieza-plantillas');
+    if (res.ok) {
+      const { data } = await res.json();
+      cacheSet(LIMPIEZA_PLANTILLAS_KEY, data);
+      return data;
+    }
+    console.error('No se pudo consultar las plantillas de limpieza y desinfección: respuesta', res.status);
+  } catch (err) {
+    console.error('No se pudo consultar las plantillas de limpieza y desinfección', err);
+  }
+  return cacheGet(LIMPIEZA_PLANTILLAS_KEY, {});
+}
+async function guardarLimpiezaPlantilla(empresaKey, { nombre, tipo, archivoDatos }) {
+  const res = await fetch('/api/limpieza-plantillas', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ empresaKey, nombre, tipo, archivoDatos }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'No se pudo guardar la plantilla en la base de datos compartida.');
+  cacheSet(LIMPIEZA_PLANTILLAS_KEY, body.data);
+  return body.data;
+}
+async function eliminarLimpiezaPlantillaRemota(empresaKey) {
+  const res = await fetch('/api/limpieza-plantillas', {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ empresaKey }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'No se pudo eliminar la plantilla en la base de datos compartida.');
+  cacheSet(LIMPIEZA_PLANTILLAS_KEY, body.data);
+  return body.data;
+}
+
 function newPersonal(empresa) {
   return {
     id: uid('per'),
@@ -2292,6 +2337,35 @@ function abrirDocumento(doc) {
     a.click();
     a.remove();
   }
+}
+
+// Convierte un Data URI (archivoDatos) a un blob: URL temporal — usado solo para "Ver" en
+// una pestaña nueva. Necesario porque los navegadores modernos bloquean la navegación de
+// nivel superior directamente a una URL data: (política anti-phishing de Chrome desde 2019),
+// pero sí permiten blob: URLs; para "Descargar" no hace falta este paso porque el atributo
+// `download` de <a> (como en abrirDocumento(), arriba) ya evita ese bloqueo.
+function dataUriAUrlTemporal(dataUri) {
+  const [header, base64 = ''] = dataUri.split(',');
+  const mime = /data:([^;]+)/.exec(header)?.[1] || 'application/octet-stream';
+  const binario = atob(base64);
+  const bytes = new Uint8Array(binario.length);
+  for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+  return URL.createObjectURL(new Blob([bytes], { type: mime }));
+}
+function verPlantillaLimpieza(plantilla) {
+  if (!plantilla?.archivoDatos) return;
+  const url = dataUriAUrlTemporal(plantilla.archivoDatos);
+  window.open(url, '_blank', 'noopener,noreferrer');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+function descargarPlantillaLimpieza(plantilla) {
+  if (!plantilla?.archivoDatos) return;
+  const a = document.createElement('a');
+  a.href = plantilla.archivoDatos;
+  a.download = plantilla.nombre || 'plantilla';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 function EmptyDocumentsState({ t, accent, readOnly, onAdd }) {
@@ -3538,6 +3612,7 @@ function MainApp({ onLogout, readOnly }) {
   const [tecnoReportes, setTecnoReportes] = useState({});
   const [personal, setPersonal] = useState([]);
   const [limpiezaDesinfeccion, setLimpiezaDesinfeccion] = useState({});
+  const [limpiezaPlantillas, setLimpiezaPlantillas] = useState({});
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => { loadEquipos().then(setEquipos); }, []);
@@ -3659,6 +3734,22 @@ function MainApp({ onLogout, readOnly }) {
       console.error('No se pudo sincronizar el formato de limpieza y desinfección con el servidor compartido', err);
       setLimpiezaDesinfeccion(previous);
     });
+  };
+
+  useEffect(() => { loadLimpiezaPlantillas().then(setLimpiezaPlantillas); }, []);
+  // A diferencia de los demás updateX de arriba, estas dos NO actualizan el estado de forma
+  // optimista: cargar/reemplazar/eliminar un archivo real depende de una respuesta del
+  // servidor (éxito o error de validación/permisos) que la tarjeta necesita mostrarle al
+  // usuario antes de dar por hecho el cambio, así que solo se refleja en pantalla una vez
+  // confirmado — el error, si lo hay, lo captura y muestra el propio componente que llama a
+  // estas funciones (ver PlantillaLimpiezaCard).
+  const subirLimpiezaPlantilla = async (empresaKey, archivo) => {
+    const actualizado = await guardarLimpiezaPlantilla(empresaKey, archivo);
+    setLimpiezaPlantillas(actualizado);
+  };
+  const eliminarLimpiezaPlantilla = async (empresaKey) => {
+    const actualizado = await eliminarLimpiezaPlantillaRemota(empresaKey);
+    setLimpiezaPlantillas(actualizado);
   };
 
   const theme = themeOf(activeCompany);
@@ -4053,7 +4144,10 @@ function MainApp({ onLogout, readOnly }) {
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
-        {menu === 'limpieza' && <LimpiezaDesinfeccionPage data={limpiezaDesinfeccion} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateLimpiezaDesinfeccion} />}
+        {menu === 'limpieza' && (
+          <LimpiezaDesinfeccionPage data={limpiezaDesinfeccion} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateLimpiezaDesinfeccion}
+            plantillas={limpiezaPlantillas} onUploadPlantilla={subirLimpiezaPlantilla} onDeletePlantilla={eliminarLimpiezaPlantilla} readOnly={readOnly} />
+        )}
         {menu === 'reportes' && !readOnly && <ReportesPage equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} t={t} accent={accent} onExport={exportExcel} />}
         {menu === 'configuracion' && !readOnly && <ConfigPage t={t} onLogout={onLogout} readOnly={readOnly} />}
         </div>
@@ -5732,15 +5826,159 @@ function PersonalFormModal({ t, accent, activeCompany, onClose, onSave }) {
   );
 }
 
+// Formatos permitidos para la plantilla del formato de limpieza y desinfección — mismo set
+// validado en el servidor (api/limpieza-plantillas.js). `accept` es lo que restringe el
+// selector de archivos del navegador; `TIPOS` es lo que de verdad se valida antes de subir.
+const PLANTILLA_LIMPIEZA_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx';
+const PLANTILLA_LIMPIEZA_TIPOS = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
+// 3 MB de archivo real: en base64 pesa ~33% más (~4 MB), quedando con margen bajo el límite
+// de 4.5 MB que Vercel impone al cuerpo de una función serverless (api/limpieza-plantillas.js
+// lo vuelve a validar del lado del servidor, no solo aquí).
+const PLANTILLA_LIMPIEZA_MAX_BYTES = 3 * 1024 * 1024;
+
+// Tarjeta de la plantilla del formato de limpieza y desinfección de UNA empresa — a
+// diferencia del resto de "documentos" de la app (que solo guardan una URL externa), aquí el
+// archivo se sube y se guarda de verdad (ver guardarLimpiezaPlantilla/loadLimpiezaPlantillas
+// más arriba), reutilizando el mecanismo de Data URI base64 que ya existía para
+// `archivoDatos`. Cargar/reemplazar/eliminar están gateados por `readOnly` en la UI (el Modo
+// Invitado no ve esos botones) Y, además, el servidor (requireAdmin en
+// api/limpieza-plantillas.js) rechaza esas operaciones sin sesión de admin aunque alguien
+// llame al endpoint directamente sin pasar por esta interfaz — la restricción no depende
+// solo de ocultar el botón.
+function PlantillaLimpiezaCard({ empresa, plantilla, onUpload, onDelete, readOnly, t }) {
+  const [subiendo, setSubiendo] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
+  const [error, setError] = useState('');
+  const [confirmarEliminar, setConfirmarEliminar] = useState(false);
+  const inputRef = useRef(null);
+
+  const tieneArchivo = !!plantilla?.archivoDatos;
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setError('');
+    if (!PLANTILLA_LIMPIEZA_TIPOS.includes(file.type)) {
+      setError('Formato no permitido. Solo se aceptan PDF, Word o Excel.');
+      return;
+    }
+    if (file.size > PLANTILLA_LIMPIEZA_MAX_BYTES) {
+      setError('El archivo supera el tamaño máximo permitido (3 MB).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      setSubiendo(true);
+      setError('');
+      try {
+        await onUpload(empresa.key, { nombre: file.name, tipo: file.type, archivoDatos: ev.target.result });
+      } catch (err) {
+        setError(err.message || 'No se pudo cargar la plantilla.');
+      } finally {
+        setSubiendo(false);
+      }
+    };
+    reader.onerror = () => setError('No se pudo leer el archivo.');
+    reader.readAsDataURL(file);
+  };
+
+  const confirmarYEliminar = async () => {
+    setEliminando(true);
+    setError('');
+    try {
+      await onDelete(empresa.key);
+      setConfirmarEliminar(false);
+    } catch (err) {
+      setError(err.message || 'No se pudo eliminar la plantilla.');
+    } finally {
+      setEliminando(false);
+    }
+  };
+
+  return (
+    <div className={`max-w-md rounded-xl border overflow-hidden shadow-sm ${t.panel} ${t.border}`}>
+      <div className="h-1" style={{ background: empresa.color }} />
+      <div className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <FileText size={18} style={{ color: empresa.color }} />
+          <div className="text-xs font-semibold">Formato de limpieza y desinfección</div>
+        </div>
+
+        {tieneArchivo ? (
+          <div className="space-y-2.5">
+            <div className="flex items-start gap-2">
+              <FileText size={14} className={`mt-0.5 shrink-0 ${t.muted}`} />
+              <span className="text-xs font-medium wrap-break-word">{plantilla.nombre}</span>
+            </div>
+            {plantilla.updatedAt && (
+              <div className={`text-3xs ${t.muted}`}>Actualizado {new Date(plantilla.updatedAt).toLocaleDateString('es-CO')}</div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" t={t} icon={Eye} iconSize={12} onClick={() => verPlantillaLimpieza(plantilla)}>Ver</Button>
+              <Button variant="outline" size="sm" t={t} icon={Download} iconSize={12} onClick={() => descargarPlantillaLimpieza(plantilla)}>Descargar</Button>
+            </div>
+            {!readOnly && (
+              <div className="flex flex-wrap items-center gap-2 pt-2 mt-1 border-t border-dashed border-slate-700/30">
+                <Button variant="ghost" size="sm" t={t} icon={Upload} iconSize={12} disabled={subiendo}
+                  onClick={() => inputRef.current?.click()}>{subiendo ? 'Cargando…' : 'Reemplazar'}</Button>
+                {!confirmarEliminar ? (
+                  <Button variant="outline" size="sm" t={t} icon={Trash2} iconSize={12} style={{ color: '#EF4444', borderColor: '#EF4444' }}
+                    onClick={() => setConfirmarEliminar(true)}>Eliminar</Button>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-3xs ${t.muted}`}>¿Eliminar?</span>
+                    <Button variant="danger" size="sm" icon={Trash2} iconSize={12} disabled={eliminando} onClick={confirmarYEliminar}>
+                      {eliminando ? 'Eliminando…' : 'Sí, eliminar'}
+                    </Button>
+                    <Button variant="outline" size="sm" t={t} disabled={eliminando} onClick={() => setConfirmarEliminar(false)}>Cancelar</Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <p className={`text-2xs mb-3 ${t.muted}`}>Esta empresa aún no tiene una plantilla cargada.</p>
+            {!readOnly && (
+              <Button variant="primary" accent={empresa.color} size="sm" icon={Upload} iconSize={12} disabled={subiendo}
+                onClick={() => inputRef.current?.click()}>{subiendo ? 'Cargando…' : '+ Cargar plantilla'}</Button>
+            )}
+          </div>
+        )}
+
+        {!readOnly && (
+          <input ref={inputRef} type="file" accept={PLANTILLA_LIMPIEZA_ACCEPT} className="hidden" onChange={handleFile} />
+        )}
+
+        {error && (
+          <div className="flex items-center gap-1.5 text-3xs text-red-500 bg-red-500/10 border border-red-500/30 rounded-md px-2 py-1.5 mt-2.5">
+            <AlertTriangle size={11} className="shrink-0" /> {error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------------------------------------------- */
 /* PÁGINA: FORMATOS DE LIMPIEZA Y DESINFECCIÓN                        */
 /* ---------------------------------------------------------------- */
 // Un enlace externo (Drive/OneDrive/SharePoint) por sede · mes del año actual — nunca se
 // sube el documento en sí, solo su URL. A diferencia de las demás secciones administrativas,
-// esta página SÍ es editable en Modo Invitado (pegar/guardar/reemplazar el enlace del mes) —
-// por eso, a propósito, no recibe `readOnly`: el endpoint que la respalda
-// (api/limpieza-desinfeccion.js) también deja su PATCH abierto sin sesión de admin.
-function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate }) {
+// esta página SÍ es editable en Modo Invitado para ese enlace (pegar/guardar/reemplazar el
+// enlace del mes) — por eso el endpoint que la respalda (api/limpieza-desinfeccion.js) deja
+// su PATCH abierto sin sesión de admin. La plantilla por empresa (PlantillaLimpiezaCard, más
+// arriba) es la excepción dentro de esta misma página: sí requiere `readOnly` porque el
+// invitado únicamente puede consultarla/descargarla, nunca cargarla ni eliminarla — por eso
+// esta página sí recibe `readOnly` ahora, a diferencia de antes.
+function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, plantillas, onUploadPlantilla, onDeletePlantilla, readOnly }) {
   const [empresaSelLocal, setEmpresaSelLocal] = useState(null);
   const [sedeSel, setSedeSel] = useState(null);
   const [openMes, setOpenMes] = useState(null);
@@ -5796,6 +6034,12 @@ function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate }) 
         <div>
           {!modoGlobal && <button onClick={resetEmpresa} className={`text-2xs font-mono uppercase mb-3 hover:underline ${t.muted}`}>← Cambiar empresa</button>}
           <div className="text-sm font-bold mb-3" style={{ color: empresa.color }}>{empresa.key}</div>
+
+          <div className="mb-6">
+            <PlantillaLimpiezaCard empresa={empresa} plantilla={plantillas[empresaSel]}
+              onUpload={onUploadPlantilla} onDelete={onDeletePlantilla} readOnly={readOnly} t={t} />
+          </div>
+
           <p className={`text-2xs mb-3 ${t.muted}`}>Selecciona una sede.</p>
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
             {empresa.sedes.map(sede => {
