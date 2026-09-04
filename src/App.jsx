@@ -312,9 +312,11 @@ const MENU = [
   { key: 'limpieza', label: 'Formatos de limpieza y desinfección', icon: SprayCan },
   { key: 'empresas', label: 'Empresas', icon: Building2 },
   { key: 'inventario', label: 'Inventario', icon: ListTree },
-  { key: 'mantenimientos', label: 'Mantenimiento preventivo', icon: CalendarClock, guestHidden: true },
-  { key: 'correctivos', label: 'Mantenimiento correctivo', icon: Wrench, guestHidden: true },
-  { key: 'calibraciones', label: 'Calibraciones', icon: ShieldCheck, guestHidden: true },
+  // 'mantenimientos' / 'correctivos' / 'calibraciones' se ocultaron del menú principal a
+  // pedido del usuario (menú más limpio, sin duplicar lo que ya se consulta desde la Hoja
+  // de vida de cada equipo). Sus rutas y componentes (InventarioPage con mode='mantenimientos'
+  // /'correctivos'/'calibraciones', más abajo en MainApp) siguen existiendo intactos — nada
+  // de la base de datos ni la lógica se eliminó, solo dejaron de tener entrada en el sidebar.
   { key: 'reportes', label: 'Reportes', icon: FileBarChart, guestHidden: true },
   { key: 'configuracion', label: 'Configuración', icon: Settings, guestHidden: true },
 ];
