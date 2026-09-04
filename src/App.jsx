@@ -2752,7 +2752,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
           </div>
           <div className="flex items-center gap-1.5">
             {equipo.empresa === 'MACROMED' && (
-              <button onClick={() => window.open('https://kawak.com.co/macromed/main/home.php', '_blank', 'noopener,noreferrer')}
+              <button onClick={() => window.open('https://kawak.com.co/macromed/ce_control_equipos/equ_consulta.php?oxm_id=61', '_blank', 'noopener,noreferrer')}
                 className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold bg-black/20 text-white hover:bg-black/30 transition">
                 <ExternalLink size={13} /> KAWAK
               </button>
