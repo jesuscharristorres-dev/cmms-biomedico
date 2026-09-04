@@ -2855,7 +2855,9 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
                 { key: 'fecha', label: 'Fecha', type: 'date' },
                 { key: 'proveedor', label: 'Proveedor' },
                 { key: 'acta', label: 'Acta (URL)', type: 'url' },
-                { key: 'garantia', label: 'Garantía' },
+                // Campo "garantia" oculto a pedido del usuario: ya no se muestra en el
+                // formulario, pero se deja intacto en los registros existentes que lo tengan
+                // (RecordList solo renderiza los campos listados aquí, nunca borra los demás).
                 { key: 'observaciones', label: 'Observaciones' },
               ]}
               onAdd={(d) => patchList('instalaciones', [...equipo.instalaciones, { id: uid('in'), fecha: todayISO(), ...d }])}
