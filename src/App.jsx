@@ -456,9 +456,10 @@ function generarReportePDF(equipo, tipoKey, rep) {
   // La fecha de próximo mantenimiento solo muestra mes y año (formato unificado).
   const fechaProximoTxt = formatMesAnio(rep.fechaProximo);
 
-  const repuestosTxt = (rep.repuestos || []).length
-    ? rep.repuestos.map(r => `${escapeHtml(r.item)}${r.cantidad ? ' — ' + escapeHtml(r.cantidad) : ''}`).join('<br/>')
-    : '—';
+  // Nota: "Repuestos utilizados en el servicio" ya NO se imprime en el PDF (a pedido del
+  // usuario, para que el reporte quepa en una sola hoja) — pero el dato sigue existiendo tal
+  // cual en el formulario y en lo guardado (rep.repuestos, ver ReporteTecnicoModal más abajo);
+  // solo se dejó de mostrar aquí.
 
   // Cada firma cargada se imprime como imagen sobre su línea correspondiente (formato unificado).
   const firmasHtml = `
@@ -501,7 +502,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
       .box { border:1px solid #1e293b; border-top:none; padding:8px 10px; min-height:34px; white-space:pre-wrap; line-height:1.45; margin-bottom:0; }
       table.checklist td, table.checklist th { border:1px solid #1e293b; padding:4px 6px; font-size:10px; }
       table.checklist th { background:#f1f5f9; text-align:center; }
-      .firmas { display:flex; margin-top:26px; }
+      .firmas { display:flex; margin-top:20px; }
       .firma { flex:1; border-top:1px solid #1e293b; margin:0 30px; padding-top:5px; text-align:center; font-size:10.5px; }
       .firma .cargo { color:#64748b; font-size:10px; }
       .firma-col { flex:1; margin:0 30px; text-align:center; font-size:10.5px; }
@@ -557,17 +558,15 @@ function generarReportePDF(equipo, tipoKey, rep) {
       <h2 class="section">Descripción del estado inicial del equipo</h2>
       <div class="box">${esc(rep.estadoInicial)}</div>
 
-      <h2 class="section" style="margin-top:14px;">Características a inspeccionar</h2>
+      <h2 class="section" style="margin-top:10px;">Características a inspeccionar</h2>
       <table class="checklist">
         <thead><tr><th style="text-align:left;">Ítem</th><th>No aplica</th><th>Buen estado</th><th>Mal estado</th><th style="text-align:left;">Observaciones</th></tr></thead>
         <tbody>${checklistRows}</tbody>
       </table>
 
-      <h2 class="section" style="margin-top:14px;">Descripción del trabajo realizado</h2>
+      <h2 class="section" style="margin-top:10px;">Descripción del trabajo realizado</h2>
       <div class="box">${esc(rep.trabajoRealizado)}</div>
 
-      <h2 class="section" style="margin-top:14px;">Repuestos utilizados en el servicio</h2>
-      <div class="box">${repuestosTxt}</div>
       ${firmasHtml}
     </body></html>`);
   win.document.close();
