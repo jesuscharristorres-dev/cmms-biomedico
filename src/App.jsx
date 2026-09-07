@@ -509,6 +509,16 @@ function generarReportePDF(equipo, tipoKey, rep) {
       .firma-slot img { max-height:44px; max-width:170px; object-fit:contain; }
       .firma-info { border-top:1px solid #1e293b; padding-top:5px; }
       .firma-info .cargo { color:#64748b; font-size:10px; }
+      /* Reglas de paginación — no cambian el diseño, solo le dicen al navegador DÓNDE puede
+         partir la página al imprimir/exportar a PDF. Sin esto, el bloque de firmas podía
+         quedar cortado a la mitad entre dos páginas (la imagen de la firma en una página y
+         el nombre en la siguiente) en vez de moverse completo a la página siguiente cuando
+         no cabía. Las tablas SÍ pueden partirse entre páginas (evita páginas casi vacías),
+         pero nunca a la mitad de una fila. */
+      .headwrap, table.info, .tipos, .box { break-inside: avoid; page-break-inside: avoid; }
+      table.info tr, table.checklist tr { break-inside: avoid; page-break-inside: avoid; }
+      h2.section { break-after: avoid; page-break-after: avoid; }
+      .firmas, .firma-col { break-inside: avoid; page-break-inside: avoid; }
       @media print { body { padding:14px; } }
     </style></head>
     <body>
