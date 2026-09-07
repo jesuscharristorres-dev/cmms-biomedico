@@ -2950,6 +2950,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
                 { key: 'fecha', label: 'Fecha', type: 'date' },
                 { key: 'motivo', label: 'Motivo de la baja' },
                 { key: 'responsable', label: 'Responsable' },
+                { key: 'actaUrl', label: 'Acta de baja (URL)', type: 'url' },
               ]}
               onAdd={(d) => patchList('bajas', [...(equipo.bajas || []), { id: uid('bj'), fecha: todayISO(), ...d }])}
               onRemove={(i) => patchList('bajas', (equipo.bajas || []).filter((_, idx) => idx !== i))}
