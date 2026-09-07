@@ -2204,6 +2204,52 @@ function FirmaInput({ value, onChange, readOnly, alt, t }) {
   );
 }
 
+// Campo de URL dentro de un registro de RecordList (preventivos/correctivos/calibraciones/
+// instalaciones/bajas). Si ya tiene un valor guardado queda fijo — no se puede editar ni
+// borrar parte del enlace, solo eliminar el registro completo y volver a agregarlo — igual
+// que antes. Pero si todavía está VACÍO (registros creados antes de que existiera este campo,
+// o simplemente dejado en blanco al agregar el registro), sí se puede escribir y guardar por
+// primera vez: sin esto, un campo vacío quedaba bloqueado para siempre sin forma de llenarlo.
+// El campo usa un borrador local (`draft`) que solo se confirma con "Guardar", así no queda
+// deshabilitado a mitad de escritura con la primera tecla.
+function RecordUrlField({ t, value, onChange, label, readOnly }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const tieneValor = !!(value || '').trim();
+
+  if (tieneValor) {
+    return (
+      <div className="flex gap-1.5">
+        <div className="flex-1 min-w-0"><TextInput t={t} value={value} disabled onChange={() => {}} /></div>
+        <PdfLink url={value} title={`Ver ${label.replace(' (URL)', '')}`} t={t} />
+      </div>
+    );
+  }
+
+  if (readOnly) {
+    return <PdfLink url="" t={t} />;
+  }
+
+  if (!editing) {
+    return (
+      <button type="button" onClick={() => { setDraft(''); setEditing(true); }}
+        className={`text-2xs font-semibold underline underline-offset-2 hover:opacity-100 ${t.muted}`}>
+        + Agregar URL
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex gap-1.5">
+      <div className="flex-1 min-w-0"><TextInput t={t} value={draft} placeholder="https://..." onChange={setDraft} /></div>
+      <button type="button" onClick={() => { onChange(draft.trim()); setEditing(false); }}
+        className="rounded-md px-2.5 py-1.5 text-xs font-semibold shrink-0" style={{ background: '#4FD1C5', color: '#0F1419' }}>
+        Guardar
+      </button>
+    </div>
+  );
+}
+
 /** Editor genérico de listas de registros (preventivos, correctivos, etc.) */
 function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, renderExtra, readOnly }) {
   const [draft, setDraft] = useState({});
@@ -2256,15 +2302,7 @@ function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, renderExtra
                   {f.type === 'select'
                     ? <SelectInput t={t} value={r[f.key]} options={f.options} disabled={readOnly} onChange={v => onUpdate(i, f.key, v)} />
                     : f.type === 'url'
-                      ? (
-                        // Una vez agregado el registro, la URL queda fija: no se puede editar ni
-                        // borrar parte del enlace desde aquí — solo eliminar el registro completo
-                        // (botón de la papelera) y volver a agregarlo si hace falta corregirla.
-                        <div className="flex gap-1.5">
-                          <div className="flex-1 min-w-0"><TextInput t={t} value={r[f.key]} disabled onChange={() => {}} /></div>
-                          <PdfLink url={r[f.key]} title={`Ver ${f.label.replace(' (URL)', '')}`} t={t} />
-                        </div>
-                      )
+                      ? <RecordUrlField t={t} value={r[f.key]} label={f.label} readOnly={readOnly} onChange={v => onUpdate(i, f.key, v)} />
                       : <TextInput t={t} type={f.type || 'text'} value={r[f.key]} disabled={readOnly} onChange={v => onUpdate(i, f.key, v)} />}
                 </div>
               ))}
