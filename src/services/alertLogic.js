@@ -36,7 +36,10 @@ export function preventivoAlertStatus(equipo) {
 
 export function buildAlerts(equipos) {
   const alerts = [];
-  (equipos || []).forEach(e => {
+  // Un equipo dado de baja (equipo.estado === 'Dado de baja') nunca genera alertas — se
+  // valida directamente contra ese estado, sin tocar su historial, calibraciones ni
+  // preventivos: el registro sigue intacto, solo deja de contarse aquí.
+  (equipos || []).filter(e => e.estado !== 'Dado de baja').forEach(e => {
     const cal = calibStatus(e);
     if (cal.status === 'proximo' || cal.status === 'vencido') {
       alerts.push({
