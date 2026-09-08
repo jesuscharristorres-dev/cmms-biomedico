@@ -3916,35 +3916,26 @@ function MainApp({ onLogout, readOnly }) {
       alert('No hay equipos para exportar con los filtros actuales.');
       return;
     }
-    const year = new Date().getFullYear();
-    const rows = filtered.map(e => {
-      const row = {
-        EMPRESA: e.empresa, SEDE: e.sede,
-        EQUIPO: e.equipo, MARCA: e.marca, MODELO: e.modelo, 'NUMERO DE SERIE': e.numeroSerie,
-        'REGISTRO INVIMA': e.registroInvima, 'CLASIFICACION DE RIESGO': e.clasificacionRiesgo, INVENTARIO: e.inventario,
-      };
-      MONTHS.forEach(m => { row[m.l.toUpperCase()] = getMonthStatus(e, m.idx, year); });
-      row.CALIBRACION = e.aplicaCalibracion ? 'SI' : 'NO';
-      row.PREVENTIVO = e.aplicaPreventivo ? 'SI' : 'NO';
-      row['PERIODICIDAD DE MANTENIMIENTO'] = e.periodicidadMantenimiento;
-      row['PERIODICIDAD DE CALIBRACION'] = e.periodicidadCalibracion;
-      row['UBICACIÓN'] = e.ubicacion;
-      row['FECHA DE ULTIMA CALIBRACION'] = formatFechaCorta(e.fechaUltimaCalibracion);
-      const cs = calibStatus(e);
-      row['PRÓXIMA CALIBRACIÓN'] = cs.next ? formatFechaCorta(cs.next) : '';
-      row.ESTADO = e.estado;
-      row['CERTIFICADO DE CALIBRACION'] = e.certificadoUrl;
-      row.OBSERVACIONES = e.observaciones;
-      return row;
-    });
+    // Exportación simplificada: solo estas 9 columnas, en este orden exacto — el resto
+    // de campos del inventario (calendario de mantenimientos, calibración, observaciones,
+    // etc.) sigue intacto en la app, simplemente no se incluye en este archivo.
+    const rows = filtered.map(e => ({
+      EMPRESA: e.empresa,
+      SEDE: e.sede,
+      EQUIPO: e.equipo,
+      MARCA: e.marca,
+      MODELO: e.modelo,
+      'NUMERO DE SERIE': e.numeroSerie,
+      'REGISTRO INVIMA': e.registroInvima,
+      'CLASIFICACION DE RIESGO': e.clasificacionRiesgo,
+      'UBICACIÓN': e.ubicacion,
+    }));
     const headers = Object.keys(rows[0] || {});
 
     const data = [
       headers.map(header => ({ value: header, fontWeight: 'bold' })),
-      // Celda vacía en vez de "undefined"/"null" literal — y se deja como cadena vacía
-      // (no "N/R") a propósito: estas mismas columnas son las que lee importExcel() más
-      // abajo, así que un equipo exportado sin, p. ej., marca y reimportado sin tocar debe
-      // seguir sin marca, no terminar con el texto "N/R" guardado como si fuera un dato real.
+      // Celda vacía en vez de "undefined"/"null" literal — no "N/R", para no dar a
+      // entender que ese es un dato real del equipo cuando el campo simplemente está vacío.
       ...rows.map(row =>
         headers.map(header => ({ value: row[header] ?? '' }))
       ),
