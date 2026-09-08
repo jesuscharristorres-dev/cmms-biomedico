@@ -2778,7 +2778,7 @@ function DocumentosTab({ equipo, onUpdate, readOnly, t, accent }) {
   );
 }
 
-function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
+function EquipoDrawer({ equipo, onClose, onUpdate, t, dark, readOnly }) {
   const [tab, setTab] = useState('Información General');
   const c = calibStatus(equipo);
   const year = new Date().getFullYear();
@@ -2793,7 +2793,16 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className={`animate-drawer-in relative w-full sm:w-1/2 sm:min-w-[640px] max-w-full h-full overflow-y-auto ${t.panel} border-l ${t.border}`}>
+      <div className={`animate-drawer-in relative w-full sm:w-1/2 sm:min-w-[640px] max-w-full h-full overflow-hidden ${t.panel} border-l ${t.border}`}>
+        {/* Marca de agua — el mismo logo del Login (logoIngenieriaClinica), fija dentro del
+            panel mientras el contenido hace scroll: vive en este contenedor no-scrolleable,
+            detrás del div interno que sí scrollea. pointer-events-none para no interferir
+            con clics/selección de texto debajo. */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
+          <img src={logoIngenieriaClinica} alt=""
+            style={{ width: 'min(65%, 26rem)', height: 'auto', objectFit: 'contain', opacity: dark ? 0.07 : 0.05 }} />
+        </div>
+        <div className="relative h-full overflow-y-auto">
         <div className="sticky top-0 z-10 px-5 py-4 border-b flex items-center justify-between" style={{ background: accentBg, borderColor: accent }}>
           <div>
             <div className="text-white/70 text-3xs uppercase tracking-wide flex items-center gap-1.5">
@@ -3032,6 +3041,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
               ))}
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>
@@ -4205,7 +4215,7 @@ function MainApp({ onLogout, readOnly }) {
         </div>
       </div>
 
-      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => setDrawerId(null)} onUpdate={updateEquipo} t={t} readOnly={readOnly} />}
+      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => setDrawerId(null)} onUpdate={updateEquipo} t={t} dark={dark} readOnly={readOnly} />}
       {obsEquipo && <ObsModal equipo={obsEquipo} onClose={() => setObsModalId(null)} onSave={(v) => updateEquipo({ ...obsEquipo, observaciones: v })} t={t} accent={accent} readOnly={readOnly} />}
       </div>
     </div>
