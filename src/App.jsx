@@ -2799,9 +2799,9 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
             panel mientras el contenido hace scroll: vive en este contenedor no-scrolleable,
             detrás del div interno que sí scrollea. pointer-events-none para no interferir
             con clics/selección de texto debajo. */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
+        <div className="absolute inset-0 flex items-center justify-start pointer-events-none" aria-hidden="true">
           <img src={logoIngenieriaClinica} alt=""
-            style={{ width: 'min(94%, 37.7rem)', height: 'auto', objectFit: 'contain', opacity: 0.13 }} />
+            style={{ width: 'min(120%, 47rem)', height: 'auto', objectFit: 'contain', opacity: 0.13, transform: 'translateX(-18%)' }} />
         </div>
         <div className="relative h-full overflow-y-auto">
         <div className="sticky top-0 z-10 px-5 py-4 border-b flex items-center justify-between" style={{ background: accentBg, borderColor: accent }}>
