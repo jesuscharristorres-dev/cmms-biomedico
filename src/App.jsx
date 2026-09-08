@@ -2778,7 +2778,7 @@ function DocumentosTab({ equipo, onUpdate, readOnly, t, accent }) {
   );
 }
 
-function EquipoDrawer({ equipo, onClose, onUpdate, t, dark, readOnly }) {
+function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
   const [tab, setTab] = useState('Información General');
   const c = calibStatus(equipo);
   const year = new Date().getFullYear();
@@ -2800,7 +2800,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, dark, readOnly }) {
             con clics/selección de texto debajo. */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
           <img src={logoIngenieriaClinica} alt=""
-            style={{ width: 'min(65%, 26rem)', height: 'auto', objectFit: 'contain', opacity: dark ? 0.07 : 0.05 }} />
+            style={{ width: 'min(65%, 26rem)', height: 'auto', objectFit: 'contain', opacity: 0.7 }} />
         </div>
         <div className="relative h-full overflow-y-auto">
         <div className="sticky top-0 z-10 px-5 py-4 border-b flex items-center justify-between" style={{ background: accentBg, borderColor: accent }}>
@@ -4215,7 +4215,7 @@ function MainApp({ onLogout, readOnly }) {
         </div>
       </div>
 
-      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => setDrawerId(null)} onUpdate={updateEquipo} t={t} dark={dark} readOnly={readOnly} />}
+      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => setDrawerId(null)} onUpdate={updateEquipo} t={t} readOnly={readOnly} />}
       {obsEquipo && <ObsModal equipo={obsEquipo} onClose={() => setObsModalId(null)} onSave={(v) => updateEquipo({ ...obsEquipo, observaciones: v })} t={t} accent={accent} readOnly={readOnly} />}
       </div>
     </div>
