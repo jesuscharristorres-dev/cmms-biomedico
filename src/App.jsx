@@ -4942,7 +4942,7 @@ function InventarioPage({ mode, equipos, t, accentBg, filters, setFilters, searc
                     <td className="px-3 py-2" onClick={ev => ev.stopPropagation()}>
                       <div className="flex items-center gap-1">
                         <button onClick={() => onObs(e.id)} title={e.observaciones?.trim() ? 'Observaciones registradas' : 'Observaciones'} aria-label="Observaciones" className="p-2.5 -m-1.5 flex items-center justify-center">
-                          <MessageCircle size={14} className={e.observaciones?.trim() ? '' : t.muted} style={e.observaciones?.trim() ? { color: OBS_HIGHLIGHT_COLOR } : {}} />
+                          <MessageCircle size={14} className={e.observaciones?.trim() ? '' : t.muted} fill={e.observaciones?.trim() ? OBS_HIGHLIGHT_COLOR : 'none'} style={e.observaciones?.trim() ? { color: OBS_HIGHLIGHT_COLOR } : {}} />
                         </button>
                         {!readOnly && (
                           <>
