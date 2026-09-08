@@ -4791,12 +4791,35 @@ const INVENTORY_HEAD = [
   { key: 'clasificacionRiesgo', label: 'RIESGO' }, { key: 'inventario', label: 'INVENTARIO' },
 ];
 
+// Confirmación previa a eliminar un equipo del inventario — mismo patrón visual que
+// DeleteDocumentDialog/EliminarFallaDialog (fondo oscuro + tarjeta + Cancelar/Eliminar).
+function EliminarEquipoDialog({ equipo, onCancel, onConfirm, t }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onCancel} />
+      <div className={`animate-modal-in relative w-full max-w-xs rounded-xl border p-4 ${t.panel} ${t.border}`}>
+        <div className="text-sm font-bold mb-1">¿Está seguro de que desea eliminar este equipo?</div>
+        <p className={`text-2xs mb-4 ${t.muted}`}>
+          <strong>{equipo?.equipo || 'Este equipo'}</strong>{equipo?.numeroSerie ? ` (N° serie ${equipo.numeroSerie})` : ''} se eliminará del inventario. Esta acción no se puede deshacer.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" t={t} onClick={onCancel}>Cancelar</Button>
+          <Button variant="danger" onClick={onConfirm}>Eliminar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InventarioPage({ mode, equipos, t, accentBg, filters, setFilters, search, setSearch, searchText, setSearchText, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport, activeCompany, onClearFilters, readOnly }) {
   const year = new Date().getFullYear();
   const title = { inventario: 'Inventario de equipos', mantenimientos: 'Mantenimientos preventivos', calibraciones: 'Calibraciones', correctivos: 'Correctivos' }[mode];
   // Filtro por mes del mantenimiento — exclusivo de la vista "Mantenimientos preventivos",
   // no forma parte del objeto `filters` compartido porque no aplica a las demás vistas.
   const [filtroMes, setFiltroMes] = useState('');
+  // Equipo pendiente de confirmar eliminación (null = sin diálogo abierto) — la eliminación
+  // real sigue siendo `onRemove`, solo se pospone hasta que el usuario confirme.
+  const [equipoAEliminar, setEquipoAEliminar] = useState(null);
   const hayFiltrosActivos = Boolean(
     (activeCompany && activeCompany !== 'TODAS') || search.trim() || searchText.trim() ||
     filters.sede || filters.ubicacion || filters.estado || filters.marca || filters.clasificacion || filtroMes
@@ -4947,7 +4970,7 @@ function InventarioPage({ mode, equipos, t, accentBg, filters, setFilters, searc
                         {!readOnly && (
                           <>
                             <button onClick={() => onDuplicate(e)} title="Duplicar" aria-label="Duplicar" className="p-2.5 -m-1.5 flex items-center justify-center"><Copy size={13} className={t.muted} /></button>
-                            <button onClick={() => onRemove(e.id)} title="Eliminar" aria-label="Eliminar" className="p-2.5 -m-1.5 flex items-center justify-center"><Trash2 size={13} className="text-red-400" /></button>
+                            <button onClick={() => setEquipoAEliminar(e)} title="Eliminar" aria-label="Eliminar" className="p-2.5 -m-1.5 flex items-center justify-center"><Trash2 size={13} className="text-red-400" /></button>
                           </>
                         )}
                       </div>
@@ -5011,6 +5034,15 @@ function InventarioPage({ mode, equipos, t, accentBg, filters, setFilters, searc
               </div>
             ))}
         </div>
+      )}
+
+      {equipoAEliminar && (
+        <EliminarEquipoDialog
+          equipo={equipoAEliminar}
+          t={t}
+          onCancel={() => setEquipoAEliminar(null)}
+          onConfirm={() => { onRemove(equipoAEliminar.id); setEquipoAEliminar(null); }}
+        />
       )}
     </div>
   );
