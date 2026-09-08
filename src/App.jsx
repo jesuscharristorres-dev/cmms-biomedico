@@ -4180,7 +4180,7 @@ function MainApp({ onLogout, readOnly }) {
             filters={filters} setFilters={setFilters} search={search} setSearch={setSearch}
             searchText={searchText} setSearchText={setSearchText}
             sort={sort} setSort={setSort} uniqueVals={uniqueVals} activeCompany={activeCompany}
-            onOpen={setDrawerId} onObs={setObsModalId}
+            onOpen={setDrawerId} onObs={setObsModalId} selectedId={drawerId}
             onAdd={addEquipo} onDuplicate={duplicateEquipo} onRemove={removeEquipo}
             onExport={exportExcel} onImport={importExcel} readOnly={readOnly}
             onClearFilters={() => {
@@ -4811,7 +4811,7 @@ function EliminarEquipoDialog({ equipo, onCancel, onConfirm, t }) {
   );
 }
 
-function InventarioPage({ mode, equipos, t, accentBg, filters, setFilters, search, setSearch, searchText, setSearchText, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport, activeCompany, onClearFilters, readOnly }) {
+function InventarioPage({ mode, equipos, t, accentBg, filters, setFilters, search, setSearch, searchText, setSearchText, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport, activeCompany, onClearFilters, readOnly, selectedId }) {
   const year = new Date().getFullYear();
   const title = { inventario: 'Inventario de equipos', mantenimientos: 'Mantenimientos preventivos', calibraciones: 'Calibraciones', correctivos: 'Correctivos' }[mode];
   // Filtro por mes del mantenimiento — exclusivo de la vista "Mantenimientos preventivos",
@@ -4939,8 +4939,14 @@ function InventarioPage({ mode, equipos, t, accentBg, filters, setFilters, searc
               {equipos.map(e => {
                 const cs = calibStatus(e);
                 const co = companyOf(e.empresa);
+                // Resalta la fila del equipo con la Hoja de Vida abierta y atenúa las demás —
+                // `selectedId` es el mismo `drawerId` que ya decide qué equipo muestra el drawer,
+                // así que el resaltado sigue automáticamente al abrir/cerrar/cambiar de equipo.
+                const isSelected = selectedId === e.id;
+                const isDimmed = Boolean(selectedId) && !isSelected;
                 return (
-                  <tr key={e.id} className={`border-b cursor-pointer hover:bg-white/5 ${t.border}`} style={{ borderLeft: `3px solid ${co.color}` }} onClick={() => onOpen(e.id)}>
+                  <tr key={e.id} className={`border-b cursor-pointer transition-opacity duration-150 ${t.border} ${isSelected ? '' : 'hover:bg-white/5'} ${isDimmed ? 'opacity-40' : ''}`}
+                    style={{ borderLeft: `3px solid ${co.color}`, background: isSelected ? `${co.color}1F` : undefined }} onClick={() => onOpen(e.id)}>
                     <td className="px-3 py-2 font-semibold">{e.equipo || '—'}</td>
                     <td className="px-3 py-2">{e.marca || '—'}</td>
                     <td className="px-3 py-2">{e.modelo || '—'}</td>
