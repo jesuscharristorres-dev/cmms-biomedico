@@ -2800,7 +2800,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
             con clics/selección de texto debajo. */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
           <img src={logoIngenieriaClinica} alt=""
-            style={{ width: 'min(65%, 26rem)', height: 'auto', objectFit: 'contain', opacity: 0.7 }} />
+            style={{ width: 'min(94%, 37.7rem)', height: 'auto', objectFit: 'contain', opacity: 0.65 }} />
         </div>
         <div className="relative h-full overflow-y-auto">
         <div className="sticky top-0 z-10 px-5 py-4 border-b flex items-center justify-between" style={{ background: accentBg, borderColor: accent }}>
