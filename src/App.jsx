@@ -22,6 +22,7 @@ import { preventivoDelMes } from './services/preventivoSchedule';
 // Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
 import logoIngenieriaClinica from './assets/logo-ingenieria-clinica.png';
+import logoMacromed from './assets/logo-macromed.jpg';
 
 /* ---------------------------------------------------------------- */
 /* ERROR BOUNDARY                                                     */
@@ -3326,9 +3327,12 @@ function LoginScreen({ notice, onLogin, onGuest, onReportarFalla }) {
         {/* LADO DERECHO — formulario */}
         <div className="w-full lg:w-1/2 flex flex-col justify-center p-8 sm:p-12">
           <div className="w-full max-w-sm mx-auto">
-            <div className="mb-3"><img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={96} height={96} style={{ objectFit: 'contain' }} /></div>
-            <div className="text-xl font-bold tracking-wide" style={{ color: '#173B6C' }}>CMMS BIOMÉDICA</div>
-            <p className="text-xs text-slate-400 mt-1 mb-7">Inicie sesión para continuar.</p>
+            <div className="mb-3 flex items-center justify-center gap-3">
+              <img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={96} height={96} style={{ objectFit: 'contain' }} />
+              <img src={logoMacromed} alt="Macromed Coop." width={96} height={96} style={{ objectFit: 'contain' }} />
+            </div>
+            <div className="text-xl font-bold tracking-wide text-center" style={{ color: '#173B6C' }}>CMMS BIOMÉDICA</div>
+            <p className="text-xs text-slate-400 mt-1 mb-7 text-center">Inicie sesión para continuar.</p>
 
             <form onSubmit={submit} className="space-y-4">
               <div className="login-field-in">
