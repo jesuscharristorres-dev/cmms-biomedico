@@ -175,6 +175,10 @@ const COMPANIES = [
 ];
 const companyOf = (key) => COMPANIES.find(c => c.key === key);
 
+// Color fijo (independiente del tema de cada empresa) para resaltar el ícono de
+// observaciones en el inventario cuando el equipo tiene una observación guardada.
+const OBS_HIGHLIGHT_COLOR = '#F59E0B';
+
 // Aclara (percent > 0) u oscurece (percent < 0) un color HEX — usado para generar variantes
 // de una misma marca en gráficas, sin mezclar el color de otra empresa.
 function shade(hex, percent) {
@@ -4787,7 +4791,7 @@ const INVENTORY_HEAD = [
   { key: 'clasificacionRiesgo', label: 'RIESGO' }, { key: 'inventario', label: 'INVENTARIO' },
 ];
 
-function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilters, search, setSearch, searchText, setSearchText, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport, activeCompany, onClearFilters, readOnly }) {
+function InventarioPage({ mode, equipos, t, accentBg, filters, setFilters, search, setSearch, searchText, setSearchText, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport, activeCompany, onClearFilters, readOnly }) {
   const year = new Date().getFullYear();
   const title = { inventario: 'Inventario de equipos', mantenimientos: 'Mantenimientos preventivos', calibraciones: 'Calibraciones', correctivos: 'Correctivos' }[mode];
   // Filtro por mes del mantenimiento — exclusivo de la vista "Mantenimientos preventivos",
@@ -4937,8 +4941,8 @@ function InventarioPage({ mode, equipos, t, accent, accentBg, filters, setFilter
                     </td>
                     <td className="px-3 py-2" onClick={ev => ev.stopPropagation()}>
                       <div className="flex items-center gap-1">
-                        <button onClick={() => onObs(e.id)} title="Observaciones" aria-label="Observaciones" className="p-2.5 -m-1.5 flex items-center justify-center">
-                          <MessageCircle size={14} className={e.observaciones ? '' : t.muted} style={e.observaciones ? { color: accent } : {}} />
+                        <button onClick={() => onObs(e.id)} title={e.observaciones?.trim() ? 'Observaciones registradas' : 'Observaciones'} aria-label="Observaciones" className="p-2.5 -m-1.5 flex items-center justify-center">
+                          <MessageCircle size={14} className={e.observaciones?.trim() ? '' : t.muted} style={e.observaciones?.trim() ? { color: OBS_HIGHLIGHT_COLOR } : {}} />
                         </button>
                         {!readOnly && (
                           <>
