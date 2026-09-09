@@ -83,8 +83,18 @@ export function proximoPreventivo(equipo) {
 // Estado (y fecha relevante) del mantenimiento preventivo de un equipo para un mes/año
 // puntual — es lo que pintan los puntos de Inventario. Prioridad ya implícita en el orden
 // de los checks: REALIZADO > VENCIDO > PROGRAMADO > SIN PROGRAMACIÓN.
+//
+// Un vencimiento NO desaparece al cambiar de mes: `proximoPreventivo` da una única fecha
+// (el ciclo pendiente actual), así que si ya pasó su mes sin ejecutarse, cada mes siguiente
+// hasta el mes actual también se marca "vencido" — no solo el mes en que originalmente se
+// venció. "Programado" (🟡, aún dentro de tolerancia) solo aplica al mes exacto en que se
+// debía realizar; antes de ese mes no hay nada que mostrar todavía, y los meses futuros más
+// allá del mes actual tampoco (no se puede saber si se resolverá a tiempo).
+//
+// `toleranciaDias` (por defecto TOLERANCIA_VENCIMIENTO_DIAS) queda como parámetro explícito
+// para poder hacerla configurable desde la app más adelante sin tocar esta función de nuevo.
 // Devuelve { status: 'realizado'|'vencido'|'programado'|'no_aplica', fecha: Date|null }.
-export function preventivoDelMes(equipo, monthIdx, year, hoy = new Date()) {
+export function preventivoDelMes(equipo, monthIdx, year, hoy = new Date(), toleranciaDias = TOLERANCIA_VENCIMIENTO_DIAS) {
   if (!equipo.aplicaPreventivo) return { status: 'no_aplica', fecha: null };
 
   const ejecutadoEsteMes = (equipo.preventivos || []).find(p => {
@@ -95,12 +105,47 @@ export function preventivoDelMes(equipo, monthIdx, year, hoy = new Date()) {
   if (ejecutadoEsteMes) return { status: 'realizado', fecha: parseFechaLocal(ejecutadoEsteMes.fecha) };
 
   const proximo = proximoPreventivo(equipo);
-  if (!proximo || proximo.fecha.getFullYear() !== year || proximo.fecha.getMonth() !== monthIdx) {
-    return { status: 'no_aplica', fecha: null };
-  }
+  if (!proximo) return { status: 'no_aplica', fecha: null };
+
+  const mesDebido = new Date(proximo.fecha.getFullYear(), proximo.fecha.getMonth(), 1);
+  const mesConsultado = new Date(year, monthIdx, 1);
+  if (mesConsultado < mesDebido) return { status: 'no_aplica', fecha: null };
 
   const today = new Date(hoy.getTime()); today.setHours(0, 0, 0, 0);
-  const limite = addDias(proximo.fecha, TOLERANCIA_VENCIMIENTO_DIAS);
-  const status = today > limite ? 'vencido' : 'programado';
-  return { status, fecha: proximo.fecha };
+  const mesActual = new Date(today.getFullYear(), today.getMonth(), 1);
+  if (mesConsultado > mesActual) return { status: 'no_aplica', fecha: null };
+
+  const limite = addDias(proximo.fecha, toleranciaDias);
+  const vencido = today > limite;
+
+  if (mesConsultado.getTime() === mesDebido.getTime()) {
+    return { status: vencido ? 'vencido' : 'programado', fecha: proximo.fecha };
+  }
+  // Meses posteriores al mes debido, hasta el mes actual: el vencimiento persiste.
+  return { status: vencido ? 'vencido' : 'no_aplica', fecha: proximo.fecha };
+}
+
+// Estado "instantáneo" (de HOY) del preventivo de un equipo — a diferencia de
+// preventivoDelMes (que evalúa una celda mes/año puntual del cronograma de Inventario),
+// esta responde "¿cómo está este preventivo ahora mismo?", útil para pantallas que no
+// pintan un calendario (p. ej. Alertas). Parte de la MISMA `proximoPreventivo(equipo)`
+// que usa preventivoDelMes — ninguna fórmula de fecha nueva — así que para el mes en
+// curso ambas funciones siempre concuerdan en si un equipo está o no vencido.
+//
+// `diasAviso` (opcional) permite marcar 'proximo' cuando falten pocos días para la fecha
+// programada, aunque ese día todavía no haya llegado — el umbral de "cuántos días antes
+// avisar" es una decisión de la pantalla que consume esto (p. ej. Alertas), no del cálculo
+// de fechas en sí, así que se recibe como parámetro en vez de vivir aquí como constante.
+// Devuelve { status: 'vencido'|'proximo'|'vigente'|'sin_dato', fecha: Date|null, diffDays: number|null }.
+export function estadoActualPreventivo(equipo, hoy = new Date(), { toleranciaDias = TOLERANCIA_VENCIMIENTO_DIAS, diasAviso = null } = {}) {
+  const proximo = proximoPreventivo(equipo);
+  if (!proximo) return { status: 'sin_dato', fecha: null, diffDays: null };
+
+  const today = new Date(hoy.getTime()); today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((proximo.fecha.getTime() - today.getTime()) / 86400000);
+  const limite = addDias(proximo.fecha, toleranciaDias);
+
+  if (today > limite) return { status: 'vencido', fecha: proximo.fecha, diffDays };
+  if (diasAviso != null && diffDays <= diasAviso) return { status: 'proximo', fecha: proximo.fecha, diffDays };
+  return { status: 'vigente', fecha: proximo.fecha, diffDays };
 }

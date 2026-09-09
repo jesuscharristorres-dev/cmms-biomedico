@@ -1,5 +1,16 @@
 // src/services/alertLogic.js
 // Lógica de cálculo de alertas — ÚNICA fuente de verdad, usada por la pantalla de Alertas.
+//
+// El estado y la fecha del preventivo NO se calculan aquí: se delega por completo a
+// preventivoSchedule.js (misma fuente que usa Inventario para pintar sus puntos), para que
+// un equipo vencido en Inventario siempre pueda generar la alerta correspondiente y
+// viceversa. Antes existía una segunda fórmula aquí mismo, basada en buscar en
+// `equipo.preventivos` un registro con estado distinto de 'Ejecutado' — pero la Hoja de
+// Vida solo permite crear registros ya 'Ejecutado' (no hay forma de registrar uno
+// "Programado" desde la UI), así que esa lista de pendientes siempre estaba vacía y las
+// alertas de preventivo nunca se generaban, sin importar qué tan vencido estuviera un
+// equipo en Inventario.
+import { estadoActualPreventivo } from './preventivoSchedule';
 
 export const PREVENTIVO_ALERTA_DIAS = 15;
 export const CALIBRACION_ALERTA_DIAS = 15;
@@ -17,21 +28,9 @@ export function calibStatus(equipo) {
 }
 
 export function preventivoAlertStatus(equipo) {
-  if (!equipo.aplicaPreventivo) return null;
-  const pendientes = (equipo.preventivos || []).filter(p => p.estado !== 'Ejecutado' && p.fecha);
-  if (pendientes.length === 0) return null;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const withDiff = pendientes.map(p => {
-    const d = new Date(p.fecha + 'T00:00:00');
-    if (isNaN(d.getTime())) return null;
-    return { ...p, diffDays: Math.round((d - today) / 86400000) };
-  }).filter(Boolean).sort((a, b) => a.diffDays - b.diffDays);
-  if (withDiff.length === 0) return null;
-  const nearest = withDiff[0];
-  let status = 'ok';
-  if (nearest.diffDays < 0) status = 'vencido';
-  else if (nearest.diffDays <= PREVENTIVO_ALERTA_DIAS) status = 'proximo';
-  return { ...nearest, status };
+  const r = estadoActualPreventivo(equipo, new Date(), { diasAviso: PREVENTIVO_ALERTA_DIAS });
+  if (r.status !== 'vencido' && r.status !== 'proximo') return null;
+  return { status: r.status, diffDays: r.diffDays, fecha: r.fecha ? r.fecha.toISOString().slice(0, 10) : '' };
 }
 
 export function buildAlerts(equipos) {
