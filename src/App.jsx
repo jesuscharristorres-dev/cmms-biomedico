@@ -304,7 +304,7 @@ const ESTADOS_EQUIPO = ['Operativo', 'Fuera de servicio', 'En mantenimiento', 'D
 // aparece seleccionable en un equipo cuando ya tiene un reporte de baja (mismo campo
 // equipo.estado de siempre; no es una lógica nueva, solo se acortan las opciones visibles aquí).
 const ESTADOS_MANTENIMIENTOS = ['Operativo', 'Dado de baja'];
-const PERIODICIDADES = ['Mensual', 'Bimestral', 'Trimestral', 'Cuatrimestral', 'Semestral', 'Anual'];
+const PERIODICIDADES = ['Mensual', 'Bimestral', 'Trimestral', 'Cuatrimestral', 'Semestral', 'Anual', 'N/A'];
 // `guestHidden`: oculto del menú (y de cualquier acceso directo) en Modo Invitado — ese modo
 // solo debe ofrecer consulta de lectura, sin las secciones operativas/administrativas.
 const MENU = [
@@ -3137,7 +3137,10 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
                 <Field dense label="Estado"><TextInput dense t={t} value={equipo.estado} disabled onChange={() => {}} /></Field>
                 <Field dense label="Fecha de instalación"><TextInput dense t={t} disabled={readOnly} type="date" value={equipo.fechaInstalacion} onChange={v => patch('fechaInstalacion', v)} /></Field>
                 <Field dense label="Ubicación"><TextInput dense t={t} disabled={readOnly} value={equipo.ubicacion} onChange={v => patch('ubicacion', v)} /></Field>
-                <Field dense label="Periodicidad de mantenimiento"><SelectInput dense t={t} disabled={readOnly} value={equipo.periodicidadMantenimiento} options={PERIODICIDADES} onChange={v => patch('periodicidadMantenimiento', v)} /></Field>
+                <Field dense label="Periodicidad de mantenimiento">
+                  <SelectInput dense t={t} disabled={readOnly} value={equipo.periodicidadMantenimiento} options={PERIODICIDADES}
+                    onChange={v => onUpdate({ ...equipo, periodicidadMantenimiento: v, aplicaPreventivo: v !== 'N/A' })} />
+                </Field>
                 <Field dense label="Periodicidad de calibración"><TextInput dense t={t} value="Anual" disabled onChange={() => {}} /></Field>
 
                 <div>
