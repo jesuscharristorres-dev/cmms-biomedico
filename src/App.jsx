@@ -372,20 +372,6 @@ function getMonthStatus(equipo, monthIdx, year) {
   return preventivoDelMes(equipo, monthIdx, year).status;
 }
 
-// Transformación EXCLUSIVA de la pestaña "Cronograma" del equipo (historial, no
-// programador): a diferencia de getMonthStatus (que sigue usando Excel y la vista de
-// Mantenimientos, con programado/vencido/no_aplica), esta solo distingue si ESE mes tuvo
-// un preventivo realmente ejecutado — nunca calcula "programado" ni "vencido".
-function getMonthHistorial(equipo, monthIdx, year) {
-  const realizado = (equipo.preventivos || []).some(p => {
-    if (!p.fecha || p.estado !== 'Ejecutado') return false;
-    const d = new Date(p.fecha + 'T00:00:00');
-    return d.getFullYear() === year && d.getMonth() === monthIdx;
-  });
-  return realizado ? 'realizado' : 'sin_registro';
-}
-
-
 
 function historialDe(equipo) {
   const rows = [];
@@ -427,7 +413,7 @@ const CHECKLIST_ITEMS = [
   'PRUEBA DE FUNCIONAMIENTO FINAL', 'LIMPIEZA Y DESINFECCION',
 ];
 const CHECK_ESTADOS = [
-  { key: 'no_aplica', label: 'No aplica', color: '#64748B' },
+  { key: 'no_aplica', label: 'No aplica', color: '#7fbef8' },
   { key: 'bueno', label: 'Buen estado', color: '#22C55E' },
   { key: 'malo', label: 'Mal estado', color: '#EF4444' },
 ];
@@ -3163,16 +3149,18 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
 
           {tab === 'Cronograma' && (
             <div>
-              <p className={`text-xs mb-3 ${t.muted}`}>Historial de mantenimientos realizados durante {year}.</p>
+              <p className={`text-xs mb-3 ${t.muted}`}>Estado del mantenimiento preventivo durante {year}.</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {MONTHS.map(m => {
-                  const realizado = getMonthHistorial(equipo, m.idx, year) === 'realizado';
+                  const st = getMonthStatus(equipo, m.idx, year);
+                  const dotColor = st === 'no_aplica' ? '#94A3B8' : STATUS_HEX[st];
+                  const label = st === 'no_aplica' ? 'Sin registro' : STATUS_LABEL[st];
                   return (
                     <div key={m.k} className={`rounded-lg border p-3 text-center ${t.panel3} ${t.border}`}>
                       <div className="text-2xs font-mono uppercase mb-1.5" translate="no" lang="es">{m.full}</div>
                       <div className="flex items-center justify-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: realizado ? SEMANTIC_HEX.ok : '#94A3B8' }} role="img" aria-label={realizado ? 'Realizado' : 'Sin registro'} />
-                        <span className="text-2xs font-medium" style={realizado ? { color: SEMANTIC_HEX.ok } : {}}>{realizado ? 'Realizado' : 'Sin registro'}</span>
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: dotColor }} role="img" aria-label={label} />
+                        <span className="text-2xs font-medium" style={{ color: dotColor }}>{label}</span>
                       </div>
                     </div>
                   );
