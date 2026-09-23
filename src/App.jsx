@@ -5225,7 +5225,7 @@ function MainApp({ onLogout, readOnly }) {
         {menu === 'fallas' && !readOnly && <ReportesFallaPage reportes={reportesFalla} equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} onEliminarReporte={eliminarReporte} onVaciarHistorial={vaciarHistorialFallas} readOnly={readOnly} />}
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'capacitaciones' && (
-          <CapacitacionesPage capacitaciones={capacitaciones} activeCompany={activeCompany} t={t} accent={accent}
+          <CapacitacionesPage capacitaciones={capacitaciones} activeCompany={activeCompany} onChangeEmpresa={setActiveCompany} t={t} accent={accent}
             onActualizar={actualizarCapacitaciones} sincronizando={capSincronizando} syncStatus={capSyncStatus} readOnly={readOnly} />
         )}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
@@ -6557,7 +6557,7 @@ const identidadDe = (r) => r.email || `${(r.nombre || '').toLowerCase()}|${r.emp
 // propios filtros (sede, capacitación, año, mes, rango de fechas) y una tabla de detalle con
 // búsqueda/orden/paginación. El botón "Actualizar información" dispara una sincronización en
 // vivo contra Google Sheets (solo admin).
-function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActualizar, sincronizando, syncStatus, readOnly }) {
+function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t, accent, onActualizar, sincronizando, syncStatus, readOnly }) {
   // Memoizado porque `capacitaciones?.records || []` crearía un array `[]` nuevo en cada
   // render cuando aún no hay datos, invalidando los useMemo de abajo que dependen de esto.
   const registros = useMemo(() => capacitaciones?.records || [], [capacitaciones]);
@@ -6573,7 +6573,7 @@ function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActual
   const [pagina, setPagina] = useState(1);
 
   const filtros = { empresa: activeCompany, sede, capacitacion: capacitacionSel, anio, mes, desde, hasta };
-  const hayFiltrosActivos = Boolean(sede || capacitacionSel || anio || mes || desde || hasta);
+  const hayFiltrosActivos = Boolean(activeCompany !== 'TODAS' || sede || capacitacionSel || anio || mes || desde || hasta);
 
   // Opciones de cada selector: relativas solo a la empresa activa (no a los demás filtros
   // locales), para que elegir una capacitación puntual no borre las sedes disponibles.
@@ -6685,7 +6685,9 @@ function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActual
   const filasPagina = ordenados.slice((paginaActual - 1) * CAP_PAGE_SIZE, paginaActual * CAP_PAGE_SIZE);
 
   const toggleSort = (key) => setSort(s => s.key === key ? { key, dir: -s.dir } : { key, dir: 1 });
-  const limpiarFiltros = () => { setSede(''); setCapacitacionSel(''); setAnio(''); setMes(''); setDesde(''); setHasta(''); };
+  const limpiarFiltros = () => {
+    onChangeEmpresa('TODAS'); setSede(''); setCapacitacionSel(''); setAnio(''); setMes(''); setDesde(''); setHasta('');
+  };
 
   const ActualizarBtn = !readOnly && (
     <Button variant="outline" t={t} accent={accent} icon={RefreshCw} onClick={onActualizar} disabled={sincronizando}>
@@ -6747,6 +6749,13 @@ function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActual
 
       <div className={`rounded-xl border p-3 mb-4 flex flex-wrap items-center gap-2 ${t.panel} ${t.border}`}>
         <Filter size={13} className={t.muted} />
+        {/* Reutiliza el mismo `activeCompany` que ya gobierna el resto del CMMS (pestañas
+            superiores) — no es un filtro local aparte, para no tener dos fuentes de verdad
+            de "empresa activa" que puedan quedar desincronizadas entre sí. */}
+        <select value={activeCompany} onChange={e => onChangeEmpresa(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border font-semibold ${t.input}`}>
+          <option value="TODAS">Todas las empresas</option>
+          {COMPANIES.map(c => <option key={c.key} value={c.key}>{c.key}</option>)}
+        </select>
         <select value={sede} onChange={e => setSede(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
           <option value="">Toda sede</option>
           {sedesDisponibles.map(s => <option key={s} value={s}>{s}</option>)}
