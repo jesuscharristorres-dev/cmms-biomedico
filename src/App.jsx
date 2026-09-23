@@ -4666,6 +4666,12 @@ function MainApp({ onLogout, readOnly }) {
   const [planesProgramas, setPlanesProgramas] = useState({});
   const [capacitaciones, setCapacitaciones] = useState(null);
   const [capSincronizando, setCapSincronizando] = useState(false);
+  // { type: 'success' | 'error', message } | null — se muestra como banner en el dashboard
+  // de Capacitaciones (no un alert() bloqueante, a diferencia del resto del CMMS: el pedido
+  // puntual acá era un estado de sincronización visible e inline: "Actualizando…",
+  // "Actualizado correctamente" o el error). El éxito se autoculta; el error se queda fijo
+  // hasta el próximo intento, para no perder el mensaje de qué falló.
+  const [capSyncStatus, setCapSyncStatus] = useState(null);
   const [tecnoTransversal, setTecnoTransversal] = useState({});
   const [tecnoReportes, setTecnoReportes] = useState({});
   const [personal, setPersonal] = useState([]);
@@ -4731,11 +4737,21 @@ function MainApp({ onLogout, readOnly }) {
   // botón queda deshabilitado con capSincronizando mientras corre.
   const actualizarCapacitaciones = async () => {
     setCapSincronizando(true);
+    setCapSyncStatus(null);
     try {
-      setCapacitaciones(await sincronizarCapacitaciones());
+      const data = await sincronizarCapacitaciones();
+      setCapacitaciones(data);
+      const conErrores = data.errores?.length > 0;
+      setCapSyncStatus({
+        type: conErrores ? 'error' : 'success',
+        message: conErrores
+          ? `Actualizado con errores: ${data.errores.length} formulario${data.errores.length !== 1 ? 's' : ''} no se pudo(ieron) sincronizar.`
+          : 'Actualizado correctamente.',
+      });
+      if (!conErrores) setTimeout(() => setCapSyncStatus(null), 5000);
     } catch (err) {
       console.error('No se pudo sincronizar las capacitaciones', err);
-      alert(err.message);
+      setCapSyncStatus({ type: 'error', message: err.message });
     } finally {
       setCapSincronizando(false);
     }
@@ -5210,7 +5226,7 @@ function MainApp({ onLogout, readOnly }) {
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'capacitaciones' && (
           <CapacitacionesPage capacitaciones={capacitaciones} activeCompany={activeCompany} t={t} accent={accent}
-            onActualizar={actualizarCapacitaciones} sincronizando={capSincronizando} readOnly={readOnly} />
+            onActualizar={actualizarCapacitaciones} sincronizando={capSincronizando} syncStatus={capSyncStatus} readOnly={readOnly} />
         )}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
@@ -6509,45 +6525,114 @@ function PlanesProgramasPage({ planesProgramas, activeCompany, t, onUpdate, read
 // CMMS, p. ej. "UT" de los contratos ERON) — el valor interno se mantiene sin traducir para
 // que coincida exactamente con lo que produce lib/capacitaciones.js en el servidor.
 const EMPRESA_LABEL = { [OTRAS_EMPRESA]: 'Otras / ERON' };
+const CAP_PAGE_SIZE = 20;
+
+// Aplica todos los filtros del dashboard de Capacitaciones excepto el que se indique en
+// `skip` — así cada gráfica que desglosa por una dimensión (empresa, sede, capacitación)
+// puede seguir mostrando esa dimensión completa aunque el usuario ya haya elegido un valor
+// puntual en su propio selector (si no, "por sede" colapsaría a una sola barra en cuanto se
+// filtra por sede).
+function filtrarCapacitaciones(records, filtros, skip) {
+  const { empresa, sede, capacitacion, anio, mes, desde, hasta } = filtros;
+  return records.filter(r => {
+    if (skip !== 'empresa' && empresa && empresa !== 'TODAS' && r.empresa !== empresa) return false;
+    if (skip !== 'sede' && sede && r.sede !== sede) return false;
+    if (skip !== 'capacitacion' && capacitacion && r.capacitacion !== capacitacion) return false;
+    if (anio && r.fecha?.slice(0, 4) !== anio) return false;
+    if (mes && String(Number(r.fecha?.slice(5, 7)) - 1) !== mes) return false;
+    if (desde && (!r.fecha || r.fecha.slice(0, 10) < desde)) return false;
+    if (hasta && (!r.fecha || r.fecha.slice(0, 10) > hasta)) return false;
+    return true;
+  });
+}
+// Identidad de una persona para contarla una sola vez como "capacitada": el correo (siempre
+// lo recoge Google Forms de quien responde) o, a falta de correo, nombre+empresa. Distinto
+// de "registros": cada fila es una asistencia puntual a UNA capacitación, así que la misma
+// persona en 3 capacitaciones distintas suma 3 registros pero 1 sola persona.
+const identidadDe = (r) => r.email || `${(r.nombre || '').toLowerCase()}|${r.empresa}`;
 
 // Dashboard de "Capacitaciones": respuestas de los formularios de Google Forms del personal
-// (ver api/capacitaciones.js), filtradas por el mismo selector de empresa global que usa el
-// resto del CMMS (activeCompany) — no tiene un selector propio para no duplicar ese control.
-// El botón "Actualizar" dispara una sincronización en vivo contra Google Sheets (solo admin).
-function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActualizar, sincronizando, readOnly }) {
+// (ver api/capacitaciones.js). El selector de empresa global del CMMS (activeCompany) sigue
+// siendo el filtro de empresa — se reutiliza en vez de duplicarlo — y además tiene sus
+// propios filtros (sede, capacitación, año, mes, rango de fechas) y una tabla de detalle con
+// búsqueda/orden/paginación. El botón "Actualizar información" dispara una sincronización en
+// vivo contra Google Sheets (solo admin).
+function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActualizar, sincronizando, syncStatus, readOnly }) {
   // Memoizado porque `capacitaciones?.records || []` crearía un array `[]` nuevo en cada
   // render cuando aún no hay datos, invalidando los useMemo de abajo que dependen de esto.
   const registros = useMemo(() => capacitaciones?.records || [], [capacitaciones]);
-  const scoped = useMemo(
+
+  const [sede, setSede] = useState('');
+  const [capacitacionSel, setCapacitacionSel] = useState('');
+  const [anio, setAnio] = useState('');
+  const [mes, setMes] = useState('');
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
+  const [busqueda, setBusqueda] = useState('');
+  const [sort, setSort] = useState({ key: 'fecha', dir: -1 });
+  const [pagina, setPagina] = useState(1);
+
+  const filtros = { empresa: activeCompany, sede, capacitacion: capacitacionSel, anio, mes, desde, hasta };
+  const hayFiltrosActivos = Boolean(sede || capacitacionSel || anio || mes || desde || hasta);
+
+  // Opciones de cada selector: relativas solo a la empresa activa (no a los demás filtros
+  // locales), para que elegir una capacitación puntual no borre las sedes disponibles.
+  const porEmpresaBase = useMemo(
     () => activeCompany === 'TODAS' ? registros : registros.filter(r => r.empresa === activeCompany),
     [registros, activeCompany]
   );
+  const sedesDisponibles = useMemo(() => [...new Set(porEmpresaBase.map(r => r.sede).filter(Boolean))].sort(), [porEmpresaBase]);
+  const capacitacionesDisponibles = useMemo(() => [...new Set(porEmpresaBase.map(r => r.capacitacion).filter(Boolean))].sort(), [porEmpresaBase]);
+  const aniosDisponibles = useMemo(
+    () => [...new Set(porEmpresaBase.map(r => r.fecha?.slice(0, 4)).filter(Boolean))].sort((a, b) => b.localeCompare(a)),
+    [porEmpresaBase]
+  );
 
-  const personasUnicas = useMemo(() => new Set(scoped.filter(r => r.email).map(r => r.email)).size, [scoped]);
-  const conPuntaje = useMemo(() => scoped.filter(r => r.porcentaje != null), [scoped]);
+  // `filtrados`: con TODOS los filtros — alimenta los KPI, la tabla y "por mes". Cada gráfica
+  // de desglose usa además su propia variante que ignora su dimensión (ver filtrarCapacitaciones).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const filtrados = useMemo(() => filtrarCapacitaciones(registros, filtros, null), [registros, activeCompany, sede, capacitacionSel, anio, mes, desde, hasta]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const paraPorEmpresa = useMemo(() => filtrarCapacitaciones(registros, filtros, 'empresa'), [registros, activeCompany, sede, capacitacionSel, anio, mes, desde, hasta]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const paraPorSede = useMemo(() => filtrarCapacitaciones(registros, filtros, 'sede'), [registros, activeCompany, sede, capacitacionSel, anio, mes, desde, hasta]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const paraPorCapacitacion = useMemo(() => filtrarCapacitaciones(registros, filtros, 'capacitacion'), [registros, activeCompany, sede, capacitacionSel, anio, mes, desde, hasta]);
+
+  // Las 3 métricas que el módulo debe diferenciar: capacitaciones (temas distintos con al
+  // menos una respuesta), registros (cada fila = una asistencia puntual) y personas
+  // (identidades únicas) — quien asistió a 3 capacitaciones suma 3 registros pero 1 persona.
+  const totalCapacitaciones = useMemo(() => new Set(filtrados.map(r => r.capacitacionId)).size, [filtrados]);
+  const totalRegistros = filtrados.length;
+  const personasUnicas = useMemo(() => new Set(filtrados.map(identidadDe)).size, [filtrados]);
+  const conPuntaje = useMemo(() => filtrados.filter(r => r.porcentaje != null), [filtrados]);
   const promedioPct = conPuntaje.length
     ? Math.round(conPuntaje.reduce((a, r) => a + r.porcentaje, 0) / conPuntaje.length)
     : null;
 
-  // Siempre sobre TODOS los registros (no `scoped`): la comparación por empresa pierde
-  // sentido si el propio filtro ya la reduce a una sola.
   const porEmpresa = useMemo(() => {
     const map = {};
-    registros.forEach(r => { map[r.empresa] = (map[r.empresa] || 0) + 1; });
+    paraPorEmpresa.forEach(r => { map[r.empresa] = (map[r.empresa] || 0) + 1; });
     return [...COMPANIES.map(c => c.key), OTRAS_EMPRESA]
       .filter(k => map[k])
       .map(k => ({ name: EMPRESA_LABEL[k] || k, value: map[k], fill: (companyOf(k) || {}).color || '#94A3B8' }));
-  }, [registros]);
+  }, [paraPorEmpresa]);
+
+  const porSede = useMemo(() => {
+    const map = {};
+    paraPorSede.forEach(r => { if (r.sede) map[r.sede] = (map[r.sede] || 0) + 1; });
+    return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+  }, [paraPorSede]);
 
   const porCapacitacion = useMemo(() => {
     const map = {};
-    scoped.forEach(r => { map[r.capacitacion] = (map[r.capacitacion] || 0) + 1; });
+    paraPorCapacitacion.forEach(r => { map[r.capacitacion] = (map[r.capacitacion] || 0) + 1; });
     return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10);
-  }, [scoped]);
+  }, [paraPorCapacitacion]);
 
   const porMes = useMemo(() => {
     const map = {};
-    scoped.forEach(r => {
+    filtrados.forEach(r => {
       if (!r.fecha) return;
       const k = r.fecha.slice(0, 7); // "AAAA-MM"
       map[k] = (map[k] || 0) + 1;
@@ -6556,13 +6641,13 @@ function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActual
       const [y, m] = k.split('-');
       return { name: `${MONTHS[Number(m) - 1]?.l || m} ${y.slice(2)}`, value };
     });
-  }, [scoped]);
+  }, [filtrados]);
 
   // La capacitación con el peor promedio de puntaje — señal de alerta para reforzar esa
   // capacitación puntual. Se exige un mínimo de respuestas para no alarmar con 1-2 casos.
   const peorCapacitacion = useMemo(() => {
     const map = {};
-    scoped.forEach(r => {
+    filtrados.forEach(r => {
       if (r.porcentaje == null) return;
       (map[r.capacitacion] ||= []).push(r.porcentaje);
     });
@@ -6573,14 +6658,56 @@ function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActual
       if (!peor || avg < peor.avg) peor = { name, avg };
     });
     return peor;
-  }, [scoped]);
+  }, [filtrados]);
 
-  const ultimas = scoped.slice(0, 15); // ya vienen ordenados desc por fecha desde el servidor
+  // Tabla de detalle: búsqueda de texto libre + orden por columna + paginación, sobre
+  // `filtrados` (ya con todos los filtros del dashboard aplicados).
+  const buscados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return filtrados;
+    return filtrados.filter(r =>
+      [r.nombre, r.empresa, r.sede, r.capacitacion, r.cargo, r.email, r.documento].some(v => (v || '').toLowerCase().includes(q))
+    );
+  }, [filtrados, busqueda]);
+
+  const ordenados = useMemo(() => {
+    const { key, dir } = sort;
+    const copia = [...buscados];
+    copia.sort((a, b) => {
+      if (key === 'porcentaje') return ((a.porcentaje || 0) - (b.porcentaje || 0)) * dir;
+      return String(a[key] ?? '').localeCompare(String(b[key] ?? ''), 'es') * dir;
+    });
+    return copia;
+  }, [buscados, sort]);
+
+  const totalPaginas = Math.max(1, Math.ceil(ordenados.length / CAP_PAGE_SIZE));
+  const paginaActual = Math.min(pagina, totalPaginas);
+  const filasPagina = ordenados.slice((paginaActual - 1) * CAP_PAGE_SIZE, paginaActual * CAP_PAGE_SIZE);
+
+  const toggleSort = (key) => setSort(s => s.key === key ? { key, dir: -s.dir } : { key, dir: 1 });
+  const limpiarFiltros = () => { setSede(''); setCapacitacionSel(''); setAnio(''); setMes(''); setDesde(''); setHasta(''); };
 
   const ActualizarBtn = !readOnly && (
     <Button variant="outline" t={t} accent={accent} icon={RefreshCw} onClick={onActualizar} disabled={sincronizando}>
-      {sincronizando ? 'Sincronizando…' : 'Actualizar'}
+      {sincronizando ? 'Actualizando…' : 'Actualizar información'}
     </Button>
+  );
+  const EstadoSync = (
+    <>
+      {sincronizando && (
+        <div className="rounded-xl border p-3 mb-4 text-2xs" style={{ borderColor: `${accent}55`, background: `${accent}15`, color: accent }}>
+          Actualizando…
+        </div>
+      )}
+      {!sincronizando && syncStatus && (
+        <div className="rounded-xl border p-3 mb-4 text-2xs"
+          style={syncStatus.type === 'error'
+            ? { borderColor: '#EF444455', background: '#EF444415', color: '#EF4444' }
+            : { borderColor: '#22C55E55', background: '#22C55E15', color: '#22C55E' }}>
+          {syncStatus.type === 'error' ? '⚠ ' : '✓ '}{syncStatus.message}
+        </div>
+      )}
+    </>
   );
 
   if (!capacitaciones) {
@@ -6591,8 +6718,9 @@ function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActual
         <p className={`text-xs mb-5 max-w-sm mx-auto ${t.muted}`}>
           {readOnly
             ? 'Inicia sesión como administrador para traer los datos desde los formularios.'
-            : 'Presiona "Actualizar" para traer las respuestas más recientes desde los formularios de Google.'}
+            : 'Presiona "Actualizar información" para traer las respuestas desde los formularios de Google.'}
         </p>
+        {EstadoSync}
         {ActualizarBtn}
       </div>
     );
@@ -6604,10 +6732,12 @@ function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActual
         <h1 className="text-lg font-bold">Capacitaciones</h1>
         {ActualizarBtn}
       </div>
-      <p className={`text-xs mb-4 ${t.muted}`}>
+      <p className={`text-xs mb-3 ${t.muted}`}>
         Respuestas de los formularios de capacitación del personal, sincronizadas desde Google Forms.
         {capacitaciones.updatedAt && ` Última actualización: ${formatFechaHora(capacitaciones.updatedAt)}.`}
       </p>
+
+      {EstadoSync}
 
       {capacitaciones.errores?.length > 0 && (
         <div className="rounded-xl border p-3 mb-4 text-2xs" style={{ borderColor: '#F59E0B55', background: '#F59E0B15', color: '#F59E0B' }}>
@@ -6615,25 +6745,49 @@ function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActual
         </div>
       )}
 
-      {scoped.length === 0 ? (
+      <div className={`rounded-xl border p-3 mb-4 flex flex-wrap items-center gap-2 ${t.panel} ${t.border}`}>
+        <Filter size={13} className={t.muted} />
+        <select value={sede} onChange={e => setSede(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+          <option value="">Toda sede</option>
+          {sedesDisponibles.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={capacitacionSel} onChange={e => setCapacitacionSel(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+          <option value="">Toda capacitación</option>
+          {capacitacionesDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={anio} onChange={e => setAnio(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+          <option value="">Todo año</option>
+          {aniosDisponibles.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <select value={mes} onChange={e => setMes(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+          <option value="">Todo mes</option>
+          {MONTHS.map(m => <option key={m.k} value={m.idx}>{m.full}</option>)}
+        </select>
+        <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`} title="Desde" />
+        <span className={`text-2xs ${t.muted}`}>a</span>
+        <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`} title="Hasta" />
+        {hayFiltrosActivos && <Button variant="ghost" t={t} icon={X} iconSize={12} onClick={limpiarFiltros}>Limpiar filtros</Button>}
+      </div>
+
+      {filtrados.length === 0 ? (
         <div className={`rounded-xl border p-10 text-center ${t.panel} ${t.border}`}>
-          <p className={`text-xs ${t.muted}`}>Sin registros de capacitaciones{activeCompany !== 'TODAS' ? ` para ${activeCompany}` : ''}.</p>
+          <p className={`text-xs ${t.muted}`}>Sin registros de capacitaciones para los filtros actuales.</p>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            <HeroStat t={t} label="Respuestas registradas" value={scoped.length}
-              sub={`en ${new Set(scoped.map(r => r.capacitacionId)).size} capacitaciones`} color={accent} />
-            <HeroStat t={t} label="Personas capacitadas" value={personasUnicas} sub="correos únicos" color="#22C55E" />
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+            <HeroStat t={t} label="Capacitaciones realizadas" value={totalCapacitaciones} sub="temas distintos con respuestas" color={accent} />
+            <HeroStat t={t} label="Registros / respuestas" value={totalRegistros} sub="asistencias registradas" color="#3B82F6" />
+            <HeroStat t={t} label="Personas capacitadas" value={personasUnicas} sub="identidades únicas" color="#22C55E" />
             <HeroStat t={t} label="Promedio de puntaje" value={promedioPct != null ? `${promedioPct}%` : '—'}
-              sub={`${conPuntaje.length} evaluaciones con puntaje`} color={promedioPct != null && promedioPct < 70 ? '#EF4444' : '#3B82F6'} />
+              sub={`${conPuntaje.length} evaluaciones con puntaje`} color={promedioPct != null && promedioPct < 70 ? '#EF4444' : '#8B5CF6'} />
             <HeroStat t={t} label="Menor promedio" value={peorCapacitacion ? `${peorCapacitacion.avg}%` : '—'}
               sub={peorCapacitacion ? peorCapacitacion.name : 'Sin suficientes datos'} color="#F59E0B" />
           </div>
 
           <div className="grid lg:grid-cols-3 gap-4 mb-4">
             <div className={`rounded-xl border p-5 ${t.panel} ${t.border}`}>
-              <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Respuestas por empresa</div>
+              <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Registros por empresa</div>
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
                   <Pie data={porEmpresa} dataKey="value" nameKey="name" innerRadius={48} outerRadius={78} paddingAngle={2}>
@@ -6652,22 +6806,34 @@ function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActual
                 ))}
               </div>
             </div>
-            <div className={`lg:col-span-2 rounded-xl border p-5 ${t.panel} ${t.border}`}>
+            <div className={`rounded-xl border p-5 ${t.panel} ${t.border}`}>
+              <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Registros por sede</div>
+              <ResponsiveContainer width="100%" height={Math.max(160, porSede.length * 24)}>
+                <BarChart data={porSede} layout="vertical" margin={{ left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} width={110} />
+                  <Tooltip contentStyle={{ background: '#1e293b', border: 'none', fontSize: 12 }} />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={14} fill="#3B82F6" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className={`rounded-xl border p-5 ${t.panel} ${t.border}`}>
               <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Top capacitaciones por respuestas</div>
-              <ResponsiveContainer width="100%" height={Math.max(160, porCapacitacion.length * 26)}>
+              <ResponsiveContainer width="100%" height={Math.max(160, porCapacitacion.length * 22)}>
                 <BarChart data={porCapacitacion} layout="vertical" margin={{ left: 10 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} width={150} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: '#94a3b8' }} width={130} />
                   <Tooltip contentStyle={{ background: '#1e293b', border: 'none', fontSize: 12 }} />
-                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={14} fill={accent} />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={12} fill={accent} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
 
           <div className={`rounded-xl border p-5 mb-4 ${t.panel} ${t.border}`}>
-            <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Capacitaciones registradas por mes</div>
+            <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Registros por mes</div>
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={porMes} margin={{ left: -10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -6680,32 +6846,62 @@ function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActual
           </div>
 
           <div className={`rounded-xl border overflow-hidden ${t.panel} ${t.border}`}>
-            <div className="text-xs font-semibold p-5 pb-3 uppercase tracking-wide" style={{ color: accent }}>Últimos registros</div>
+            <div className="flex items-center justify-between flex-wrap gap-2 p-5 pb-3">
+              <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Detalle de registros</div>
+              <div className={`flex items-center gap-1.5 rounded-md border px-2 py-1 ${t.input}`}>
+                <Search size={12} className={t.muted} />
+                <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar por nombre, empresa, sede..."
+                  className="bg-transparent text-xs outline-none w-48" />
+              </div>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-2xs">
                 <thead>
                   <tr className={`text-left ${t.muted} border-t ${t.border}`}>
-                    <th className="px-5 py-2 font-normal">Fecha</th>
-                    <th className="px-3 py-2 font-normal">Nombre</th>
-                    <th className="px-3 py-2 font-normal">Empresa</th>
-                    <th className="px-3 py-2 font-normal">Sede</th>
-                    <th className="px-3 py-2 font-normal">Capacitación</th>
-                    <th className="px-3 py-2 font-normal text-right">Puntaje</th>
+                    {[
+                      { key: 'fecha', label: 'Fecha' },
+                      { key: 'capacitacion', label: 'Capacitación' },
+                      { key: 'nombre', label: 'Participante' },
+                      { key: 'empresa', label: 'Empresa' },
+                      { key: 'sede', label: 'Sede' },
+                      { key: 'cargo', label: 'Área / cargo' },
+                    ].map(h => (
+                      <th key={h.key} onClick={() => toggleSort(h.key)} className="px-3 py-2 font-mono uppercase text-3xs cursor-pointer select-none first:pl-5">
+                        <span className="inline-flex items-center gap-1">{h.label}<ArrowUpDown size={9} /></span>
+                      </th>
+                    ))}
+                    <th onClick={() => toggleSort('porcentaje')} className="px-3 py-2 pr-5 font-mono uppercase text-3xs cursor-pointer select-none text-right">
+                      <span className="inline-flex items-center gap-1 justify-end">Resultado<ArrowUpDown size={9} /></span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {ultimas.map((r, i) => (
-                    <tr key={i} className={`border-t ${t.border}`}>
+                  {filasPagina.map(r => (
+                    <tr key={r.id} className={`border-t ${t.border}`}>
                       <td className="px-5 py-2 font-mono whitespace-nowrap">{r.fecha ? formatFechaCorta(r.fecha) : '—'}</td>
+                      <td className="px-3 py-2">{r.capacitacion}</td>
                       <td className="px-3 py-2">{r.nombre || '—'}</td>
                       <td className="px-3 py-2">{EMPRESA_LABEL[r.empresa] || r.empresa}</td>
                       <td className="px-3 py-2">{r.sede || '—'}</td>
-                      <td className="px-3 py-2">{r.capacitacion}</td>
-                      <td className="px-3 py-2 text-right font-mono">{r.porcentaje != null ? `${r.porcentaje}%` : '—'}</td>
+                      <td className="px-3 py-2">{r.cargo || '—'}</td>
+                      <td className="px-3 py-2 pr-5 text-right font-mono">{r.asistencia || (r.porcentaje != null ? `${r.porcentaje}%` : '—')}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className={`flex items-center justify-between px-5 py-3 border-t text-2xs ${t.border} ${t.muted}`}>
+              <span>{ordenados.length} registro{ordenados.length !== 1 ? 's' : ''} — página {paginaActual} de {totalPaginas}</span>
+              <div className="flex items-center gap-1">
+                {/* Se basan en `paginaActual` (ya acotado a totalPaginas), no en el estado crudo
+                    `pagina`: si un filtro reduce los resultados, `pagina` puede quedar apuntando
+                    más allá del final, y partir de ahí haría falta más de un clic para que
+                    "Anterior" reaccione. Partir de paginaActual lo corrige en un solo clic. */}
+                <button onClick={() => setPagina(Math.max(1, paginaActual - 1))} disabled={paginaActual <= 1}
+                  className={`p-1 rounded-md border disabled:opacity-40 ${t.border}`}><ChevronLeft size={13} /></button>
+                <button onClick={() => setPagina(Math.min(totalPaginas, paginaActual + 1))} disabled={paginaActual >= totalPaginas}
+                  className={`p-1 rounded-md border disabled:opacity-40 ${t.border}`}><ChevronRight size={13} /></button>
+              </div>
             </div>
           </div>
         </>
