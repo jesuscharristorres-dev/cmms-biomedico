@@ -6745,7 +6745,12 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
 
       {capacitaciones.errores?.length > 0 && (
         <div className="rounded-xl border p-3 mb-4 text-2xs" style={{ borderColor: '#F59E0B55', background: '#F59E0B15', color: '#F59E0B' }}>
-          No se pudieron sincronizar {capacitaciones.errores.length} formulario{capacitaciones.errores.length !== 1 ? 's' : ''}: {capacitaciones.errores.map(e => e.label).join(', ')}.
+          <div className="font-semibold mb-1">
+            No se pudieron sincronizar {capacitaciones.errores.length} formulario{capacitaciones.errores.length !== 1 ? 's' : ''}:
+          </div>
+          <ul className="list-disc list-inside space-y-0.5">
+            {capacitaciones.errores.map(e => <li key={e.id}>{e.label}: {e.error}</li>)}
+          </ul>
         </div>
       )}
 
