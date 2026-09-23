@@ -5225,7 +5225,7 @@ function MainApp({ onLogout, readOnly }) {
         {menu === 'fallas' && !readOnly && <ReportesFallaPage reportes={reportesFalla} equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} onEliminarReporte={eliminarReporte} onVaciarHistorial={vaciarHistorialFallas} readOnly={readOnly} />}
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'capacitaciones' && (
-          <CapacitacionesPage capacitaciones={capacitaciones} activeCompany={activeCompany} t={t} accent={accent}
+          <CapacitacionesPage capacitaciones={capacitaciones} activeCompany={activeCompany} onChangeEmpresa={setActiveCompany} t={t} accent={accent}
             onActualizar={actualizarCapacitaciones} sincronizando={capSincronizando} syncStatus={capSyncStatus} readOnly={readOnly} />
         )}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
@@ -6522,9 +6522,11 @@ function PlanesProgramasPage({ planesProgramas, activeCompany, t, onUpdate, read
 }
 
 // Etiqueta visible del bucket OTRAS_EMPRESA (empresas que no matchean ninguna de las 5 del
-// CMMS, p. ej. "UT" de los contratos ERON) — el valor interno se mantiene sin traducir para
-// que coincida exactamente con lo que produce lib/capacitaciones.js en el servidor.
-const EMPRESA_LABEL = { [OTRAS_EMPRESA]: 'Otras / ERON' };
+// CMMS). "UT" (contratos ERON) ya NO cae acá — lib/capacitaciones.js la excluye por completo
+// antes de que sus registros lleguen al snapshot, así que este bucket solo agruparía alguna
+// otra empresa desconocida que aparezca a futuro en los formularios. El valor interno se
+// mantiene sin traducir para que coincida exactamente con lo que produce el servidor.
+const EMPRESA_LABEL = { [OTRAS_EMPRESA]: 'Otras' };
 const CAP_PAGE_SIZE = 20;
 
 // Aplica todos los filtros del dashboard de Capacitaciones excepto el que se indique en
@@ -6557,7 +6559,7 @@ const identidadDe = (r) => r.email || `${(r.nombre || '').toLowerCase()}|${r.emp
 // propios filtros (sede, capacitación, año, mes, rango de fechas) y una tabla de detalle con
 // búsqueda/orden/paginación. El botón "Actualizar información" dispara una sincronización en
 // vivo contra Google Sheets (solo admin).
-function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActualizar, sincronizando, syncStatus, readOnly }) {
+function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t, accent, onActualizar, sincronizando, syncStatus, readOnly }) {
   // Memoizado porque `capacitaciones?.records || []` crearía un array `[]` nuevo en cada
   // render cuando aún no hay datos, invalidando los useMemo de abajo que dependen de esto.
   const registros = useMemo(() => capacitaciones?.records || [], [capacitaciones]);
@@ -6573,7 +6575,7 @@ function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActual
   const [pagina, setPagina] = useState(1);
 
   const filtros = { empresa: activeCompany, sede, capacitacion: capacitacionSel, anio, mes, desde, hasta };
-  const hayFiltrosActivos = Boolean(sede || capacitacionSel || anio || mes || desde || hasta);
+  const hayFiltrosActivos = Boolean(activeCompany !== 'TODAS' || sede || capacitacionSel || anio || mes || desde || hasta);
 
   // Opciones de cada selector: relativas solo a la empresa activa (no a los demás filtros
   // locales), para que elegir una capacitación puntual no borre las sedes disponibles.
@@ -6685,7 +6687,9 @@ function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActual
   const filasPagina = ordenados.slice((paginaActual - 1) * CAP_PAGE_SIZE, paginaActual * CAP_PAGE_SIZE);
 
   const toggleSort = (key) => setSort(s => s.key === key ? { key, dir: -s.dir } : { key, dir: 1 });
-  const limpiarFiltros = () => { setSede(''); setCapacitacionSel(''); setAnio(''); setMes(''); setDesde(''); setHasta(''); };
+  const limpiarFiltros = () => {
+    onChangeEmpresa('TODAS'); setSede(''); setCapacitacionSel(''); setAnio(''); setMes(''); setDesde(''); setHasta('');
+  };
 
   const ActualizarBtn = !readOnly && (
     <Button variant="outline" t={t} accent={accent} icon={RefreshCw} onClick={onActualizar} disabled={sincronizando}>
@@ -6741,12 +6745,24 @@ function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActual
 
       {capacitaciones.errores?.length > 0 && (
         <div className="rounded-xl border p-3 mb-4 text-2xs" style={{ borderColor: '#F59E0B55', background: '#F59E0B15', color: '#F59E0B' }}>
-          No se pudieron sincronizar {capacitaciones.errores.length} formulario{capacitaciones.errores.length !== 1 ? 's' : ''}: {capacitaciones.errores.map(e => e.label).join(', ')}.
+          <div className="font-semibold mb-1">
+            No se pudieron sincronizar {capacitaciones.errores.length} formulario{capacitaciones.errores.length !== 1 ? 's' : ''}:
+          </div>
+          <ul className="list-disc list-inside space-y-0.5">
+            {capacitaciones.errores.map(e => <li key={e.id}>{e.label}: {e.error}</li>)}
+          </ul>
         </div>
       )}
 
       <div className={`rounded-xl border p-3 mb-4 flex flex-wrap items-center gap-2 ${t.panel} ${t.border}`}>
         <Filter size={13} className={t.muted} />
+        {/* Reutiliza el mismo `activeCompany` que ya gobierna el resto del CMMS (pestañas
+            superiores) — no es un filtro local aparte, para no tener dos fuentes de verdad
+            de "empresa activa" que puedan quedar desincronizadas entre sí. */}
+        <select value={activeCompany} onChange={e => onChangeEmpresa(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border font-semibold ${t.input}`}>
+          <option value="TODAS">Todas las empresas</option>
+          {COMPANIES.map(c => <option key={c.key} value={c.key}>{c.key}</option>)}
+        </select>
         <select value={sede} onChange={e => setSede(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
           <option value="">Toda sede</option>
           {sedesDisponibles.map(s => <option key={s} value={s}>{s}</option>)}
