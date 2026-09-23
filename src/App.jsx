@@ -5,7 +5,8 @@ import {
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, AlertTriangle, Lock,
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
-  IdCard, Save, SprayCan, ClipboardList, Paperclip, MoreVertical, Pencil, Filter, Zap, ExternalLink
+  IdCard, Save, SprayCan, ClipboardList, Paperclip, MoreVertical, Pencil, Filter, Zap, ExternalLink,
+  GraduationCap, RefreshCw
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -321,6 +322,7 @@ const MENU = [
   { key: 'alertas', label: 'Alertas', icon: BellRing, guestHidden: true },
   { key: 'fallas', label: 'Reportes de falla', icon: AlertTriangle, guestHidden: true },
   { key: 'planes', label: 'Planes y programas', icon: FolderOpen },
+  { key: 'capacitaciones', label: 'Capacitaciones', icon: GraduationCap },
   { key: 'tecnovigilancia', label: 'Tecnovigilancia', icon: ShieldAlert },
   { key: 'personal', label: 'Hojas de vida personal', icon: IdCard },
   { key: 'limpieza', label: 'Formatos de limpieza y desinfección', icon: SprayCan },
@@ -1769,6 +1771,40 @@ async function actualizarPlanPrograma(empresaKey, campo, valor) {
   cacheSet(PLANES_KEY, data);
   return data;
 }
+// Dashboard de capacitaciones — datos derivados de los formularios de Google Forms que
+// usa el equipo de biomédicos (ver api/capacitaciones.js y lib/capacitaciones.js). El GET
+// solo lee la última sincronización cacheada en Vercel KV; el botón "Actualizar" del
+// dashboard dispara el POST (solo admin), que vuelve a consultar Google Sheets en vivo.
+const CAPACITACIONES_KEY = 'cmms-capacitaciones';
+async function loadCapacitaciones() {
+  try {
+    const res = await fetch('/api/capacitaciones');
+    if (res.ok) {
+      const { data } = await res.json();
+      if (data) cacheSet(CAPACITACIONES_KEY, data);
+      return data;
+    }
+    console.error('No se pudo consultar capacitaciones: respuesta', res.status);
+  } catch (err) {
+    console.error('No se pudo consultar capacitaciones', err);
+  }
+  return cacheGet(CAPACITACIONES_KEY, null);
+}
+async function sincronizarCapacitaciones() {
+  const res = await fetch('/api/capacitaciones', { method: 'POST' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'No se pudo sincronizar las capacitaciones.');
+  }
+  const { data } = await res.json();
+  cacheSet(CAPACITACIONES_KEY, data);
+  return data;
+}
+// Empresa que agrupa respuestas cuyo texto libre no matchea ninguna de las 5 empresas del
+// CMMS (p. ej. "UT", usado por los contratos ERON) — ver COMPANY_ALIASES en
+// lib/capacitaciones.js, que es donde se decide a qué empresa cae cada respuesta.
+const OTRAS_EMPRESA = 'OTRAS';
+
 const PLANES_CATEGORIAS = [
   { key: 'mantenimiento', label: 'Mantenimiento', icon: '📋', documentos: [
     { key: 'programaMantenimiento', label: 'Programa de mantenimiento', descripcion: 'Documento institucional para la gestión del mantenimiento' },
@@ -4628,6 +4664,8 @@ function MainApp({ onLogout, readOnly }) {
   const [obsModalId, setObsModalId] = useState(null);
   const [reportesFalla, setReportesFalla] = useState([]);
   const [planesProgramas, setPlanesProgramas] = useState({});
+  const [capacitaciones, setCapacitaciones] = useState(null);
+  const [capSincronizando, setCapSincronizando] = useState(false);
   const [tecnoTransversal, setTecnoTransversal] = useState({});
   const [tecnoReportes, setTecnoReportes] = useState({});
   const [personal, setPersonal] = useState([]);
@@ -4684,6 +4722,23 @@ function MainApp({ onLogout, readOnly }) {
       console.error('No se pudo sincronizar el plan/programa con el servidor compartido', err);
       setPlanesProgramas(previous);
     });
+  };
+
+  useEffect(() => { loadCapacitaciones().then(setCapacitaciones); }, []);
+  // A diferencia de updateEquipo/updatePlanPrograma, esto no es una edición optimista de un
+  // campo puntual: es un refresh completo que solo tiene sentido esperar a que el servidor
+  // termine (puede tardar unos segundos, consulta ~20 hojas de Google en vivo), así que el
+  // botón queda deshabilitado con capSincronizando mientras corre.
+  const actualizarCapacitaciones = async () => {
+    setCapSincronizando(true);
+    try {
+      setCapacitaciones(await sincronizarCapacitaciones());
+    } catch (err) {
+      console.error('No se pudo sincronizar las capacitaciones', err);
+      alert(err.message);
+    } finally {
+      setCapSincronizando(false);
+    }
   };
 
   useEffect(() => { loadTecnoTransversal().then(setTecnoTransversal); }, []);
@@ -5153,6 +5208,10 @@ function MainApp({ onLogout, readOnly }) {
         )}
         {menu === 'fallas' && !readOnly && <ReportesFallaPage reportes={reportesFalla} equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} onEliminarReporte={eliminarReporte} onVaciarHistorial={vaciarHistorialFallas} readOnly={readOnly} />}
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
+        {menu === 'capacitaciones' && (
+          <CapacitacionesPage capacitaciones={capacitaciones} activeCompany={activeCompany} t={t} accent={accent}
+            onActualizar={actualizarCapacitaciones} sincronizando={capSincronizando} readOnly={readOnly} />
+        )}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
         {menu === 'limpieza' && (
@@ -6442,6 +6501,215 @@ function PlanesProgramasPage({ planesProgramas, activeCompany, t, onUpdate, read
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Etiqueta visible del bucket OTRAS_EMPRESA (empresas que no matchean ninguna de las 5 del
+// CMMS, p. ej. "UT" de los contratos ERON) — el valor interno se mantiene sin traducir para
+// que coincida exactamente con lo que produce lib/capacitaciones.js en el servidor.
+const EMPRESA_LABEL = { [OTRAS_EMPRESA]: 'Otras / ERON' };
+
+// Dashboard de "Capacitaciones": respuestas de los formularios de Google Forms del personal
+// (ver api/capacitaciones.js), filtradas por el mismo selector de empresa global que usa el
+// resto del CMMS (activeCompany) — no tiene un selector propio para no duplicar ese control.
+// El botón "Actualizar" dispara una sincronización en vivo contra Google Sheets (solo admin).
+function CapacitacionesPage({ capacitaciones, activeCompany, t, accent, onActualizar, sincronizando, readOnly }) {
+  // Memoizado porque `capacitaciones?.records || []` crearía un array `[]` nuevo en cada
+  // render cuando aún no hay datos, invalidando los useMemo de abajo que dependen de esto.
+  const registros = useMemo(() => capacitaciones?.records || [], [capacitaciones]);
+  const scoped = useMemo(
+    () => activeCompany === 'TODAS' ? registros : registros.filter(r => r.empresa === activeCompany),
+    [registros, activeCompany]
+  );
+
+  const personasUnicas = useMemo(() => new Set(scoped.filter(r => r.email).map(r => r.email)).size, [scoped]);
+  const conPuntaje = useMemo(() => scoped.filter(r => r.porcentaje != null), [scoped]);
+  const promedioPct = conPuntaje.length
+    ? Math.round(conPuntaje.reduce((a, r) => a + r.porcentaje, 0) / conPuntaje.length)
+    : null;
+
+  // Siempre sobre TODOS los registros (no `scoped`): la comparación por empresa pierde
+  // sentido si el propio filtro ya la reduce a una sola.
+  const porEmpresa = useMemo(() => {
+    const map = {};
+    registros.forEach(r => { map[r.empresa] = (map[r.empresa] || 0) + 1; });
+    return [...COMPANIES.map(c => c.key), OTRAS_EMPRESA]
+      .filter(k => map[k])
+      .map(k => ({ name: EMPRESA_LABEL[k] || k, value: map[k], fill: (companyOf(k) || {}).color || '#94A3B8' }));
+  }, [registros]);
+
+  const porCapacitacion = useMemo(() => {
+    const map = {};
+    scoped.forEach(r => { map[r.capacitacion] = (map[r.capacitacion] || 0) + 1; });
+    return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10);
+  }, [scoped]);
+
+  const porMes = useMemo(() => {
+    const map = {};
+    scoped.forEach(r => {
+      if (!r.fecha) return;
+      const k = r.fecha.slice(0, 7); // "AAAA-MM"
+      map[k] = (map[k] || 0) + 1;
+    });
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).slice(-12).map(([k, value]) => {
+      const [y, m] = k.split('-');
+      return { name: `${MONTHS[Number(m) - 1]?.l || m} ${y.slice(2)}`, value };
+    });
+  }, [scoped]);
+
+  // La capacitación con el peor promedio de puntaje — señal de alerta para reforzar esa
+  // capacitación puntual. Se exige un mínimo de respuestas para no alarmar con 1-2 casos.
+  const peorCapacitacion = useMemo(() => {
+    const map = {};
+    scoped.forEach(r => {
+      if (r.porcentaje == null) return;
+      (map[r.capacitacion] ||= []).push(r.porcentaje);
+    });
+    let peor = null;
+    Object.entries(map).forEach(([name, arr]) => {
+      if (arr.length < 3) return;
+      const avg = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+      if (!peor || avg < peor.avg) peor = { name, avg };
+    });
+    return peor;
+  }, [scoped]);
+
+  const ultimas = scoped.slice(0, 15); // ya vienen ordenados desc por fecha desde el servidor
+
+  const ActualizarBtn = !readOnly && (
+    <Button variant="outline" t={t} accent={accent} icon={RefreshCw} onClick={onActualizar} disabled={sincronizando}>
+      {sincronizando ? 'Sincronizando…' : 'Actualizar'}
+    </Button>
+  );
+
+  if (!capacitaciones) {
+    return (
+      <div className={`rounded-xl border p-10 text-center ${t.panel} ${t.border}`}>
+        <GraduationCap size={32} className={`mx-auto mb-3 ${t.muted}`} />
+        <h2 className="text-sm font-bold mb-1">Aún no hay datos de capacitaciones sincronizados</h2>
+        <p className={`text-xs mb-5 max-w-sm mx-auto ${t.muted}`}>
+          {readOnly
+            ? 'Inicia sesión como administrador para traer los datos desde los formularios.'
+            : 'Presiona "Actualizar" para traer las respuestas más recientes desde los formularios de Google.'}
+        </p>
+        {ActualizarBtn}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+        <h1 className="text-lg font-bold">Capacitaciones</h1>
+        {ActualizarBtn}
+      </div>
+      <p className={`text-xs mb-4 ${t.muted}`}>
+        Respuestas de los formularios de capacitación del personal, sincronizadas desde Google Forms.
+        {capacitaciones.updatedAt && ` Última actualización: ${formatFechaHora(capacitaciones.updatedAt)}.`}
+      </p>
+
+      {capacitaciones.errores?.length > 0 && (
+        <div className="rounded-xl border p-3 mb-4 text-2xs" style={{ borderColor: '#F59E0B55', background: '#F59E0B15', color: '#F59E0B' }}>
+          No se pudieron sincronizar {capacitaciones.errores.length} formulario{capacitaciones.errores.length !== 1 ? 's' : ''}: {capacitaciones.errores.map(e => e.label).join(', ')}.
+        </div>
+      )}
+
+      {scoped.length === 0 ? (
+        <div className={`rounded-xl border p-10 text-center ${t.panel} ${t.border}`}>
+          <p className={`text-xs ${t.muted}`}>Sin registros de capacitaciones{activeCompany !== 'TODAS' ? ` para ${activeCompany}` : ''}.</p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            <HeroStat t={t} label="Respuestas registradas" value={scoped.length}
+              sub={`en ${new Set(scoped.map(r => r.capacitacionId)).size} capacitaciones`} color={accent} />
+            <HeroStat t={t} label="Personas capacitadas" value={personasUnicas} sub="correos únicos" color="#22C55E" />
+            <HeroStat t={t} label="Promedio de puntaje" value={promedioPct != null ? `${promedioPct}%` : '—'}
+              sub={`${conPuntaje.length} evaluaciones con puntaje`} color={promedioPct != null && promedioPct < 70 ? '#EF4444' : '#3B82F6'} />
+            <HeroStat t={t} label="Menor promedio" value={peorCapacitacion ? `${peorCapacitacion.avg}%` : '—'}
+              sub={peorCapacitacion ? peorCapacitacion.name : 'Sin suficientes datos'} color="#F59E0B" />
+          </div>
+
+          <div className="grid lg:grid-cols-3 gap-4 mb-4">
+            <div className={`rounded-xl border p-5 ${t.panel} ${t.border}`}>
+              <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Respuestas por empresa</div>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={porEmpresa} dataKey="value" nameKey="name" innerRadius={48} outerRadius={78} paddingAngle={2}>
+                    {porEmpresa.map((e, i) => <Cell key={i} fill={e.fill} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: '#1e293b', border: 'none', fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center mt-2">
+                {porEmpresa.map((e, i) => (
+                  <span key={i} className="flex items-center gap-1 text-3xs">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: e.fill }} />
+                    <span className={t.muted}>{e.name}</span>
+                    <span className="font-mono font-semibold">{e.value}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className={`lg:col-span-2 rounded-xl border p-5 ${t.panel} ${t.border}`}>
+              <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Top capacitaciones por respuestas</div>
+              <ResponsiveContainer width="100%" height={Math.max(160, porCapacitacion.length * 26)}>
+                <BarChart data={porCapacitacion} layout="vertical" margin={{ left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} width={150} />
+                  <Tooltip contentStyle={{ background: '#1e293b', border: 'none', fontSize: 12 }} />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={14} fill={accent} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className={`rounded-xl border p-5 mb-4 ${t.panel} ${t.border}`}>
+            <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Capacitaciones registradas por mes</div>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={porMes} margin={{ left: -10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
+                <Tooltip contentStyle={{ background: '#1e293b', border: 'none', fontSize: 12 }} />
+                <Line type="monotone" dataKey="value" stroke={accent} strokeWidth={2.2} dot={{ r: 2.5 }} activeDot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className={`rounded-xl border overflow-hidden ${t.panel} ${t.border}`}>
+            <div className="text-xs font-semibold p-5 pb-3 uppercase tracking-wide" style={{ color: accent }}>Últimos registros</div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-2xs">
+                <thead>
+                  <tr className={`text-left ${t.muted} border-t ${t.border}`}>
+                    <th className="px-5 py-2 font-normal">Fecha</th>
+                    <th className="px-3 py-2 font-normal">Nombre</th>
+                    <th className="px-3 py-2 font-normal">Empresa</th>
+                    <th className="px-3 py-2 font-normal">Sede</th>
+                    <th className="px-3 py-2 font-normal">Capacitación</th>
+                    <th className="px-3 py-2 font-normal text-right">Puntaje</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ultimas.map((r, i) => (
+                    <tr key={i} className={`border-t ${t.border}`}>
+                      <td className="px-5 py-2 font-mono whitespace-nowrap">{r.fecha ? formatFechaCorta(r.fecha) : '—'}</td>
+                      <td className="px-3 py-2">{r.nombre || '—'}</td>
+                      <td className="px-3 py-2">{EMPRESA_LABEL[r.empresa] || r.empresa}</td>
+                      <td className="px-3 py-2">{r.sede || '—'}</td>
+                      <td className="px-3 py-2">{r.capacitacion}</td>
+                      <td className="px-3 py-2 text-right font-mono">{r.porcentaje != null ? `${r.porcentaje}%` : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
