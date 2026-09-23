@@ -6522,9 +6522,11 @@ function PlanesProgramasPage({ planesProgramas, activeCompany, t, onUpdate, read
 }
 
 // Etiqueta visible del bucket OTRAS_EMPRESA (empresas que no matchean ninguna de las 5 del
-// CMMS, p. ej. "UT" de los contratos ERON) — el valor interno se mantiene sin traducir para
-// que coincida exactamente con lo que produce lib/capacitaciones.js en el servidor.
-const EMPRESA_LABEL = { [OTRAS_EMPRESA]: 'Otras / ERON' };
+// CMMS). "UT" (contratos ERON) ya NO cae acá — lib/capacitaciones.js la excluye por completo
+// antes de que sus registros lleguen al snapshot, así que este bucket solo agruparía alguna
+// otra empresa desconocida que aparezca a futuro en los formularios. El valor interno se
+// mantiene sin traducir para que coincida exactamente con lo que produce el servidor.
+const EMPRESA_LABEL = { [OTRAS_EMPRESA]: 'Otras' };
 const CAP_PAGE_SIZE = 20;
 
 // Aplica todos los filtros del dashboard de Capacitaciones excepto el que se indique en
