@@ -6604,7 +6604,11 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
   // Las 3 métricas que el módulo debe diferenciar: capacitaciones (temas distintos con al
   // menos una respuesta), registros (cada fila = una asistencia puntual) y personas
   // (identidades únicas) — quien asistió a 3 capacitaciones suma 3 registros pero 1 persona.
-  const totalCapacitaciones = useMemo(() => new Set(filtrados.map(r => r.capacitacionId)).size, [filtrados]);
+  // Se cuenta por `capacitacion` (el nombre/tema), no por `capacitacionId` (la hoja): así, dos
+  // hojas con el mismo tema (p. ej. "PRE Radiadores..." y "POS Radiadores..." configuradas con
+  // el mismo label) cuentan como UNA sola capacitación, no dos — a propósito, para poder
+  // filtrarlas y seleccionarlas juntas como un único tema en el dashboard.
+  const totalCapacitaciones = useMemo(() => new Set(filtrados.map(r => r.capacitacion)).size, [filtrados]);
   const totalRegistros = filtrados.length;
   const personasUnicas = useMemo(() => new Set(filtrados.map(identidadDe)).size, [filtrados]);
   const conPuntaje = useMemo(() => filtrados.filter(r => r.porcentaje != null), [filtrados]);
