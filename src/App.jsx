@@ -6666,6 +6666,32 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
     return peor;
   }, [filtrados]);
 
+  // Comparación PRE/POS: cuando dos hojas comparten el mismo `capacitacion` (label) pero una
+  // trae fase "pre" y la otra "pos" (evaluación antes/después de la capacitación), empareja
+  // las respuestas de la MISMA persona (misma identidad) en ambas fases para mostrar la
+  // mejora. Los temas sin ambas fases, o sin pareja para una persona puntual, no generan fila
+  // acá — igual siguen viéndose sueltos en la tabla de detalle de abajo, con su fase marcada.
+  const comparacionPrePost = useMemo(() => {
+    const porTema = {};
+    filtrados.forEach(r => {
+      if (r.fase !== 'pre' && r.fase !== 'pos') return;
+      const grupo = (porTema[r.capacitacion] ||= { pre: new Map(), pos: new Map() });
+      grupo[r.fase].set(identidadDe(r), r);
+    });
+    const filas = [];
+    Object.entries(porTema).forEach(([tema, { pre, pos }]) => {
+      pre.forEach((rPre, identidad) => {
+        const rPos = pos.get(identidad);
+        if (!rPos) return;
+        const mejora = (rPre.porcentaje != null && rPos.porcentaje != null)
+          ? Math.round((rPos.porcentaje - rPre.porcentaje) * 10) / 10
+          : null;
+        filas.push({ tema, nombre: rPre.nombre || rPos.nombre, empresa: rPre.empresa, pre: rPre.porcentaje, pos: rPos.porcentaje, mejora });
+      });
+    });
+    return filas;
+  }, [filtrados]);
+
   // Tabla de detalle: búsqueda de texto libre + orden por columna + paginación, sobre
   // `filtrados` (ya con todos los filtros del dashboard aplicados).
   const buscados = useMemo(() => {
@@ -6865,6 +6891,43 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
             </ResponsiveContainer>
           </div>
 
+          {comparacionPrePost.length > 0 && (
+            <div className={`rounded-xl border overflow-hidden mb-4 ${t.panel} ${t.border}`}>
+              <div className="p-5 pb-3">
+                <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Comparación Pre / Post</div>
+                <p className={`text-2xs mt-1 ${t.muted}`}>Mismo participante, evaluado antes y después de la capacitación — mejora en puntos porcentuales.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-2xs">
+                  <thead>
+                    <tr className={`text-left ${t.muted} border-t ${t.border}`}>
+                      <th className="px-5 py-2 font-mono uppercase text-3xs">Capacitación</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs">Participante</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs">Empresa</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs text-right">Pre</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs text-right">Post</th>
+                      <th className="px-3 py-2 pr-5 font-mono uppercase text-3xs text-right">Mejora</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {comparacionPrePost.map((f, i) => (
+                      <tr key={i} className={`border-t ${t.border}`}>
+                        <td className="px-5 py-2">{f.tema}</td>
+                        <td className="px-3 py-2">{f.nombre || '—'}</td>
+                        <td className="px-3 py-2">{EMPRESA_LABEL[f.empresa] || f.empresa}</td>
+                        <td className="px-3 py-2 text-right font-mono">{f.pre != null ? `${f.pre}%` : '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono">{f.pos != null ? `${f.pos}%` : '—'}</td>
+                        <td className="px-3 py-2 pr-5 text-right font-mono font-semibold" style={{ color: f.mejora == null ? undefined : f.mejora >= 0 ? '#22C55E' : '#EF4444' }}>
+                          {f.mejora != null ? `${f.mejora >= 0 ? '+' : ''}${f.mejora} pts` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           <div className={`rounded-xl border overflow-hidden ${t.panel} ${t.border}`}>
             <div className="flex items-center justify-between flex-wrap gap-2 p-5 pb-3">
               <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Detalle de registros</div>
@@ -6881,6 +6944,7 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
                     {[
                       { key: 'fecha', label: 'Fecha' },
                       { key: 'capacitacion', label: 'Capacitación' },
+                      { key: 'fase', label: 'Fase' },
                       { key: 'nombre', label: 'Participante' },
                       { key: 'empresa', label: 'Empresa' },
                       { key: 'sede', label: 'Sede' },
@@ -6900,6 +6964,7 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
                     <tr key={r.id} className={`border-t ${t.border}`}>
                       <td className="px-5 py-2 font-mono whitespace-nowrap">{r.fecha ? formatFechaCorta(r.fecha) : '—'}</td>
                       <td className="px-3 py-2">{r.capacitacion}</td>
+                      <td className="px-3 py-2">{r.fase ? <Badge color={r.fase === 'pre' ? '#F59E0B' : '#22C55E'}>{r.fase}</Badge> : '—'}</td>
                       <td className="px-3 py-2">{r.nombre || '—'}</td>
                       <td className="px-3 py-2">{EMPRESA_LABEL[r.empresa] || r.empresa}</td>
                       <td className="px-3 py-2">{r.sede || '—'}</td>
