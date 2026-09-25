@@ -4158,19 +4158,53 @@ function MainApp({ onLogout, readOnly }) {
     });
   };
 
-  // Valores únicos para los <select> de filtro (sede/ubicación/marca) — a propósito se
-  // calculan sobre el inventario de la empresa activa SIN aplicar los demás filtros, para
-  // que las opciones del desplegable no vayan desapareciendo a medida que el usuario
-  // filtra por otro campo.
+  // Valores únicos para los <select> de filtro (equipo/sede/marca) — a propósito se calculan
+  // sobre el inventario de la empresa activa SIN aplicar los demás filtros, para que las
+  // opciones del desplegable no vayan desapareciendo a medida que el usuario filtra por otro
+  // campo. "ubicacion" es la excepción: además de la empresa, respeta en cascada la sede
+  // seleccionada (Empresa → Sede → Ubicación), para no ofrecer ubicaciones de otra sede.
   const uniqueOptions = useMemo(() => {
-    const scoped = activeCompany === 'TODAS' ? equipos : equipos.filter(e => e.empresa === activeCompany);
+    const scopedEmpresa = activeCompany === 'TODAS' ? equipos : equipos.filter(e => e.empresa === activeCompany);
     const out = {};
-    ['equipo', 'sede', 'ubicacion', 'marca'].forEach(field => {
-      out[field] = [...new Set(scoped.map(e => e[field]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    ['equipo', 'sede', 'marca'].forEach(field => {
+      out[field] = [...new Set(scopedEmpresa.map(e => e[field]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
     });
+    const scopedParaUbicacion = filters.sede ? scopedEmpresa.filter(e => e.sede === filters.sede) : scopedEmpresa;
+    out.ubicacion = [...new Set(scopedParaUbicacion.map(e => e.ubicacion).filter(Boolean))].sort((a, b) => a.localeCompare(b));
     return out;
-  }, [equipos, activeCompany]);
+  }, [equipos, activeCompany, filters.sede]);
   const uniqueVals = (field) => uniqueOptions[field] || [];
+
+  // Cambia la empresa activa y, en el mismo gesto del usuario, limpia los filtros
+  // dependientes (sede/ubicación) que hayan quedado inválidos para la nueva empresa —
+  // jerarquía Empresa → Sede → Ubicación. Se hace aquí (evento), no en un useEffect, para no
+  // disparar un set-state adicional fuera del gesto que lo origina.
+  const changeCompany = (newCompany) => {
+    setActiveCompany(newCompany);
+    if (newCompany === 'TODAS') return;
+    setFilters(f => {
+      const scoped = equipos.filter(e => e.empresa === newCompany);
+      const sede = (f.sede && scoped.some(e => e.sede === f.sede)) ? f.sede : '';
+      const scopedUbicacion = sede ? scoped.filter(e => e.sede === sede) : scoped;
+      const ubicacion = (f.ubicacion && scopedUbicacion.some(e => e.ubicacion === f.ubicacion)) ? f.ubicacion : '';
+      if (sede === f.sede && ubicacion === f.ubicacion) return f;
+      return { ...f, sede, ubicacion };
+    });
+  };
+
+  // Misma idea que changeCompany, pero para cuando el usuario cambia manualmente la sede
+  // (sin cambiar de empresa): si la ubicación ya elegida no pertenece a la nueva sede, se
+  // limpia (p. ej. Sede A → Sede B debe soltar una ubicación exclusiva de Sede A). También
+  // cubre volver a "Todas las sedes" (newSede === ''), revalidando contra todo el alcance
+  // de la empresa activa.
+  const changeSede = (newSede) => {
+    setFilters(f => {
+      const scopedEmpresa = activeCompany === 'TODAS' ? equipos : equipos.filter(e => e.empresa === activeCompany);
+      const scoped = newSede ? scopedEmpresa.filter(e => e.sede === newSede) : scopedEmpresa;
+      const ubicacion = (f.ubicacion && scoped.some(e => e.ubicacion === f.ubicacion)) ? f.ubicacion : '';
+      return { ...f, sede: newSede, ubicacion };
+    });
+  };
 
   const filtered = useMemo(() => {
     let list = equipos;
@@ -4459,13 +4493,13 @@ function MainApp({ onLogout, readOnly }) {
         <div className="absolute inset-0 overflow-y-auto p-6">
         {/* Empresa pills */}
         <div className="flex gap-2 flex-wrap mb-5">
-          <button onClick={() => setActiveCompany('TODAS')}
+          <button onClick={() => changeCompany('TODAS')}
             className={`px-3 min-h-11 flex items-center rounded-full text-2xs font-mono border transition ${t.border}`}
             style={activeCompany === 'TODAS' ? { background: NEUTRAL_ACCENT + '1A', borderColor: NEUTRAL_ACCENT, color: NEUTRAL_ACCENT } : {}}>
             Todas las empresas
           </button>
           {COMPANIES.map(c => (
-            <button key={c.key} onClick={() => setActiveCompany(c.key)}
+            <button key={c.key} onClick={() => changeCompany(c.key)}
               className={`px-3 min-h-11 flex items-center rounded-full text-2xs font-mono border transition ${activeCompany === c.key ? 'text-white font-semibold' : t.border}`}
               style={activeCompany === c.key ? { background: c.gradient, borderColor: c.color } : {}}>
               {c.key}
@@ -4475,11 +4509,11 @@ function MainApp({ onLogout, readOnly }) {
 
         {menu === 'dashboard' && <Dashboard equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} accent={accent} theme={theme} t={t} readOnly={readOnly} onGoAlerts={readOnly ? undefined : () => setMenu('alertas')} onGoFallas={readOnly ? undefined : () => setMenu('fallas')} onGoInventario={() => setMenu('inventario')} />}
         {menu === 'alertas' && !readOnly && <AlertasPage equipos={equipos} activeCompany={activeCompany} t={t} onOpen={setDrawerId} />}
-        {menu === 'empresas' && <EmpresasPage equipos={equipos} t={t} onSelect={(k) => { setActiveCompany(k); setMenu('inventario'); }} />}
+        {menu === 'empresas' && <EmpresasPage equipos={equipos} t={t} onSelect={(k) => { changeCompany(k); setMenu('inventario'); }} />}
         {(menu === 'inventario' || ((menu === 'mantenimientos' || menu === 'calibraciones' || menu === 'correctivos') && !readOnly)) && (
           <InventarioPage
             mode={menu} equipos={filtered} t={t} accent={accent} accentBg={accentBg}
-            filters={filters} setFilters={setFilters} search={search} setSearch={setSearch}
+            filters={filters} setFilters={setFilters} onChangeSede={changeSede} search={search} setSearch={setSearch}
             searchText={searchText} setSearchText={setSearchText}
             sort={sort} setSort={setSort} uniqueVals={uniqueVals} activeCompany={activeCompany}
             onOpen={setDrawerId} onObs={setObsModalId} selectedId={drawerId}
@@ -5113,7 +5147,7 @@ function EliminarEquipoDialog({ equipo, onCancel, onConfirm, t }) {
   );
 }
 
-function InventarioPage({ mode, equipos, t, accentBg, filters, setFilters, search, setSearch, searchText, setSearchText, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport, activeCompany, onClearFilters, readOnly, selectedId }) {
+function InventarioPage({ mode, equipos, t, accentBg, filters, setFilters, onChangeSede, search, setSearch, searchText, setSearchText, setSort, uniqueVals, onOpen, onObs, onAdd, onDuplicate, onRemove, onExport, onImport, activeCompany, onClearFilters, readOnly, selectedId }) {
   const year = new Date().getFullYear();
   const title = { inventario: 'Inventario de equipos', mantenimientos: 'Mantenimientos preventivos', calibraciones: 'Calibraciones', correctivos: 'Correctivos' }[mode];
   // Filtro por mes del mantenimiento — exclusivo de la vista "Mantenimientos preventivos",
@@ -5166,7 +5200,7 @@ function InventarioPage({ mode, equipos, t, accentBg, filters, setFilters, searc
             <button onClick={() => setSearchText('')} aria-label="Limpiar búsqueda" className={t.muted}><X size={13} /></button>
           )}
         </div>
-        <select value={filters.sede} onChange={e => setFilters({ ...filters, sede: e.target.value })} className={`rounded-md px-2 py-1.5 text-xs border uppercase ${t.input}`}>
+        <select value={filters.sede} onChange={e => onChangeSede(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border uppercase ${t.input}`}>
           <option value="">Todas las sedes</option>
           {uniqueVals('sede').map(v => <option key={v} value={v}>{v}</option>)}
         </select>
