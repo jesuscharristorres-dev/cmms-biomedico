@@ -5,7 +5,8 @@ import {
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, AlertTriangle, Lock,
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
-  IdCard, Save, SprayCan, ClipboardList, Paperclip, MoreVertical, Pencil, Filter, Zap, ExternalLink
+  IdCard, Save, SprayCan, ClipboardList, Paperclip, MoreVertical, Pencil, Filter, Zap, ExternalLink,
+  GraduationCap, RefreshCw
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -23,6 +24,15 @@ import { preventivoDelMes } from './services/preventivoSchedule';
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
 import logoIngenieriaClinica from './assets/logo-ingenieria-clinica.png';
 import logoMacromed from './assets/logo-macromed.jpg';
+// Fotos reales de equipos por especialidad — landing pública únicamente (sección
+// "Especialidades"), tomadas del mismo banco de imágenes del proyecto v1.
+import fotoHospitalizacion from './assets/equipos/hospitalizacion.webp';
+import fotoUci from './assets/equipos/uci.webp';
+import fotoLaboratorio from './assets/equipos/laboratorio.webp';
+import fotoImagenologia from './assets/equipos/imagenologia.webp';
+import fotoOdontologia from './assets/equipos/odontologia.webp';
+import fotoQuirofano from './assets/equipos/quirofano.webp';
+import fotoEquiposGenerales from './assets/equipos/equipos-generales.webp';
 
 /* ---------------------------------------------------------------- */
 /* ERROR BOUNDARY                                                     */
@@ -312,6 +322,7 @@ const MENU = [
   { key: 'alertas', label: 'Alertas', icon: BellRing, guestHidden: true },
   { key: 'fallas', label: 'Reportes de falla', icon: AlertTriangle, guestHidden: true },
   { key: 'planes', label: 'Planes y programas', icon: FolderOpen },
+  { key: 'capacitaciones', label: 'Capacitaciones', icon: GraduationCap },
   { key: 'tecnovigilancia', label: 'Tecnovigilancia', icon: ShieldAlert },
   { key: 'personal', label: 'Hojas de vida personal', icon: IdCard },
   { key: 'limpieza', label: 'Formatos de limpieza y desinfección', icon: SprayCan },
@@ -1760,6 +1771,40 @@ async function actualizarPlanPrograma(empresaKey, campo, valor) {
   cacheSet(PLANES_KEY, data);
   return data;
 }
+// Dashboard de capacitaciones — datos derivados de los formularios de Google Forms que
+// usa el equipo de biomédicos (ver api/capacitaciones.js y lib/capacitaciones.js). El GET
+// solo lee la última sincronización cacheada en Vercel KV; el botón "Actualizar" del
+// dashboard dispara el POST (solo admin), que vuelve a consultar Google Sheets en vivo.
+const CAPACITACIONES_KEY = 'cmms-capacitaciones';
+async function loadCapacitaciones() {
+  try {
+    const res = await fetch('/api/capacitaciones');
+    if (res.ok) {
+      const { data } = await res.json();
+      if (data) cacheSet(CAPACITACIONES_KEY, data);
+      return data;
+    }
+    console.error('No se pudo consultar capacitaciones: respuesta', res.status);
+  } catch (err) {
+    console.error('No se pudo consultar capacitaciones', err);
+  }
+  return cacheGet(CAPACITACIONES_KEY, null);
+}
+async function sincronizarCapacitaciones() {
+  const res = await fetch('/api/capacitaciones', { method: 'POST' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'No se pudo sincronizar las capacitaciones.');
+  }
+  const { data } = await res.json();
+  cacheSet(CAPACITACIONES_KEY, data);
+  return data;
+}
+// Empresa que agrupa respuestas cuyo texto libre no matchea ninguna de las 5 empresas del
+// CMMS (p. ej. "UT", usado por los contratos ERON) — ver COMPANY_ALIASES en
+// lib/capacitaciones.js, que es donde se decide a qué empresa cae cada respuesta.
+const OTRAS_EMPRESA = 'OTRAS';
+
 const PLANES_CATEGORIAS = [
   { key: 'mantenimiento', label: 'Mantenimiento', icon: '📋', documentos: [
     { key: 'programaMantenimiento', label: 'Programa de mantenimiento', descripcion: 'Documento institucional para la gestión del mantenimiento' },
@@ -3402,6 +3447,649 @@ function LogoWatermark({ size = 820, opacity = 0.035 }) {
 const REPORTE_BG_LIGHT = 'linear-gradient(160deg, #FFFFFF 0%, #EEF6FB 24%, #FFFFFF 48%, #EFF9F2 76%, #FFFFFF 100%)';
 
 /* ---------------------------------------------------------------- */
+/* LANDING PAGE — puerta de entrada pública, antes del login             */
+/* ---------------------------------------------------------------- */
+// Estética tecnológica/médica premium (glassmorphism + red neuronal animada +
+// glow azul/cian) — dirección confirmada explícitamente por el usuario tras
+// revisar el sitio de referencia, en reemplazo del rediseño editorial sobrio
+// de la iteración anterior. El video del héroe (public/media/hero-equipo-
+// biomedico.mp4) es un graphic motion 3D generado con HyperFrames (Three.js:
+// monitor de signos vitales estilizado, cámara orbital, partículas, bloom).
+const LANDING_STYLES = `
+  @keyframes landing-fade-up { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes landing-glow-pulse { 0%, 100% { opacity: 0.45; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.05); } }
+  @keyframes landing-core-ring { 0% { transform: scale(0.85); opacity: 0.7; } 100% { transform: scale(1.6); opacity: 0; } }
+  @keyframes landing-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+  .landing-reveal { animation: landing-fade-up .7s cubic-bezier(0.16,1,0.3,1) both; }
+  .landing-glow { animation: landing-glow-pulse 4.5s ease-in-out infinite; }
+  .landing-ring { animation: landing-core-ring 3.6s ease-out infinite; }
+  .landing-float { animation: landing-float 5.5s ease-in-out infinite; }
+  .landing-btn { transition: transform 200ms cubic-bezier(0.16,1,0.3,1), box-shadow 200ms cubic-bezier(0.16,1,0.3,1), filter 200ms ease; }
+  .landing-btn:hover { transform: translateY(-2px); filter: brightness(1.06); }
+  .landing-btn:active { transform: translateY(0) scale(0.98); }
+  .landing-btn-primary { background: #3B9FD6; box-shadow: 0 16px 32px -14px rgba(59,159,214,0.55); }
+  .landing-btn-primary:hover { box-shadow: 0 22px 40px -14px rgba(59,159,214,0.65); }
+  .landing-btn-outline-dark { border: 1.5px solid rgba(255,255,255,0.28); color: #FFFFFF; background: rgba(255,255,255,0.05); backdrop-filter: blur(6px); }
+  .landing-btn-outline-dark:hover { border-color: rgba(125,211,252,0.6); background: rgba(125,211,252,0.1); }
+  .landing-link { position: relative; transition: color 180ms ease; }
+  .landing-link::after {
+    content: ''; position: absolute; left: 0; right: 100%; bottom: -3px; height: 1px;
+    background: currentColor; transition: right 220ms cubic-bezier(0.16,1,0.3,1);
+  }
+  .landing-link:hover::after { right: 0; }
+  /* Glass — oscuro (héroe, CTA final) y claro (secciones sobre fondo pastel). */
+  .landing-glass-dark {
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: 0 24px 60px -24px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+  .landing-glass-light {
+    background: rgba(255,255,255,0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.9);
+    box-shadow: 0 20px 45px -26px rgba(15,58,90,0.28), inset 0 1px 0 rgba(255,255,255,0.6);
+    transition: transform 260ms cubic-bezier(0.16,1,0.3,1), box-shadow 260ms cubic-bezier(0.16,1,0.3,1), border-color 260ms ease;
+  }
+  .landing-glass-light:hover { transform: translateY(-4px); box-shadow: 0 28px 56px -24px rgba(15,58,90,0.34); border-color: rgba(125,211,252,0.7); }
+  .landing-chip {
+    transition: transform 200ms cubic-bezier(0.16,1,0.3,1), box-shadow 200ms ease, border-color 200ms ease;
+  }
+  .landing-chip:hover { transform: translateY(-3px); box-shadow: 0 16px 32px -16px rgba(15,58,90,0.3); border-color: rgba(59,159,214,0.5); }
+  .landing-dotgrid-dark { background-image: radial-gradient(#ffffff16 1px, transparent 1px); background-size: 30px 30px; }
+  .landing-dotgrid-light { background-image: radial-gradient(#17417a1a 1px, transparent 1px); background-size: 26px 26px; }
+  @media (prefers-reduced-motion: reduce) {
+    .landing-reveal, .landing-glow, .landing-ring, .landing-float { animation: none; }
+    .landing-btn, .landing-link::after, .landing-glass-light { transition: none; }
+  }
+`;
+
+/* ---------------------------------------------------------------- */
+/* RED NEURONAL DE FONDO — nodos/aristas calculados una sola vez por         */
+/* sección/redimensión; solo los pulsos que viajan por las conexiones se     */
+/* animan, a ~30fps (nunca a la cadencia completa de rAF), para mantener el  */
+/* costo de CPU/GPU bajo incluso en móviles.                                 */
+/* ---------------------------------------------------------------- */
+const CONFIG_DENSIDAD_RED = {
+  alta: { desktop: 42, movil: 16, pulsosMax: 6 },
+  media: { desktop: 28, movil: 12, pulsosMax: 3 },
+  baja: { desktop: 18, movil: 9, pulsosMax: 2 },
+};
+
+const PALETA_RED = {
+  oscuro: {
+    linea: 'rgba(103, 216, 245, 0.28)',
+    nodo: 'rgba(191, 233, 255, 0.8)',
+    nodoGlow: 'rgba(103, 216, 245, 0.6)',
+    pulsos: ['#7dd3fc', '#22d3ee', '#2dd4bf', '#22d3ee', '#7dd3fc'],
+  },
+  claro: {
+    linea: 'rgba(59, 159, 214, 0.22)',
+    nodo: 'rgba(59, 159, 214, 0.45)',
+    nodoGlow: 'rgba(45, 212, 191, 0.5)',
+    pulsos: ['#3B9FD6', '#22d3ee', '#2dd4bf'],
+  },
+};
+
+function generarRedNeuronal(ancho, alto, cantidadNodos) {
+  const nodos = [];
+  const columnas = Math.max(1, Math.round(Math.sqrt((cantidadNodos * ancho) / alto)));
+  const filas = Math.max(1, Math.ceil(cantidadNodos / columnas));
+  const anchoCelda = ancho / columnas;
+  const altoCelda = alto / filas;
+
+  for (let f = 0; f < filas && nodos.length < cantidadNodos; f += 1) {
+    for (let c = 0; c < columnas && nodos.length < cantidadNodos; c += 1) {
+      nodos.push({
+        x0: c * anchoCelda + anchoCelda / 2 + (Math.random() - 0.5) * anchoCelda * 0.7,
+        y0: f * altoCelda + altoCelda / 2 + (Math.random() - 0.5) * altoCelda * 0.7,
+        fase: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+
+  const aristas = [];
+  const vistas = new Set();
+  nodos.forEach((nodo, indice) => {
+    const vecinos = nodos
+      .map((otro, otroIndice) => ({ otroIndice, dist: Math.hypot(otro.x0 - nodo.x0, otro.y0 - nodo.y0) }))
+      .filter((v) => v.otroIndice !== indice)
+      .sort((v1, v2) => v1.dist - v2.dist)
+      .slice(0, 2 + Math.round(Math.random()));
+
+    vecinos.forEach(({ otroIndice }) => {
+      const clave = indice < otroIndice ? `${indice}-${otroIndice}` : `${otroIndice}-${indice}`;
+      if (!vistas.has(clave)) {
+        vistas.add(clave);
+        aristas.push({ a: indice, b: otroIndice });
+      }
+    });
+  });
+
+  return { nodos, aristas };
+}
+
+function useRedNeuronal(canvasRef, tema, densidad) {
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const contenedor = canvas?.parentElement;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !contenedor || !ctx) return undefined;
+
+    const movimientoReducido = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const esMovil = window.matchMedia('(max-width: 640px)').matches;
+    const config = CONFIG_DENSIDAD_RED[densidad];
+    const paleta = PALETA_RED[tema];
+    const cantidadNodos = esMovil ? config.movil : config.desktop;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    let nodos = [];
+    let aristas = [];
+    let pulsos = [];
+    let activacion = [];
+    let ancho = 0;
+    let alto = 0;
+
+    function posActual(nodo, tiempo) {
+      if (movimientoReducido) return { x: nodo.x0, y: nodo.y0 };
+      return {
+        x: nodo.x0 + Math.sin(tiempo * 0.00012 + nodo.fase) * 5,
+        y: nodo.y0 + Math.cos(tiempo * 0.00016 + nodo.fase) * 5,
+      };
+    }
+
+    function dimensionar() {
+      const rect = contenedor.getBoundingClientRect();
+      ancho = Math.max(1, rect.width);
+      alto = Math.max(1, rect.height);
+      canvas.width = Math.round(ancho * dpr);
+      canvas.height = Math.round(alto * dpr);
+      canvas.style.width = `${ancho}px`;
+      canvas.style.height = `${alto}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const generado = generarRedNeuronal(ancho, alto, cantidadNodos);
+      nodos = generado.nodos;
+      aristas = generado.aristas;
+      activacion = new Array(nodos.length).fill(-Infinity);
+      pulsos = [];
+    }
+
+    dimensionar();
+
+    function dibujarBase(tiempo) {
+      ctx.clearRect(0, 0, ancho, alto);
+      ctx.strokeStyle = paleta.linea;
+      ctx.lineWidth = 1;
+      aristas.forEach(({ a, b }) => {
+        const pa = posActual(nodos[a], tiempo);
+        const pb = posActual(nodos[b], tiempo);
+        ctx.beginPath();
+        ctx.moveTo(pa.x, pa.y);
+        ctx.lineTo(pb.x, pb.y);
+        ctx.stroke();
+      });
+      ctx.fillStyle = paleta.nodo;
+      nodos.forEach((nodo) => {
+        const p = posActual(nodo, tiempo);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    if (movimientoReducido) {
+      dibujarBase(0);
+      const alRedimensionar = () => { dimensionar(); dibujarBase(0); };
+      window.addEventListener('resize', alRedimensionar);
+      return () => window.removeEventListener('resize', alRedimensionar);
+    }
+
+    let enViewport = true;
+    const observador = new IntersectionObserver(([entrada]) => { enViewport = Boolean(entrada?.isIntersecting); });
+    observador.observe(contenedor);
+
+    let frameId = 0;
+    let ultimoDibujo = 0;
+    let ultimoSpawn = 0;
+    const INTERVALO_MS = 1000 / 30;
+
+    function cuadro(tiempo) {
+      frameId = requestAnimationFrame(cuadro);
+      if (!enViewport || tiempo - ultimoDibujo < INTERVALO_MS) return;
+      ultimoDibujo = tiempo;
+
+      if (aristas.length > 0 && pulsos.length < config.pulsosMax && tiempo - ultimoSpawn > 650 + Math.random() * 900) {
+        ultimoSpawn = tiempo;
+        pulsos.push({
+          arista: Math.floor(Math.random() * aristas.length),
+          t: 0,
+          velocidad: 0.00028 + Math.random() * 0.00026,
+          color: paleta.pulsos[Math.floor(Math.random() * paleta.pulsos.length)],
+        });
+      }
+
+      pulsos = pulsos.filter((pulso) => {
+        pulso.t += pulso.velocidad * INTERVALO_MS;
+        if (pulso.t >= 1) {
+          activacion[aristas[pulso.arista].b] = tiempo;
+          return false;
+        }
+        return true;
+      });
+
+      dibujarBase(tiempo);
+
+      pulsos.forEach((pulso) => {
+        const arista = aristas[pulso.arista];
+        const pa = posActual(nodos[arista.a], tiempo);
+        const pb = posActual(nodos[arista.b], tiempo);
+        const x = pa.x + (pb.x - pa.x) * pulso.t;
+        const y = pa.y + (pb.y - pa.y) * pulso.t;
+        ctx.beginPath();
+        ctx.fillStyle = pulso.color;
+        ctx.shadowColor = pulso.color;
+        ctx.shadowBlur = 8;
+        ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      });
+
+      nodos.forEach((nodo, indice) => {
+        const edad = tiempo - activacion[indice];
+        if (edad < 500) {
+          const intensidad = 1 - edad / 500;
+          const p = posActual(nodo, tiempo);
+          ctx.globalAlpha = intensidad;
+          ctx.fillStyle = paleta.nodoGlow;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 2 + 4 * intensidad, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      });
+    }
+
+    frameId = requestAnimationFrame(cuadro);
+
+    let temporizadorResize;
+    const alRedimensionar = () => {
+      clearTimeout(temporizadorResize);
+      temporizadorResize = setTimeout(dimensionar, 250);
+    };
+    window.addEventListener('resize', alRedimensionar);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      clearTimeout(temporizadorResize);
+      window.removeEventListener('resize', alRedimensionar);
+      observador.disconnect();
+    };
+  }, [canvasRef, tema, densidad]);
+}
+
+function RedNeuronalFondo({ tema, densidad = 'media' }) {
+  const canvasRef = useRef(null);
+  useRedNeuronal(canvasRef, tema, densidad);
+  return <canvas ref={canvasRef} aria-hidden="true" className="pointer-events-none absolute inset-0 z-0" />;
+}
+
+// Núcleo digital — el "cerebro" abstracto del que salen las capacidades de la
+// sección de beneficios (nunca un cerebro literal): un nodo central con
+// anillos expansivos, CSS puro, respeta prefers-reduced-motion.
+function NucleoDigital() {
+  return (
+    <div className="relative mx-auto mb-3 flex h-20 w-20 items-center justify-center" aria-hidden="true">
+      <span className="landing-ring absolute inset-0 rounded-full border" style={{ borderColor: 'rgba(59,159,214,0.45)' }} />
+      <span className="landing-ring absolute inset-0 rounded-full border" style={{ borderColor: 'rgba(63,145,66,0.35)', animationDelay: '1.2s' }} />
+      <div className="relative flex h-12 w-12 items-center justify-center rounded-full" style={{ background: 'linear-gradient(135deg, #3B9FD6 0%, #1f6f5c 55%, #3F9142 100%)', boxShadow: '0 0 28px -4px rgba(59,159,214,0.65)' }}>
+        <Settings size={20} className="text-white" />
+      </div>
+    </div>
+  );
+}
+
+const LANDING_BENEFICIOS = [
+  { icon: ListTree, titulo: 'Inventario siempre actualizado', texto: 'Conoce el estado, la ubicación y el responsable de cada equipo biomédico.' },
+  { icon: ClipboardList, titulo: 'Hoja de vida completa', texto: 'Historial, documentos y trazabilidad de cada equipo en un solo lugar.' },
+  { icon: CalendarClock, titulo: 'Mantenimiento preventivo', texto: 'Programa mantenimientos y evita fallas inesperadas con alertas automáticas.' },
+  { icon: Wrench, titulo: 'Mantenimiento correctivo', texto: 'Registro de fallas, diagnóstico, repuestos y tiempos de respuesta.' },
+  { icon: ShieldCheck, titulo: 'Calibraciones al día', texto: 'Control de vigencia y certificados de calibración de todo el inventario.' },
+  { icon: ShieldAlert, titulo: 'Tecnovigilancia y reportes', texto: 'Reportes técnicos, indicadores y exportables en PDF y Excel.' },
+];
+
+const LANDING_FLUJO = [
+  { icon: ListTree, label: 'Inventario' },
+  { icon: ClipboardList, label: 'Hoja de Vida' },
+  { icon: Wrench, label: 'Mantenimiento' },
+  { icon: ShieldCheck, label: 'Calibración' },
+  { icon: FileText, label: 'Documentación' },
+  { icon: BellRing, label: 'Alertas' },
+  { icon: FileBarChart, label: 'Reportes' },
+];
+
+const LANDING_MODULOS = [
+  { icon: LayoutDashboard, label: 'Dashboard' },
+  { icon: ListTree, label: 'Inventario de equipos' },
+  { icon: CalendarClock, label: 'Planes y programas' },
+  { icon: Wrench, label: 'Mantenimiento correctivo' },
+  { icon: ShieldCheck, label: 'Calibraciones' },
+  { icon: IdCard, label: 'Personal técnico' },
+  { icon: SprayCan, label: 'Limpieza y desinfección' },
+  { icon: ShieldAlert, label: 'Tecnovigilancia' },
+  { icon: FileBarChart, label: 'Reportes' },
+];
+
+// Fotos reales — mismo banco de imágenes del proyecto v1, ninguna especialidad
+// inventada: son las 7 áreas que ya cubre el inventario de equipos biomédicos.
+const LANDING_ESPECIALIDADES = [
+  { nombre: 'Hospitalización', texto: 'Control de camas, monitores y equipos de piso.', imagen: fotoHospitalizacion },
+  { nombre: 'UCI', texto: 'Gestión crítica de ventiladores, monitores y bombas de infusión.', imagen: fotoUci },
+  { nombre: 'Laboratorio', texto: 'Control y trazabilidad de equipos de laboratorio.', imagen: fotoLaboratorio },
+  { nombre: 'Imagenología', texto: 'Control de equipos críticos y documentación.', imagen: fotoImagenologia },
+  { nombre: 'Odontología', texto: 'Gestión de equipos odontológicos y su mantenimiento.', imagen: fotoOdontologia },
+  { nombre: 'Quirófano', texto: 'Trazabilidad de equipos e insumos críticos en cirugía.', imagen: fotoQuirofano },
+  { nombre: 'Equipos generales', texto: 'Gestión integral de cualquier equipo biomédico de la organización.', imagen: fotoEquiposGenerales },
+];
+
+// Velo de color sobre cada foto — 4 combinaciones dentro de la misma paleta de
+// marca (azul/verde), para que las 7 fotos (de iluminación distinta) se sientan
+// de una sola familia visual en vez de 7 tonos de blanco distintos.
+const LANDING_TEMAS_ESPECIALIDAD = [
+  'linear-gradient(160deg, #0F172A 0%, #123a52 50%, #3B9FD6 100%)',
+  'linear-gradient(160deg, #3B9FD6 0%, #1f6f5c 50%, #3F9142 100%)',
+  'linear-gradient(160deg, #3F9142 0%, #0d3d3a 50%, #0F172A 100%)',
+  'linear-gradient(160deg, #0F172A 0%, #3B9FD6 50%, #3F9142 100%)',
+];
+
+function LandingPage({ onIniciarSesion, onReportarFalla }) {
+  return (
+    <div className="min-h-dvh" style={{ fontFamily: "'IBM Plex Sans', sans-serif", background: '#EAF4FB' }}>
+      <style>{LANDING_STYLES}</style>
+
+      <header className="sticky top-0 z-30 backdrop-blur border-b" style={{ background: 'rgba(234,244,251,0.85)', borderColor: 'rgba(59,159,214,0.15)' }}>
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+          <a href="#inicio" className="flex items-center gap-2.5">
+            <img src={logoIngenieriaClinica} alt="" width={28} height={28} style={{ objectFit: 'contain' }} />
+            <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Ingeniería Clínica</span>
+          </a>
+          <nav className="hidden md:flex items-center gap-8" aria-label="Secciones">
+            <a href="#inicio" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Inicio</a>
+            <a href="#beneficios" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Beneficios</a>
+            <a href="#especialidades" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Especialidades</a>
+            <a href="#modulos" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Módulos</a>
+          </nav>
+          <button type="button" onClick={onIniciarSesion} className="landing-btn landing-btn-primary rounded-lg px-4 py-2 text-xs font-semibold text-white">
+            Ingresar
+          </button>
+        </div>
+      </header>
+
+      {/* HÉROE — banda oscura de marca con red neuronal animada + el equipo
+          biomédico en 3D (graphic motion HyperFrames) como pieza central. */}
+      <section id="inicio" className="relative overflow-hidden" style={{ background: 'linear-gradient(160deg, #081a2e 0%, #0d3455 55%, #0f4a44 100%)' }}>
+        <div className="absolute inset-0 landing-dotgrid-dark opacity-30 pointer-events-none" aria-hidden="true" />
+        <div className="absolute -top-32 left-1/4 w-96 h-96 rounded-full pointer-events-none" style={{ background: '#3B9FD6', opacity: 0.25, filter: 'blur(110px)' }} aria-hidden="true" />
+        <div className="absolute -bottom-40 right-0 w-[28rem] h-[28rem] rounded-full pointer-events-none" style={{ background: '#3F9142', opacity: 0.2, filter: 'blur(110px)' }} aria-hidden="true" />
+        <RedNeuronalFondo tema="oscuro" densidad="alta" />
+
+        <div className="relative z-10 max-w-6xl mx-auto px-6 pt-16 pb-20 lg:pt-20 lg:pb-24 grid lg:grid-cols-2 gap-12 items-center">
+          <div className="landing-reveal">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="landing-glass-dark rounded-xl p-2 flex items-center justify-center shrink-0">
+                <img src={logoIngenieriaClinica} alt="" width={40} height={40} style={{ objectFit: 'contain' }} />
+              </div>
+              <span className="text-lg font-semibold tracking-tight text-white">Ingeniería Clínica</span>
+            </div>
+            <span className="inline-flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full border" style={{ borderColor: 'rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.06)', color: '#7dd3fc' }}>
+              <Zap size={12} /> La tecnología que impulsa la salud
+            </span>
+            <h1 className="mt-4 text-3xl sm:text-4xl lg:text-[2.85rem] font-bold leading-[1.12] tracking-tight text-white">
+              Gestiona, protege y da vida a tus{' '}
+              <span style={{ background: 'linear-gradient(90deg, #7dd3fc 0%, #6ee7b7 50%, #7dd3fc 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
+                equipos biomédicos
+              </span>
+            </h1>
+            <p className="mt-4 max-w-lg text-sm sm:text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.72)' }}>
+              La plataforma CMMS que te permite tener el control total de tu inventario, la documentación y el mantenimiento de tus equipos médicos.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <button type="button" onClick={onIniciarSesion} className="landing-btn landing-btn-primary rounded-lg px-6 py-3 text-sm font-semibold text-white inline-flex items-center gap-2">
+                Ingresar al sistema <ChevronRight size={16} />
+              </button>
+              <button type="button" onClick={onReportarFalla} className="landing-btn landing-btn-outline-dark rounded-lg px-6 py-3 text-sm font-semibold inline-flex items-center gap-2">
+                <Wrench size={15} /> Reportar una falla
+              </button>
+            </div>
+          </div>
+
+          {/* Panel de vidrio con el graphic motion 3D del equipo biomédico —
+              chips satélite anotados, calco del diagrama técnico de la
+              referencia, con datos reales del sistema (nunca inventados). */}
+          <div className="landing-reveal relative" style={{ animationDelay: '.12s' }}>
+            <div className="landing-glow absolute rounded-full pointer-events-none" style={{ inset: -30, background: 'radial-gradient(circle, rgba(59,159,214,0.3) 0%, rgba(34,211,238,0.14) 55%, transparent 75%)', filter: 'blur(6px)' }} aria-hidden="true" />
+            <div className="landing-glass-dark relative rounded-2xl p-3 overflow-hidden">
+              <video
+                className="w-full h-auto rounded-xl block"
+                autoPlay
+                loop
+                muted
+                playsInline
+                preload="metadata"
+                aria-hidden="true"
+              >
+                {/* mp4 (H.264) primero — es el códec más ampliamente soportado (Safari/iOS no
+                    reproduce WebM en absoluto); webm queda como respaldo para navegadores que
+                    no puedan decodificar H.264. */}
+                <source src="/media/hero-equipo-biomedico.mp4" type="video/mp4" />
+                <source src="/media/hero-equipo-biomedico.webm" type="video/webm" />
+              </video>
+            </div>
+            <div className="landing-float landing-glass-dark hidden sm:flex absolute -left-6 top-6 items-center gap-2 rounded-xl px-3 py-2" style={{ animationDelay: '.3s' }}>
+              <BellRing size={14} style={{ color: '#7dd3fc' }} />
+              <span className="text-2xs font-medium text-white">Alertas en tiempo real</span>
+            </div>
+            <div className="landing-float landing-glass-dark hidden sm:flex absolute -right-6 bottom-8 items-center gap-2 rounded-xl px-3 py-2" style={{ animationDelay: '.9s' }}>
+              <ShieldCheck size={14} style={{ color: '#6ee7b7' }} />
+              <span className="text-2xs font-medium text-white">Calibración vigente</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* BENEFICIOS — núcleo digital + 6 tarjetas de vidrio sobre fondo claro con
+          profundidad (degradado + manchas de color + red neuronal tenue), en vez
+          de un color plano. */}
+      <section id="beneficios" className="relative overflow-hidden py-20" style={{ background: 'linear-gradient(160deg, #EAF4FB 0%, #DCEEFA 45%, #E3F0FA 100%)' }}>
+        <RedNeuronalFondo tema="claro" densidad="baja" />
+        <div className="absolute inset-0 landing-dotgrid-light opacity-50 pointer-events-none" aria-hidden="true" />
+        <div className="absolute -top-16 -right-16 w-80 h-80 rounded-full pointer-events-none" style={{ background: '#3B9FD6', opacity: 0.14, filter: 'blur(100px)' }} aria-hidden="true" />
+        <div className="absolute -bottom-24 -left-16 w-72 h-72 rounded-full pointer-events-none" style={{ background: '#3F9142', opacity: 0.12, filter: 'blur(100px)' }} aria-hidden="true" />
+        <div className="relative max-w-6xl mx-auto px-6">
+          <div className="text-center">
+            <span className="inline-flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full" style={{ background: '#DCEEFA', color: '#1D6FA5' }}>
+              Beneficios
+            </span>
+            <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Todo bajo control</h2>
+            <p className="mt-2 text-sm max-w-xl mx-auto" style={{ color: '#5B6B7C' }}>
+              Un ecosistema digital donde equipos, información y decisiones están conectados.
+            </p>
+          </div>
+
+          <NucleoDigital />
+          <div className="mx-auto mb-10" style={{ width: 1, height: 28, borderLeft: '1px dashed rgba(59,159,214,0.4)' }} aria-hidden="true" />
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {LANDING_BENEFICIOS.map(({ icon: Icon, titulo, texto }, i) => (
+              <div key={titulo} className="landing-glass-light landing-reveal rounded-2xl p-5" style={{ animationDelay: `${i * 0.06}s` }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: 'linear-gradient(135deg, #3F9142 0%, #3B9FD6 100%)', boxShadow: '0 10px 20px -8px rgba(59,159,214,0.4)' }}>
+                  <Icon size={18} className="text-white" />
+                </div>
+                <h3 className="text-sm font-semibold" style={{ color: '#0F172A' }}>{titulo}</h3>
+                <p className="text-xs mt-1.5 leading-relaxed" style={{ color: '#5B6B7C' }}>{texto}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Flujo — "Así fluye la información de cada equipo": cadena de 7 chips. */}
+          <div className="landing-glass-light mt-10 rounded-2xl px-6 py-6">
+            <div className="text-center text-2xs font-semibold uppercase tracking-wide mb-5" style={{ color: '#5B6B7C' }}>
+              Así fluye la información de cada equipo
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+              {LANDING_FLUJO.map(({ icon: Icon, label }, i) => (
+                <div key={label} className="flex items-center gap-2 sm:gap-3">
+                  <div className="flex flex-col items-center gap-1.5">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#EAF4FB', border: '1px solid rgba(59,159,214,0.25)' }}>
+                      <Icon size={16} style={{ color: '#3B9FD6' }} />
+                    </div>
+                    <span className="text-2xs font-medium" style={{ color: '#334155' }}>{label}</span>
+                  </div>
+                  {i < LANDING_FLUJO.length - 1 && (
+                    <div style={{ width: 20, height: 0, borderTop: '1px dashed rgba(59,159,214,0.4)' }} aria-hidden="true" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ESPECIALIDADES — fotos reales de equipos, agrupadas por área clínica. */}
+      <section id="especialidades" className="relative overflow-hidden py-20" style={{ background: 'linear-gradient(180deg, #E3F0FA 0%, #DCEEFA 50%, #EAF4FB 100%)' }}>
+        <RedNeuronalFondo tema="claro" densidad="media" />
+        <div className="absolute -left-24 top-1/3 w-80 h-80 rounded-full pointer-events-none" style={{ background: '#3B9FD6', opacity: 0.14, filter: 'blur(100px)' }} aria-hidden="true" />
+        <div className="absolute -right-16 bottom-0 w-72 h-72 rounded-full pointer-events-none" style={{ background: '#3F9142', opacity: 0.12, filter: 'blur(100px)' }} aria-hidden="true" />
+        <div className="relative max-w-6xl mx-auto px-6">
+          <div className="text-center">
+            <span className="inline-flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full" style={{ background: '#DCEEFA', color: '#1D6FA5' }}>
+              Especialidades
+            </span>
+            <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Un solo sistema para múltiples especialidades</h2>
+          </div>
+
+          <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {LANDING_ESPECIALIDADES.map(({ nombre, texto, imagen }, i) => (
+              <div key={nombre} className="landing-reveal group relative flex h-72 flex-col overflow-hidden rounded-2xl transition-transform duration-300 hover:-translate-y-1.5" style={{ boxShadow: '0 12px 28px -18px rgba(15,58,90,0.35)', animationDelay: `${i * 0.06}s` }}>
+                <img
+                  src={imagen}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  style={{ transform: 'scale(1)' }}
+                />
+                <div className="absolute inset-0 opacity-40" style={{ background: LANDING_TEMAS_ESPECIALIDAD[i % LANDING_TEMAS_ESPECIALIDAD.length], mixBlendMode: 'multiply' }} aria-hidden="true" />
+                <div className="absolute inset-0 transition-opacity duration-200" style={{ background: 'linear-gradient(0deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.08) 55%, transparent 100%)' }} aria-hidden="true" />
+                <div className="relative mt-auto p-5">
+                  <h3 className="text-base font-semibold text-white">{nombre}</h3>
+                  <p className="mt-1 max-h-0 overflow-hidden text-xs leading-relaxed text-white/85 opacity-0 transition-all duration-300 group-hover:mt-1.5 group-hover:max-h-16 group-hover:opacity-100">
+                    {texto}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* MÓDULOS — chips de vidrio sobre fondo claro con la misma profundidad
+          (degradado + manchas + red neuronal tenue) que el resto de secciones
+          claras, en vez de blanco plano. */}
+      <section id="modulos" className="relative overflow-hidden py-20" style={{ background: 'linear-gradient(160deg, #FFFFFF 0%, #F3F9FC 55%, #EAF4FB 100%)' }}>
+        <RedNeuronalFondo tema="claro" densidad="baja" />
+        <div className="absolute -top-20 right-1/4 w-72 h-72 rounded-full pointer-events-none" style={{ background: '#3B9FD6', opacity: 0.1, filter: 'blur(100px)' }} aria-hidden="true" />
+        <div className="relative max-w-6xl mx-auto px-6">
+          <div className="text-center">
+            <span className="inline-flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full" style={{ background: '#DCEEFA', color: '#1D6FA5' }}>
+              Módulos
+            </span>
+            <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Todo integrado, nada disperso</h2>
+          </div>
+          <div className="mt-10 flex flex-wrap justify-center gap-3">
+            {LANDING_MODULOS.map(({ icon: Icon, label }) => (
+              <span key={label} className="landing-chip inline-flex items-center gap-2 text-xs font-medium px-4 py-2.5 rounded-full border" style={{ borderColor: '#DCE7F0', color: '#334155', background: '#F7FBFD' }}>
+                <Icon size={14} style={{ color: '#3B9FD6' }} /> {label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* SECCIÓN DE VALOR — banda oscura con red neuronal, mismo lenguaje del héroe. */}
+      <section className="relative overflow-hidden text-center py-20" style={{ background: 'linear-gradient(135deg, #0F172A 0%, #0d3455 55%, #0f4a44 100%)' }}>
+        <div className="absolute inset-0 landing-dotgrid-dark opacity-30 pointer-events-none" aria-hidden="true" />
+        <div className="absolute -left-20 top-0 w-72 h-72 rounded-full pointer-events-none" style={{ background: '#3B9FD6', opacity: 0.25, filter: 'blur(90px)' }} aria-hidden="true" />
+        <div className="absolute -right-16 bottom-0 w-64 h-64 rounded-full pointer-events-none" style={{ background: '#3F9142', opacity: 0.25, filter: 'blur(90px)' }} aria-hidden="true" />
+        <RedNeuronalFondo tema="oscuro" densidad="alta" />
+        <div className="landing-reveal relative z-10 max-w-2xl mx-auto px-6">
+          {/* Marca animada — el mismo graphic motion 3D del logo, enmarcado en vidrio
+              con glow para que se integre con el fondo de la sección en vez de flotar
+              como un recuadro suelto. */}
+          <div className="relative mx-auto mb-8" style={{ width: 168, height: 168 }}>
+            <div className="landing-glow absolute rounded-full pointer-events-none" style={{ inset: -20, background: 'radial-gradient(circle, rgba(59,159,214,0.35) 0%, rgba(167,139,250,0.18) 55%, transparent 75%)', filter: 'blur(6px)' }} aria-hidden="true" />
+            <div className="landing-glass-dark relative w-full h-full rounded-full p-2 overflow-hidden">
+              <video
+                className="w-full h-full rounded-full block"
+                style={{ objectFit: 'cover' }}
+                autoPlay
+                loop
+                muted
+                playsInline
+                preload="metadata"
+                aria-hidden="true"
+              >
+                <source src="/media/logo-reveal-loop.mp4" type="video/mp4" />
+                <source src="/media/logo-reveal-loop.webm" type="video/webm" />
+              </video>
+            </div>
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Más control. Menos riesgos. Mejores decisiones.</h2>
+          <p className="mt-4 text-sm sm:text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.72)' }}>
+            Centraliza la información de tus equipos biomédicos, automatiza el seguimiento del mantenimiento y mantén toda la documentación disponible cuando la necesites.
+          </p>
+        </div>
+      </section>
+
+      {/* CTA FINAL — banda oscura de vidrio con glow, igual lenguaje del héroe. */}
+      <section className="relative overflow-hidden" style={{ background: 'linear-gradient(160deg, #0d3455 0%, #1f6f5c 55%, #3F9142 100%)' }}>
+        <div className="absolute inset-0 landing-dotgrid-dark opacity-30 pointer-events-none" aria-hidden="true" />
+        <div className="absolute -top-20 -left-12 w-72 h-72 rounded-full pointer-events-none" style={{ background: '#7DD3FC', opacity: 0.22, filter: 'blur(100px)' }} aria-hidden="true" />
+        <div className="relative max-w-6xl mx-auto px-6 py-20 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">¿Listo para ingresar a la plataforma?</h2>
+          <p className="mt-3 text-sm max-w-lg mx-auto" style={{ color: 'rgba(255,255,255,0.78)' }}>
+            Accede con tu usuario administrador o repórtanos una falla si eres coordinador de sede.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <button type="button" onClick={onIniciarSesion} className="landing-btn rounded-lg px-6 py-3 text-sm font-semibold inline-flex items-center gap-2" style={{ background: '#FFFFFF', color: '#0F172A' }}>
+              Ingresar al sistema <ChevronRight size={16} />
+            </button>
+            <button type="button" onClick={onReportarFalla} className="landing-btn landing-btn-outline-dark rounded-lg px-6 py-3 text-sm font-semibold inline-flex items-center gap-2">
+              <Wrench size={15} /> Reportar una falla
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <footer className="border-t" style={{ borderColor: '#DCE7F0', background: '#FFFFFF' }}>
+        <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <img src={logoIngenieriaClinica} alt="" width={18} height={18} style={{ objectFit: 'contain' }} />
+            <span className="text-2xs" style={{ color: '#8A97A6' }}>Ingeniería Clínica · Plataforma de gestión de equipos biomédicos</span>
+          </div>
+          <div className="flex items-center gap-5">
+            <button type="button" onClick={onReportarFalla} className="landing-link text-2xs font-medium" style={{ color: '#5B6B7C' }}>Reportar una falla</button>
+            <button type="button" onClick={onIniciarSesion} className="landing-link text-2xs font-medium" style={{ color: '#5B6B7C' }}>Iniciar sesión</button>
+            <span className="text-2xs" style={{ color: '#B4BCC6' }}>Versión 2.0</span>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
 /* PANTALLA DE ACCESO                                                 */
 /* ---------------------------------------------------------------- */
 // Fuera del componente a propósito: si viviera dentro de LoginScreen, React recrearía
@@ -3438,7 +4126,7 @@ const LOGIN_SCREEN_STYLES = `
     .login-illus, .login-decor, .login-glow, .login-bg-blob, .login-card-wrap, .login-field-in { animation: none; }
   }
 `;
-function LoginScreen({ notice, onLogin, onGuest, onReportarFalla }) {
+function LoginScreen({ notice, onLogin, onGuest, onReportarFalla, onBack }) {
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -3559,6 +4247,11 @@ function LoginScreen({ notice, onLogin, onGuest, onReportarFalla }) {
         {/* LADO DERECHO — formulario */}
         <div className="w-full lg:w-1/2 flex flex-col justify-center p-8 sm:p-12">
           <div className="w-full max-w-sm mx-auto">
+            {onBack && (
+              <button type="button" onClick={onBack} className="login-fast text-2xs font-semibold text-slate-400 hover:text-slate-600 mb-3 -mt-2">
+                ← Volver al inicio
+              </button>
+            )}
             <div className="mb-3 flex items-center justify-center gap-3">
               <img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={96} height={96} style={{ objectFit: 'contain' }} />
               <img src={logoMacromed} alt="Macromed Coop." width={96} height={96} style={{ objectFit: 'contain' }} />
@@ -3971,6 +4664,14 @@ function MainApp({ onLogout, readOnly }) {
   const [obsModalId, setObsModalId] = useState(null);
   const [reportesFalla, setReportesFalla] = useState([]);
   const [planesProgramas, setPlanesProgramas] = useState({});
+  const [capacitaciones, setCapacitaciones] = useState(null);
+  const [capSincronizando, setCapSincronizando] = useState(false);
+  // { type: 'success' | 'error', message } | null — se muestra como banner en el dashboard
+  // de Capacitaciones (no un alert() bloqueante, a diferencia del resto del CMMS: el pedido
+  // puntual acá era un estado de sincronización visible e inline: "Actualizando…",
+  // "Actualizado correctamente" o el error). El éxito se autoculta; el error se queda fijo
+  // hasta el próximo intento, para no perder el mensaje de qué falló.
+  const [capSyncStatus, setCapSyncStatus] = useState(null);
   const [tecnoTransversal, setTecnoTransversal] = useState({});
   const [tecnoReportes, setTecnoReportes] = useState({});
   const [personal, setPersonal] = useState([]);
@@ -4027,6 +4728,33 @@ function MainApp({ onLogout, readOnly }) {
       console.error('No se pudo sincronizar el plan/programa con el servidor compartido', err);
       setPlanesProgramas(previous);
     });
+  };
+
+  useEffect(() => { loadCapacitaciones().then(setCapacitaciones); }, []);
+  // A diferencia de updateEquipo/updatePlanPrograma, esto no es una edición optimista de un
+  // campo puntual: es un refresh completo que solo tiene sentido esperar a que el servidor
+  // termine (puede tardar unos segundos, consulta ~20 hojas de Google en vivo), así que el
+  // botón queda deshabilitado con capSincronizando mientras corre.
+  const actualizarCapacitaciones = async () => {
+    setCapSincronizando(true);
+    setCapSyncStatus(null);
+    try {
+      const data = await sincronizarCapacitaciones();
+      setCapacitaciones(data);
+      const conErrores = data.errores?.length > 0;
+      setCapSyncStatus({
+        type: conErrores ? 'error' : 'success',
+        message: conErrores
+          ? `Actualizado con errores: ${data.errores.length} formulario${data.errores.length !== 1 ? 's' : ''} no se pudo(ieron) sincronizar.`
+          : 'Actualizado correctamente.',
+      });
+      if (!conErrores) setTimeout(() => setCapSyncStatus(null), 5000);
+    } catch (err) {
+      console.error('No se pudo sincronizar las capacitaciones', err);
+      setCapSyncStatus({ type: 'error', message: err.message });
+    } finally {
+      setCapSincronizando(false);
+    }
   };
 
   useEffect(() => { loadTecnoTransversal().then(setTecnoTransversal); }, []);
@@ -4530,6 +5258,10 @@ function MainApp({ onLogout, readOnly }) {
         )}
         {menu === 'fallas' && !readOnly && <ReportesFallaPage reportes={reportesFalla} equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} onEliminarReporte={eliminarReporte} onVaciarHistorial={vaciarHistorialFallas} readOnly={readOnly} />}
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
+        {menu === 'capacitaciones' && (
+          <CapacitacionesPage capacitaciones={capacitaciones} activeCompany={activeCompany} onChangeEmpresa={setActiveCompany} t={t} accent={accent}
+            onActualizar={actualizarCapacitaciones} sincronizando={capSincronizando} syncStatus={capSyncStatus} readOnly={readOnly} />
+        )}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
         {menu === 'limpieza' && (
@@ -5823,6 +6555,480 @@ function PlanesProgramasPage({ planesProgramas, activeCompany, t, onUpdate, read
   );
 }
 
+// Etiqueta visible del bucket OTRAS_EMPRESA (empresas que no matchean ninguna de las 5 del
+// CMMS). "UT" (contratos ERON) ya NO cae acá — lib/capacitaciones.js la excluye por completo
+// antes de que sus registros lleguen al snapshot, así que este bucket solo agruparía alguna
+// otra empresa desconocida que aparezca a futuro en los formularios. El valor interno se
+// mantiene sin traducir para que coincida exactamente con lo que produce el servidor.
+const EMPRESA_LABEL = { [OTRAS_EMPRESA]: 'Otras' };
+const CAP_PAGE_SIZE = 20;
+
+// Aplica todos los filtros del dashboard de Capacitaciones excepto el que se indique en
+// `skip` — así cada gráfica que desglosa por una dimensión (empresa, sede, capacitación)
+// puede seguir mostrando esa dimensión completa aunque el usuario ya haya elegido un valor
+// puntual en su propio selector (si no, "por sede" colapsaría a una sola barra en cuanto se
+// filtra por sede).
+function filtrarCapacitaciones(records, filtros, skip) {
+  const { empresa, sede, capacitacion, anio, mes, desde, hasta } = filtros;
+  return records.filter(r => {
+    if (skip !== 'empresa' && empresa && empresa !== 'TODAS' && r.empresa !== empresa) return false;
+    if (skip !== 'sede' && sede && r.sede !== sede) return false;
+    if (skip !== 'capacitacion' && capacitacion && r.capacitacion !== capacitacion) return false;
+    if (anio && r.fecha?.slice(0, 4) !== anio) return false;
+    if (mes && String(Number(r.fecha?.slice(5, 7)) - 1) !== mes) return false;
+    if (desde && (!r.fecha || r.fecha.slice(0, 10) < desde)) return false;
+    if (hasta && (!r.fecha || r.fecha.slice(0, 10) > hasta)) return false;
+    return true;
+  });
+}
+// Identidad de una persona para contarla una sola vez como "capacitada": el correo (siempre
+// lo recoge Google Forms de quien responde) o, a falta de correo, nombre+empresa. Distinto
+// de "registros": cada fila es una asistencia puntual a UNA capacitación, así que la misma
+// persona en 3 capacitaciones distintas suma 3 registros pero 1 sola persona.
+const identidadDe = (r) => r.email || `${(r.nombre || '').toLowerCase()}|${r.empresa}`;
+
+// Dashboard de "Capacitaciones": respuestas de los formularios de Google Forms del personal
+// (ver api/capacitaciones.js). El selector de empresa global del CMMS (activeCompany) sigue
+// siendo el filtro de empresa — se reutiliza en vez de duplicarlo — y además tiene sus
+// propios filtros (sede, capacitación, año, mes, rango de fechas) y una tabla de detalle con
+// búsqueda/orden/paginación. El botón "Actualizar información" dispara una sincronización en
+// vivo contra Google Sheets (solo admin).
+function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t, accent, onActualizar, sincronizando, syncStatus, readOnly }) {
+  // Memoizado porque `capacitaciones?.records || []` crearía un array `[]` nuevo en cada
+  // render cuando aún no hay datos, invalidando los useMemo de abajo que dependen de esto.
+  const registros = useMemo(() => capacitaciones?.records || [], [capacitaciones]);
+
+  const [sede, setSede] = useState('');
+  const [capacitacionSel, setCapacitacionSel] = useState('');
+  const [anio, setAnio] = useState('');
+  const [mes, setMes] = useState('');
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
+  const [busqueda, setBusqueda] = useState('');
+  const [sort, setSort] = useState({ key: 'fecha', dir: -1 });
+  const [pagina, setPagina] = useState(1);
+
+  const filtros = { empresa: activeCompany, sede, capacitacion: capacitacionSel, anio, mes, desde, hasta };
+  const hayFiltrosActivos = Boolean(activeCompany !== 'TODAS' || sede || capacitacionSel || anio || mes || desde || hasta);
+
+  // Opciones de cada selector: relativas solo a la empresa activa (no a los demás filtros
+  // locales), para que elegir una capacitación puntual no borre las sedes disponibles.
+  const porEmpresaBase = useMemo(
+    () => activeCompany === 'TODAS' ? registros : registros.filter(r => r.empresa === activeCompany),
+    [registros, activeCompany]
+  );
+  const sedesDisponibles = useMemo(() => [...new Set(porEmpresaBase.map(r => r.sede).filter(Boolean))].sort(), [porEmpresaBase]);
+  const capacitacionesDisponibles = useMemo(() => [...new Set(porEmpresaBase.map(r => r.capacitacion).filter(Boolean))].sort(), [porEmpresaBase]);
+  const aniosDisponibles = useMemo(
+    () => [...new Set(porEmpresaBase.map(r => r.fecha?.slice(0, 4)).filter(Boolean))].sort((a, b) => b.localeCompare(a)),
+    [porEmpresaBase]
+  );
+
+  // `filtrados`: con TODOS los filtros — alimenta los KPI, la tabla y "por mes". Cada gráfica
+  // de desglose usa además su propia variante que ignora su dimensión (ver filtrarCapacitaciones).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const filtrados = useMemo(() => filtrarCapacitaciones(registros, filtros, null), [registros, activeCompany, sede, capacitacionSel, anio, mes, desde, hasta]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const paraPorEmpresa = useMemo(() => filtrarCapacitaciones(registros, filtros, 'empresa'), [registros, activeCompany, sede, capacitacionSel, anio, mes, desde, hasta]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const paraPorSede = useMemo(() => filtrarCapacitaciones(registros, filtros, 'sede'), [registros, activeCompany, sede, capacitacionSel, anio, mes, desde, hasta]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const paraPorCapacitacion = useMemo(() => filtrarCapacitaciones(registros, filtros, 'capacitacion'), [registros, activeCompany, sede, capacitacionSel, anio, mes, desde, hasta]);
+
+  // Las 3 métricas que el módulo debe diferenciar: capacitaciones (temas distintos con al
+  // menos una respuesta), registros (cada fila = una asistencia puntual) y personas
+  // (identidades únicas) — quien asistió a 3 capacitaciones suma 3 registros pero 1 persona.
+  // Se cuenta por `capacitacion` (el nombre/tema), no por `capacitacionId` (la hoja): así, dos
+  // hojas con el mismo tema (p. ej. "PRE Radiadores..." y "POS Radiadores..." configuradas con
+  // el mismo label) cuentan como UNA sola capacitación, no dos — a propósito, para poder
+  // filtrarlas y seleccionarlas juntas como un único tema en el dashboard.
+  const totalCapacitaciones = useMemo(() => new Set(filtrados.map(r => r.capacitacion)).size, [filtrados]);
+  const totalRegistros = filtrados.length;
+  const personasUnicas = useMemo(() => new Set(filtrados.map(identidadDe)).size, [filtrados]);
+  const conPuntaje = useMemo(() => filtrados.filter(r => r.porcentaje != null), [filtrados]);
+  const promedioPct = conPuntaje.length
+    ? Math.round(conPuntaje.reduce((a, r) => a + r.porcentaje, 0) / conPuntaje.length)
+    : null;
+
+  const porEmpresa = useMemo(() => {
+    const map = {};
+    paraPorEmpresa.forEach(r => { map[r.empresa] = (map[r.empresa] || 0) + 1; });
+    return [...COMPANIES.map(c => c.key), OTRAS_EMPRESA]
+      .filter(k => map[k])
+      .map(k => ({ name: EMPRESA_LABEL[k] || k, value: map[k], fill: (companyOf(k) || {}).color || '#94A3B8' }));
+  }, [paraPorEmpresa]);
+
+  const porSede = useMemo(() => {
+    const map = {};
+    paraPorSede.forEach(r => { if (r.sede) map[r.sede] = (map[r.sede] || 0) + 1; });
+    return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+  }, [paraPorSede]);
+
+  const porCapacitacion = useMemo(() => {
+    const map = {};
+    paraPorCapacitacion.forEach(r => { map[r.capacitacion] = (map[r.capacitacion] || 0) + 1; });
+    return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10);
+  }, [paraPorCapacitacion]);
+
+  const porMes = useMemo(() => {
+    const map = {};
+    filtrados.forEach(r => {
+      if (!r.fecha) return;
+      const k = r.fecha.slice(0, 7); // "AAAA-MM"
+      map[k] = (map[k] || 0) + 1;
+    });
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).slice(-12).map(([k, value]) => {
+      const [y, m] = k.split('-');
+      return { name: `${MONTHS[Number(m) - 1]?.l || m} ${y.slice(2)}`, value };
+    });
+  }, [filtrados]);
+
+  // La capacitación con el peor promedio de puntaje — señal de alerta para reforzar esa
+  // capacitación puntual. Se exige un mínimo de respuestas para no alarmar con 1-2 casos.
+  const peorCapacitacion = useMemo(() => {
+    const map = {};
+    filtrados.forEach(r => {
+      if (r.porcentaje == null) return;
+      (map[r.capacitacion] ||= []).push(r.porcentaje);
+    });
+    let peor = null;
+    Object.entries(map).forEach(([name, arr]) => {
+      if (arr.length < 3) return;
+      const avg = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+      if (!peor || avg < peor.avg) peor = { name, avg };
+    });
+    return peor;
+  }, [filtrados]);
+
+  // Comparación PRE/POS: cuando dos hojas comparten el mismo `capacitacion` (label) pero una
+  // trae fase "pre" y la otra "pos" (evaluación antes/después de la capacitación), empareja
+  // las respuestas de la MISMA persona (misma identidad) en ambas fases para mostrar la
+  // mejora. Los temas sin ambas fases, o sin pareja para una persona puntual, no generan fila
+  // acá — igual siguen viéndose sueltos en la tabla de detalle de abajo, con su fase marcada.
+  const comparacionPrePost = useMemo(() => {
+    const porTema = {};
+    filtrados.forEach(r => {
+      if (r.fase !== 'pre' && r.fase !== 'pos') return;
+      const grupo = (porTema[r.capacitacion] ||= { pre: new Map(), pos: new Map() });
+      grupo[r.fase].set(identidadDe(r), r);
+    });
+    const filas = [];
+    Object.entries(porTema).forEach(([tema, { pre, pos }]) => {
+      pre.forEach((rPre, identidad) => {
+        const rPos = pos.get(identidad);
+        if (!rPos) return;
+        const mejora = (rPre.porcentaje != null && rPos.porcentaje != null)
+          ? Math.round((rPos.porcentaje - rPre.porcentaje) * 10) / 10
+          : null;
+        filas.push({ tema, nombre: rPre.nombre || rPos.nombre, empresa: rPre.empresa, pre: rPre.porcentaje, pos: rPos.porcentaje, mejora });
+      });
+    });
+    return filas;
+  }, [filtrados]);
+
+  // Tabla de detalle: búsqueda de texto libre + orden por columna + paginación, sobre
+  // `filtrados` (ya con todos los filtros del dashboard aplicados).
+  const buscados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return filtrados;
+    return filtrados.filter(r =>
+      [r.nombre, r.empresa, r.sede, r.capacitacion, r.cargo, r.email, r.documento].some(v => (v || '').toLowerCase().includes(q))
+    );
+  }, [filtrados, busqueda]);
+
+  const ordenados = useMemo(() => {
+    const { key, dir } = sort;
+    const copia = [...buscados];
+    copia.sort((a, b) => {
+      if (key === 'porcentaje') return ((a.porcentaje || 0) - (b.porcentaje || 0)) * dir;
+      return String(a[key] ?? '').localeCompare(String(b[key] ?? ''), 'es') * dir;
+    });
+    return copia;
+  }, [buscados, sort]);
+
+  const totalPaginas = Math.max(1, Math.ceil(ordenados.length / CAP_PAGE_SIZE));
+  const paginaActual = Math.min(pagina, totalPaginas);
+  const filasPagina = ordenados.slice((paginaActual - 1) * CAP_PAGE_SIZE, paginaActual * CAP_PAGE_SIZE);
+
+  const toggleSort = (key) => setSort(s => s.key === key ? { key, dir: -s.dir } : { key, dir: 1 });
+  const limpiarFiltros = () => {
+    onChangeEmpresa('TODAS'); setSede(''); setCapacitacionSel(''); setAnio(''); setMes(''); setDesde(''); setHasta('');
+  };
+
+  const ActualizarBtn = !readOnly && (
+    <Button variant="outline" t={t} accent={accent} icon={RefreshCw} onClick={onActualizar} disabled={sincronizando}>
+      {sincronizando ? 'Actualizando…' : 'Actualizar información'}
+    </Button>
+  );
+  const EstadoSync = (
+    <>
+      {sincronizando && (
+        <div className="rounded-xl border p-3 mb-4 text-2xs" style={{ borderColor: `${accent}55`, background: `${accent}15`, color: accent }}>
+          Actualizando…
+        </div>
+      )}
+      {!sincronizando && syncStatus && (
+        <div className="rounded-xl border p-3 mb-4 text-2xs"
+          style={syncStatus.type === 'error'
+            ? { borderColor: '#EF444455', background: '#EF444415', color: '#EF4444' }
+            : { borderColor: '#22C55E55', background: '#22C55E15', color: '#22C55E' }}>
+          {syncStatus.type === 'error' ? '⚠ ' : '✓ '}{syncStatus.message}
+        </div>
+      )}
+    </>
+  );
+
+  if (!capacitaciones) {
+    return (
+      <div className={`rounded-xl border p-10 text-center ${t.panel} ${t.border}`}>
+        <GraduationCap size={32} className={`mx-auto mb-3 ${t.muted}`} />
+        <h2 className="text-sm font-bold mb-1">Aún no hay datos de capacitaciones sincronizados</h2>
+        <p className={`text-xs mb-5 max-w-sm mx-auto ${t.muted}`}>
+          {readOnly
+            ? 'Inicia sesión como administrador para traer los datos desde los formularios.'
+            : 'Presiona "Actualizar información" para traer las respuestas desde los formularios de Google.'}
+        </p>
+        {EstadoSync}
+        {ActualizarBtn}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+        <h1 className="text-lg font-bold">Capacitaciones</h1>
+        {ActualizarBtn}
+      </div>
+      <p className={`text-xs mb-3 ${t.muted}`}>
+        Respuestas de los formularios de capacitación del personal, sincronizadas desde Google Forms.
+        {capacitaciones.updatedAt && ` Última actualización: ${formatFechaHora(capacitaciones.updatedAt)}.`}
+      </p>
+
+      {EstadoSync}
+
+      {capacitaciones.errores?.length > 0 && (
+        <div className="rounded-xl border p-3 mb-4 text-2xs" style={{ borderColor: '#F59E0B55', background: '#F59E0B15', color: '#F59E0B' }}>
+          <div className="font-semibold mb-1">
+            No se pudieron sincronizar {capacitaciones.errores.length} formulario{capacitaciones.errores.length !== 1 ? 's' : ''}:
+          </div>
+          <ul className="list-disc list-inside space-y-0.5">
+            {capacitaciones.errores.map(e => <li key={e.id}>{e.label}: {e.error}</li>)}
+          </ul>
+        </div>
+      )}
+
+      <div className={`rounded-xl border p-3 mb-4 flex flex-wrap items-center gap-2 ${t.panel} ${t.border}`}>
+        <Filter size={13} className={t.muted} />
+        {/* Reutiliza el mismo `activeCompany` que ya gobierna el resto del CMMS (pestañas
+            superiores) — no es un filtro local aparte, para no tener dos fuentes de verdad
+            de "empresa activa" que puedan quedar desincronizadas entre sí. */}
+        <select value={activeCompany} onChange={e => onChangeEmpresa(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border font-semibold ${t.input}`}>
+          <option value="TODAS">Todas las empresas</option>
+          {COMPANIES.map(c => <option key={c.key} value={c.key}>{c.key}</option>)}
+        </select>
+        <select value={sede} onChange={e => setSede(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+          <option value="">Toda sede</option>
+          {sedesDisponibles.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={capacitacionSel} onChange={e => setCapacitacionSel(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+          <option value="">Toda capacitación</option>
+          {capacitacionesDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={anio} onChange={e => setAnio(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+          <option value="">Todo año</option>
+          {aniosDisponibles.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <select value={mes} onChange={e => setMes(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`}>
+          <option value="">Todo mes</option>
+          {MONTHS.map(m => <option key={m.k} value={m.idx}>{m.full}</option>)}
+        </select>
+        <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`} title="Desde" />
+        <span className={`text-2xs ${t.muted}`}>a</span>
+        <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`} title="Hasta" />
+        {hayFiltrosActivos && <Button variant="ghost" t={t} icon={X} iconSize={12} onClick={limpiarFiltros}>Limpiar filtros</Button>}
+      </div>
+
+      {filtrados.length === 0 ? (
+        <div className={`rounded-xl border p-10 text-center ${t.panel} ${t.border}`}>
+          <p className={`text-xs ${t.muted}`}>Sin registros de capacitaciones para los filtros actuales.</p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+            <HeroStat t={t} label="Capacitaciones realizadas" value={totalCapacitaciones} sub="temas distintos con respuestas" color={accent} />
+            <HeroStat t={t} label="Registros / respuestas" value={totalRegistros} sub="asistencias registradas" color="#3B82F6" />
+            <HeroStat t={t} label="Personas capacitadas" value={personasUnicas} sub="identidades únicas" color="#22C55E" />
+            <HeroStat t={t} label="Promedio de puntaje" value={promedioPct != null ? `${promedioPct}%` : '—'}
+              sub={`${conPuntaje.length} evaluaciones con puntaje`} color={promedioPct != null && promedioPct < 70 ? '#EF4444' : '#8B5CF6'} />
+            <HeroStat t={t} label="Menor promedio" value={peorCapacitacion ? `${peorCapacitacion.avg}%` : '—'}
+              sub={peorCapacitacion ? peorCapacitacion.name : 'Sin suficientes datos'} color="#F59E0B" />
+          </div>
+
+          <div className="grid lg:grid-cols-3 gap-4 mb-4">
+            <div className={`rounded-xl border p-5 ${t.panel} ${t.border}`}>
+              <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Registros por empresa</div>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={porEmpresa} dataKey="value" nameKey="name" innerRadius={48} outerRadius={78} paddingAngle={2}>
+                    {porEmpresa.map((e, i) => <Cell key={i} fill={e.fill} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: '#1e293b', border: 'none', fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center mt-2">
+                {porEmpresa.map((e, i) => (
+                  <span key={i} className="flex items-center gap-1 text-3xs">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: e.fill }} />
+                    <span className={t.muted}>{e.name}</span>
+                    <span className="font-mono font-semibold">{e.value}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className={`rounded-xl border p-5 ${t.panel} ${t.border}`}>
+              <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Registros por sede</div>
+              <ResponsiveContainer width="100%" height={Math.max(160, porSede.length * 24)}>
+                <BarChart data={porSede} layout="vertical" margin={{ left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} width={110} />
+                  <Tooltip contentStyle={{ background: '#1e293b', border: 'none', fontSize: 12 }} />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={14} fill="#3B82F6" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className={`rounded-xl border p-5 ${t.panel} ${t.border}`}>
+              <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Top capacitaciones por respuestas</div>
+              <ResponsiveContainer width="100%" height={Math.max(160, porCapacitacion.length * 22)}>
+                <BarChart data={porCapacitacion} layout="vertical" margin={{ left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: '#94a3b8' }} width={130} />
+                  <Tooltip contentStyle={{ background: '#1e293b', border: 'none', fontSize: 12 }} />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={12} fill={accent} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className={`rounded-xl border p-5 mb-4 ${t.panel} ${t.border}`}>
+            <div className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: accent }}>Registros por mes</div>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={porMes} margin={{ left: -10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
+                <Tooltip contentStyle={{ background: '#1e293b', border: 'none', fontSize: 12 }} />
+                <Line type="monotone" dataKey="value" stroke={accent} strokeWidth={2.2} dot={{ r: 2.5 }} activeDot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {comparacionPrePost.length > 0 && (
+            <div className={`rounded-xl border overflow-hidden mb-4 ${t.panel} ${t.border}`}>
+              <div className="p-5 pb-3">
+                <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Comparación Pre / Post</div>
+                <p className={`text-2xs mt-1 ${t.muted}`}>Mismo participante, evaluado antes y después de la capacitación — mejora en puntos porcentuales.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-2xs">
+                  <thead>
+                    <tr className={`text-left ${t.muted} border-t ${t.border}`}>
+                      <th className="px-5 py-2 font-mono uppercase text-3xs">Capacitación</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs">Participante</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs">Empresa</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs text-right">Pre</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs text-right">Post</th>
+                      <th className="px-3 py-2 pr-5 font-mono uppercase text-3xs text-right">Mejora</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {comparacionPrePost.map((f, i) => (
+                      <tr key={i} className={`border-t ${t.border}`}>
+                        <td className="px-5 py-2">{f.tema}</td>
+                        <td className="px-3 py-2">{f.nombre || '—'}</td>
+                        <td className="px-3 py-2">{EMPRESA_LABEL[f.empresa] || f.empresa}</td>
+                        <td className="px-3 py-2 text-right font-mono">{f.pre != null ? `${f.pre}%` : '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono">{f.pos != null ? `${f.pos}%` : '—'}</td>
+                        <td className="px-3 py-2 pr-5 text-right font-mono font-semibold" style={{ color: f.mejora == null ? undefined : f.mejora >= 0 ? '#22C55E' : '#EF4444' }}>
+                          {f.mejora != null ? `${f.mejora >= 0 ? '+' : ''}${f.mejora} pts` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div className={`rounded-xl border overflow-hidden ${t.panel} ${t.border}`}>
+            <div className="flex items-center justify-between flex-wrap gap-2 p-5 pb-3">
+              <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Detalle de registros</div>
+              <div className={`flex items-center gap-1.5 rounded-md border px-2 py-1 ${t.input}`}>
+                <Search size={12} className={t.muted} />
+                <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar por nombre, empresa, sede..."
+                  className="bg-transparent text-xs outline-none w-48" />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-2xs">
+                <thead>
+                  <tr className={`text-left ${t.muted} border-t ${t.border}`}>
+                    {[
+                      { key: 'fecha', label: 'Fecha' },
+                      { key: 'capacitacion', label: 'Capacitación' },
+                      { key: 'fase', label: 'Fase' },
+                      { key: 'nombre', label: 'Participante' },
+                      { key: 'empresa', label: 'Empresa' },
+                      { key: 'sede', label: 'Sede' },
+                      { key: 'cargo', label: 'Área / cargo' },
+                    ].map(h => (
+                      <th key={h.key} onClick={() => toggleSort(h.key)} className="px-3 py-2 font-mono uppercase text-3xs cursor-pointer select-none first:pl-5">
+                        <span className="inline-flex items-center gap-1">{h.label}<ArrowUpDown size={9} /></span>
+                      </th>
+                    ))}
+                    <th onClick={() => toggleSort('porcentaje')} className="px-3 py-2 pr-5 font-mono uppercase text-3xs cursor-pointer select-none text-right">
+                      <span className="inline-flex items-center gap-1 justify-end">Resultado<ArrowUpDown size={9} /></span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filasPagina.map(r => (
+                    <tr key={r.id} className={`border-t ${t.border}`}>
+                      <td className="px-5 py-2 font-mono whitespace-nowrap">{r.fecha ? formatFechaCorta(r.fecha) : '—'}</td>
+                      <td className="px-3 py-2">{r.capacitacion}</td>
+                      <td className="px-3 py-2">{r.fase ? <Badge color={r.fase === 'pre' ? '#F59E0B' : '#22C55E'}>{r.fase}</Badge> : '—'}</td>
+                      <td className="px-3 py-2">{r.nombre || '—'}</td>
+                      <td className="px-3 py-2">{EMPRESA_LABEL[r.empresa] || r.empresa}</td>
+                      <td className="px-3 py-2">{r.sede || '—'}</td>
+                      <td className="px-3 py-2">{r.cargo || '—'}</td>
+                      <td className="px-3 py-2 pr-5 text-right font-mono">{r.asistencia || (r.porcentaje != null ? `${r.porcentaje}%` : '—')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className={`flex items-center justify-between px-5 py-3 border-t text-2xs ${t.border} ${t.muted}`}>
+              <span>{ordenados.length} registro{ordenados.length !== 1 ? 's' : ''} — página {paginaActual} de {totalPaginas}</span>
+              <div className="flex items-center gap-1">
+                {/* Se basan en `paginaActual` (ya acotado a totalPaginas), no en el estado crudo
+                    `pagina`: si un filtro reduce los resultados, `pagina` puede quedar apuntando
+                    más allá del final, y partir de ahí haría falta más de un clic para que
+                    "Anterior" reaccione. Partir de paginaActual lo corrige en un solo clic. */}
+                <button onClick={() => setPagina(Math.max(1, paginaActual - 1))} disabled={paginaActual <= 1}
+                  className={`p-1 rounded-md border disabled:opacity-40 ${t.border}`}><ChevronLeft size={13} /></button>
+                <button onClick={() => setPagina(Math.min(totalPaginas, paginaActual + 1))} disabled={paginaActual >= totalPaginas}
+                  className={`p-1 rounded-md border disabled:opacity-40 ${t.border}`}><ChevronRight size={13} /></button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Tecnovigilancia: documentación transversal (compartida por todas las empresas) +
 // reportes trimestrales que se consultan empresa → sede → año → trimestre.
 function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, onUpdateTransversal, onUpdateReporte, readOnly }) {
@@ -6680,6 +7886,9 @@ function AppInner() {
   const [authed, setAuthed] = useState(null);
   const [guestMode, setGuestMode] = useState(false);
   const [publicView, setPublicView] = useState(null); // null | 'reporte'
+  // Puerta de entrada pública: se muestra la landing antes del formulario de login (calco
+  // del sitio de mercadeo del v1) — pasa a true al pulsar "Iniciar sesión" desde la landing.
+  const [showLogin, setShowLogin] = useState(false);
   // Aviso de cierre por inactividad y mensaje que se muestra luego en LoginScreen —
   // ver useInactivityLogout más abajo.
   const [sessionWarning, setSessionWarning] = useState(false);
@@ -6749,8 +7958,19 @@ function AppInner() {
   }
 
   if (!authed && !guestMode) {
+    // El aviso de cierre por inactividad salta directo al formulario de login (no tendría
+    // sentido obligar a pasar de nuevo por la landing solo para ver ese mensaje).
+    if (!showLogin && !sessionNotice) {
+      return <LandingPage onIniciarSesion={() => setShowLogin(true)} onReportarFalla={() => setPublicView('reporte')} />;
+    }
     return (
-      <LoginScreen notice={sessionNotice} onLogin={checkSession} onGuest={() => setGuestMode(true)} onReportarFalla={() => setPublicView('reporte')} />
+      <LoginScreen
+        notice={sessionNotice}
+        onLogin={checkSession}
+        onGuest={() => setGuestMode(true)}
+        onReportarFalla={() => setPublicView('reporte')}
+        onBack={sessionNotice ? undefined : () => setShowLogin(false)}
+      />
     );
   }
 
