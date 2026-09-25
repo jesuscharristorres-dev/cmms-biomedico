@@ -5953,6 +5953,14 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
       {sincronizando ? 'Actualizando…' : 'Actualizar información'}
     </Button>
   );
+  // Acceso directo y muy visible (variant="primary") a la plataforma externa de formación —
+  // a pedido del usuario, un botón que abra ese sitio en una pestaña nueva desde Capacitaciones.
+  const FormacionBtn = (
+    <Button variant="primary" t={t} accent={accent} icon={ExternalLink}
+      onClick={() => window.open('https://formacionbiomedica.wordpress.com/', '_blank', 'noopener,noreferrer')}>
+      Formación Biomédica
+    </Button>
+  );
   const EstadoSync = (
     <>
       {sincronizando && (
@@ -5982,7 +5990,10 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
             : 'Presiona "Actualizar información" para traer las respuestas desde los formularios de Google.'}
         </p>
         {EstadoSync}
-        {ActualizarBtn}
+        <div className="flex items-center justify-center gap-2 flex-wrap">
+          {FormacionBtn}
+          {ActualizarBtn}
+        </div>
       </div>
     );
   }
@@ -5991,7 +6002,10 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
     <div>
       <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
         <h1 className="text-lg font-bold">Capacitaciones</h1>
-        {ActualizarBtn}
+        <div className="flex items-center gap-2 flex-wrap">
+          {FormacionBtn}
+          {ActualizarBtn}
+        </div>
       </div>
       <p className={`text-xs mb-3 ${t.muted}`}>
         Respuestas de los formularios de capacitación del personal, sincronizadas desde Google Forms.
