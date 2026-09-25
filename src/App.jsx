@@ -4935,24 +4935,6 @@ function AlertasPage({ equipos, activeCompany, t, onOpen }) {
   const alertasPreventivo = alerts.filter(a => a.tipo === 'Preventivo');
   const calibracionesVencidas = vencidas.filter(a => a.tipo === 'Calibración').length;
 
-  // Cumplimiento de preventivo del año en curso: reutiliza preventivoDelMes (la misma
-  // función que pinta el Cronograma de la Hoja de Vida y la vista Mantenimientos) para cada
-  // equipo × mes, sin inventar una fórmula de fechas nueva. "Programados" = meses del año que
-  // sí corresponden a un ciclo de esa periodicidad (realizado, vencido o programado);
-  // "realizados" = de esos, los que ya se ejecutaron. Los equipos dados de baja se excluyen
-  // con la misma regla que ya usa buildAlerts.
-  const year = new Date().getFullYear();
-  let prevRealizados = 0, prevProgramados = 0;
-  scoped.filter(e => e.estado !== 'Dado de baja').forEach(e => {
-    MONTHS.forEach(m => {
-      const { status } = preventivoDelMes(e, m.idx, year);
-      if (status === 'no_aplica') return;
-      prevProgramados++;
-      if (status === 'realizado') prevRealizados++;
-    });
-  });
-  const cumplimientoPct = prevProgramados ? Math.round((prevRealizados / prevProgramados) * 100) : null;
-
   const badgeColor = (a) => a.status === 'vencido' ? '#EF4444' : '#F59E0B';
   const daysTxt = (a) => a.status === 'vencido' ? `Vencida hace ${Math.abs(a.diffDays)} días` : `Faltan ${a.diffDays} días`;
   const ventanaAlerta = Math.max(PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS);
@@ -4967,13 +4949,11 @@ function AlertasPage({ equipos, activeCompany, t, onOpen }) {
       </p>
 
       {/* KPI — mismos datos que las listas de abajo, resumidos */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         <HeroStat t={t} label="Vencidas" value={vencidas.length} sub="Actividades vencidas" color="#EF4444" />
         <HeroStat t={t} label="Próximas" value={proximas.length} sub={`≤ ${ventanaAlerta} días`} color="#F59E0B" />
         <HeroStat t={t} label="Preventivos" value={alertasPreventivo.length} sub="Pendientes" color="#3B82F6" />
         <HeroStat t={t} label="Calibraciones" value={calibracionesVencidas} sub="Vencidas" color="#8B5CF6" />
-        <HeroStat t={t} label="Cumplimiento" value={cumplimientoPct != null ? `${cumplimientoPct}%` : '—'}
-          sub={cumplimientoPct != null ? `${prevRealizados} realizados / ${prevProgramados} programados` : `Sin ciclos de preventivo en ${year}`} color="#22C55E" />
       </div>
 
       {alerts.length > 0 && (
