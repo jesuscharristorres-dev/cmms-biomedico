@@ -4501,7 +4501,10 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, re
         fill: c.color,
       }));
 
-  // Desglose por sede: equipos, alertas, fallas y calibraciones vencidas de cada sede de la empresa activa.
+  // Desglose por sede: equipos, alertas, bajas, fallas y calibraciones vencidas de cada sede
+  // de la empresa activa. "Bajas" usa la misma definición de baja que ya usa el resto del
+  // sistema (equipo.estado === 'Dado de baja' — así se marca un equipo al guardar su registro
+  // de baja en la pestaña "Baja de Equipo", y así lo excluye buildAlerts de las alertas).
   const sedeBreakdown = isCompanyView
     ? companyOf(activeCompany).sedes.map((sede, i) => {
         const eqSede = scoped.filter(e => e.sede === sede);
@@ -4510,6 +4513,7 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, re
           sede, color: SEDE_SHADES[i % SEDE_SHADES.length],
           equipos: eqSede.length,
           alertas: buildAlerts(eqSede).length,
+          bajas: eqSede.filter(e => e.estado === 'Dado de baja').length,
           fallasAbiertas: repSede.length - repSede.filter(r => r.estado === 'Finalizado').length,
           calVencidas: eqSede.filter(e => calibStatus(e).status === 'vencido').length,
         };
@@ -4553,6 +4557,7 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, re
                   <th className={`text-left px-2 py-2 font-mono text-3xs uppercase ${t.muted}`}>Sede</th>
                   <th className={`text-right px-2 py-2 font-mono text-3xs uppercase ${t.muted}`}>Equipos</th>
                   <th className={`text-right px-2 py-2 font-mono text-3xs uppercase ${t.muted}`}>Alertas</th>
+                  <th className={`text-right px-2 py-2 font-mono text-3xs uppercase ${t.muted}`}>Bajas</th>
                   <th className={`text-right px-2 py-2 font-mono text-3xs uppercase ${t.muted}`}>Fallas abiertas</th>
                   <th className={`text-right px-2 py-2 font-mono text-3xs uppercase ${t.muted}`}>Calib. vencidas</th>
                 </tr>
@@ -4566,6 +4571,7 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, re
                     </td>
                     <td className="px-2 py-2 text-right font-mono">{s.equipos}</td>
                     <td className="px-2 py-2 text-right font-mono" style={s.alertas > 0 ? { color: '#F59E0B' } : {}}>{s.alertas}</td>
+                    <td className="px-2 py-2 text-right font-mono" style={s.bajas > 0 ? { color: '#EF4444' } : {}}>{s.bajas}</td>
                     <td className="px-2 py-2 text-right font-mono" style={s.fallasAbiertas > 0 ? { color: '#EF4444' } : {}}>{s.fallasAbiertas}</td>
                     <td className="px-2 py-2 text-right font-mono" style={s.calVencidas > 0 ? { color: '#EF4444' } : {}}>{s.calVencidas}</td>
                   </tr>
