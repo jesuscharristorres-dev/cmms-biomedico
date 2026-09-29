@@ -4957,7 +4957,6 @@ function AlertasPage({ equipos, activeCompany, onChangeEmpresa, t, onOpen }) {
   const calProximas = alerts.filter(a => a.tipo === 'Calibración' && a.status === 'proximo');
   const mantVencidos = alerts.filter(a => a.tipo === 'Preventivo' && a.status === 'vencido');
   const mantProximos = alerts.filter(a => a.tipo === 'Preventivo' && a.status === 'proximo');
-  const maxKpi = Math.max(calVencidas.length, calProximas.length, mantVencidos.length, mantProximos.length, 1);
 
   const KPIS = [
     { tipo: 'Calibración', status: 'vencido', label: 'Calibraciones vencidas', sub: 'Requieren atención inmediata', color: '#EF4444', list: calVencidas },
@@ -5044,37 +5043,6 @@ function AlertasPage({ equipos, activeCompany, onChangeEmpresa, t, onOpen }) {
             </div>
           );
         })}
-      </div>
-
-      {/* Resumen visual — compara vencido vs próximo dentro de cada tipo, mismo alcance que los KPI */}
-      <div className={`rounded-xl border p-4 mb-5 ${t.panel} ${t.border}`}>
-        <div className="text-xs font-semibold uppercase tracking-wide mb-3">Resumen visual</div>
-        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
-          <div>
-            <div className="text-2xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#8B5CF6' }}>Calibraciones</div>
-            {[{ label: 'Vencidas', value: calVencidas.length, color: '#EF4444' }, { label: 'Próximas', value: calProximas.length, color: '#F59E0B' }].map(row => (
-              <div key={row.label} className="flex items-center gap-3 mb-2 last:mb-0">
-                <div className={`w-16 text-2xs shrink-0 ${t.muted}`}>{row.label}</div>
-                <div className={`flex-1 h-3 rounded-full overflow-hidden ${t.panel3}`}>
-                  <div className="h-full rounded-full" style={{ width: `${(row.value / maxKpi) * 100}%`, background: row.color }} />
-                </div>
-                <div className="w-8 text-right text-2xs font-mono font-semibold">{row.value}</div>
-              </div>
-            ))}
-          </div>
-          <div>
-            <div className="text-2xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#3B82F6' }}>Mantenimientos</div>
-            {[{ label: 'Vencidos', value: mantVencidos.length, color: '#EF4444' }, { label: 'Próximos', value: mantProximos.length, color: '#F59E0B' }].map(row => (
-              <div key={row.label} className="flex items-center gap-3 mb-2 last:mb-0">
-                <div className={`w-16 text-2xs shrink-0 ${t.muted}`}>{row.label}</div>
-                <div className={`flex-1 h-3 rounded-full overflow-hidden ${t.panel3}`}>
-                  <div className="h-full rounded-full" style={{ width: `${(row.value / maxKpi) * 100}%`, background: row.color }} />
-                </div>
-                <div className="w-8 text-right text-2xs font-mono font-semibold">{row.value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* Alertas por empresa — solo en "Todas las empresas" (con una activa sería una sola fila) */}
