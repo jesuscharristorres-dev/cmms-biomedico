@@ -27,7 +27,13 @@
     { slot: 1, nombre: 'PRUEBA Usuario Empresa 1', email: 'prueba.empresa1@cmms-prueba.local' },
     { slot: 2, nombre: 'PRUEBA Usuario Empresa 2', email: 'prueba.empresa2@cmms-prueba.local' },
   ];
-  const DEFAULT_TEST_PASSWORD = 'PruebaAislamiento-2026!';
+  // Sin contraseña fija en el repositorio (es público): si no se indica una, se genera una
+  // aleatoria en cada ejecución y se muestra al final para poder entrar a mano con esos usuarios.
+  function generarPassword() {
+    const bytes = new Uint8Array(12);
+    globalThis.crypto.getRandomValues(bytes);
+    return 'Prueba-' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  }
   const PREFERIDAS = ['MACROMED', 'MEIDE'];
 
   /**
@@ -35,7 +41,7 @@
    * ('sa', 'u1', 'u2', 'anon'); el runner decide cómo mantener la sesión de cada una.
    * `login(as, user, pass, extraBody)` / `logout(as)` cambian la sesión de esa identidad.
    */
-  async function runSuite({ http, login, logout, log = console.log, adminUser, adminPass, testPassword = DEFAULT_TEST_PASSWORD, cleanup = false }) {
+  async function runSuite({ http, login, logout, log = console.log, adminUser, adminPass, testPassword = generarPassword(), cleanup = false }) {
     const resultados = [];
     const check = (grupo, nombre, ok, detalle) => {
       resultados.push({ grupo, nombre, ok: !!ok, detalle: detalle || '' });
@@ -272,7 +278,8 @@
     for (const as of ['u1', 'u2', 'sa']) { try { await logout(as); } catch { /* ya cerrada */ } }
     const fallos = resultados.filter(r => !r.ok);
     log(`\nResultado: ${resultados.length - fallos.length}/${resultados.length} verificaciones correctas${fallos.length ? ` — ${fallos.length} FALLARON` : ''}.`);
-    return { ok: fallos.length === 0, resultados, empresas: { E1, E2 }, usuarios: TEST_USERS, datos: { equipos: EQ, personal: PER, reporte: RF2 } };
+    if (!cleanup) log(`Contraseña de los usuarios de prueba en esta ejecución: ${testPassword}`);
+    return { ok: fallos.length === 0, resultados, empresas: { E1, E2 }, usuarios: TEST_USERS, datos: { equipos: EQ, personal: PER, reporte: RF2 }, testPassword: cleanup ? undefined : testPassword };
   }
 
   /* Runner de navegador: pegar este archivo en la consola de DevTools con el Preview abierto.
@@ -317,5 +324,5 @@
     }
   }
 
-  globalThis.cmmsIsolationSuite = { runSuite, runInBrowser, TEST_USERS, DEFAULT_TEST_PASSWORD };
+  globalThis.cmmsIsolationSuite = { runSuite, runInBrowser, TEST_USERS };
 })();

@@ -8,7 +8,7 @@
 //   CMMS_ADMIN_USER=<usuario o email del SUPER_ADMIN> \
 //   CMMS_ADMIN_PASS=<contraseña>        # si se omite, se pide por consola (no se muestra ni se guarda)
 //   [VERCEL_PROTECTION_BYPASS=<secreto>]   # "Protection Bypass for Automation" (Preview con Vercel Authentication)
-//   [TEST_USER_PASSWORD=<clave>]           # contraseña de los usuarios de prueba (por defecto la documentada)
+//   [TEST_USER_PASSWORD=<clave>]           # contraseña de los usuarios de prueba (si se omite, una aleatoria por ejecución)
 //   node scripts/preview-isolation-test.mjs [--cleanup] [--report=informe.json]
 //
 // Cada identidad (SUPER_ADMIN, usuario 1, usuario 2, anónimo) tiene su propia cookie de sesión,

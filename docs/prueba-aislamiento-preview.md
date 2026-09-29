@@ -18,7 +18,7 @@ HTTP, usando solo la API, igual que lo haría un atacante con DevTools, curl o P
 | SUPER_ADMIN | Usa la cuenta existente **sin modificarla**. Su contraseña se pide al ejecutar y no se guarda |
 | Usuario de prueba 1 | `PRUEBA Usuario Empresa 1` · **`prueba.empresa1@cmms-prueba.local`** · rol `EMPRESA` · empresa MACROMED |
 | Usuario de prueba 2 | `PRUEBA Usuario Empresa 2` · **`prueba.empresa2@cmms-prueba.local`** · rol `EMPRESA` · empresa MEIDE |
-| Contraseña de ambos usuarios de prueba | **`PruebaAislamiento-2026!`** (se puede cambiar con `TEST_USER_PASSWORD`) |
+| Contraseña de ambos usuarios de prueba | **No está en el repositorio**, que es público. Cada ejecución genera una aleatoria (`Prueba-<24 hex>`) y la muestra al final, o se fija con `TEST_USER_PASSWORD`. Cada ejecución la restablece |
 | Equipos | `prueba-aislamiento-equipo-emp1` (MACROMED) y `prueba-aislamiento-equipo-emp2` (MEIDE). Los crea cada usuario con su propia sesión. Marca `PRUEBA`, observación `DATO PRIVADO DE <empresa>` |
 | Hojas de vida | `prueba-aislamiento-personal-emp1` y `prueba-aislamiento-personal-emp2` |
 | Reporte de falla | `prueba-aislamiento-reporte-emp2`, sobre el equipo de MEIDE, creado desde el formulario público |

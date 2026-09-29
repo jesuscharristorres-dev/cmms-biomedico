@@ -225,7 +225,7 @@ seguridad está en la API.
 Esta sección se basa en lo auditado en Vercel el 2026-09-29.
 
 - `KV_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN` y `REDIS_URL`
-  vienen del **mismo store** (`store_iZXs0uzTeHHLwy7Q`) y tienen como destino **Production y
+  vienen del **mismo store** y tienen como destino **Production y
   Preview**. Por lo tanto, **ambos entornos comparten la misma base de datos**.
 - El cliente `@vercel/kv` usa `KV_REST_API_URL` y `KV_REST_API_TOKEN`.
 - Antes de este cambio no había ni prefijos ni namespaces. Un login o una edición en una URL de
