@@ -5386,7 +5386,7 @@ function InventarioPage({ mode, equipos, t, accentBg, filters, setFilters, onCha
                       const tip = `${STATUS_LABEL[st]}${fecha ? ' — ' + formatFechaCorta(fecha) : ''}`;
                       return <td key={m.k} className="px-2 py-2 text-center" title={tip}><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: STATUS_HEX[st] }} role="img" aria-label={tip} /></td>;
                     })}
-                    <td className="px-3 py-2 text-center">{e.aplicaCalibracion ? '✓' : '—'}</td>
+                    <td className="px-3 py-2 text-center">{e.aplicaCalibracion ? '✓' : '✗'}</td>
                     <td className="px-3 py-2 text-center">{e.aplicaPreventivo ? '✓' : '—'}</td>
                     <td className="px-3 py-2">{e.periodicidadMantenimiento || '—'}</td>
                     <td className="px-3 py-2">{e.periodicidadCalibracion || '—'}</td>
