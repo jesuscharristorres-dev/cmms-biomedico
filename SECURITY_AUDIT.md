@@ -256,3 +256,27 @@ prefijo de entorno, fallan.
    concurrencia simultánea. Ya ocurría antes.
 5. **Rate limit por IP:** varios usuarios detrás de una misma IP (NAT de una clínica) comparten el
    límite de 30 reportes por hora.
+
+---
+
+## VERIFICACIÓN FINAL 2026-09-29 (antes del primer login)
+
+- **Uso real del Preview sin protección.** Según los logs de Vercel, ninguno de los dos
+  deployments de Preview recibió peticiones. El de `ae58656`, sin namespaces, **no escribió nada**
+  en Production. Sigue vivo: hay que eliminarlo (`docs/preview-production.md`, sección 4).
+- **Corregido: el entorno se deducía solo de `VERCEL_ENV`.** Sin esa variable, Production y
+  Preview habrían caído en el mismo namespace `local:`. Ahora `lib/db.js` falla cerrado: sin
+  entorno explícito, cualquier acceso a KV da error.
+- **Corregido: la migración 002 podía crear dos SUPER_ADMIN** si dos instancias arrancaban a la
+  vez. Ahora las migraciones se ejecutan bajo un candado `SET NX`.
+- **Añadido:** `GET /api/login` informa el `entorno` sin sesión, para verificar el destino antes
+  de iniciar sesión.
+- **Corregido en la documentación:** las credenciales de KV no se pueden descargar con
+  `vercel env pull` (son *sensitive* y no tienen destino Development). Se documentó cómo
+  obtenerlas.
+- **Revisión endpoint por endpoint:** cada lectura exige sesión (salvo el catálogo público mínimo
+  y el login). Cada respuesta se recorta con `scopeArray`/`scopeKeyed`. Cada escritura pasa por
+  `resolveEmpresaForWrite`/`findOwned`/`assertKeyedWrite`. La administración exige SUPER_ADMIN.
+  **No se encontraron vías** para que la empresa A obtenga, modifique, elimine o infiera datos de
+  B mediante ids, URL, query, body, cookie, sesión o endpoints. Los riesgos residuales siguen
+  siendo los de la sección anterior.

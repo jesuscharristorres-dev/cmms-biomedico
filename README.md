@@ -93,11 +93,11 @@ La base de datos es Vercel KV, así que las migraciones son funciones versionada
 mano:
 
 ```bash
-vercel env pull .env.local                                   # trae KV_REST_API_URL / KV_REST_API_TOKEN
-node --env-file=.env.local scripts/migrate.mjs status --env=production
-node --env-file=.env.local scripts/migrate.mjs up --env=preview
-node --env-file=.env.local scripts/migrate.mjs audit --env=production --confirm-production   # registros sin empresa
-node --env-file=.env.local scripts/migrate.mjs down <id> --env=preview                      # revertir una migración
+# credenciales de KV en .env.kv.local (ver docs/preview-production.md → "Credenciales para scripts")
+node --env-file=.env.kv.local scripts/migrate.mjs status --env=production
+node --env-file=.env.kv.local scripts/migrate.mjs up --env=preview
+node --env-file=.env.kv.local scripts/migrate.mjs audit --env=production --confirm-production   # registros sin empresa
+node --env-file=.env.kv.local scripts/migrate.mjs down <id> --env=preview                      # revertir una migración
 ```
 
 Los registros heredados cuya empresa no se puede determinar **no se borran ni se asignan al azar**.
@@ -121,7 +121,7 @@ Hay dos opciones:
 **B. Por script**
 
 ```bash
-node --env-file=.env.local scripts/create-super-admin.mjs admin@tuempresa.com "Nombre Apellido" --env=production --confirm-production
+node --env-file=.env.kv.local scripts/create-super-admin.mjs admin@tuempresa.com "Nombre Apellido" --env=production --confirm-production
 ```
 
 El script pide la contraseña por consola, o la toma de `SUPERADMIN_PASSWORD`.

@@ -4,12 +4,12 @@
 //
 // Requiere las credenciales de KV en el entorno (KV_REST_API_URL y KV_REST_API_TOKEN) y el
 // entorno destino EXPLÍCITO (--env=...; ver scripts/_target.mjs):
-//   vercel env pull .env.local
-//   node --env-file=.env.local scripts/migrate.mjs status --env=preview
-//   node --env-file=.env.local scripts/migrate.mjs up --env=preview
-//   node --env-file=.env.local scripts/migrate.mjs up --env=production --confirm-production
-//   node --env-file=.env.local scripts/migrate.mjs down 003_auditoria_sin_empresa --env=preview
-//   node --env-file=.env.local scripts/migrate.mjs audit --env=production --confirm-production
+//   (credenciales de KV en .env.kv.local — ver docs/preview-production.md)
+//   node --env-file=.env.kv.local scripts/migrate.mjs status --env=preview
+//   node --env-file=.env.kv.local scripts/migrate.mjs up --env=preview
+//   node --env-file=.env.kv.local scripts/migrate.mjs up --env=production --confirm-production
+//   node --env-file=.env.kv.local scripts/migrate.mjs down 003_auditoria_sin_empresa --env=preview
+//   node --env-file=.env.kv.local scripts/migrate.mjs audit --env=production --confirm-production
 //
 // Nota: no es obligatorio correrlo a mano — la app aplica las migraciones pendientes sola en
 // la primera petición (lib/migrations.js → ensureSchema). Este script sirve para hacerlo de

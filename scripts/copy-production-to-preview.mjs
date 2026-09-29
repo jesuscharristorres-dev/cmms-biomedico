@@ -10,8 +10,8 @@
 //   - Si el destino ya tiene datos, se detiene salvo que se pase --overwrite.
 //
 // Uso:
-//   vercel env pull .env.local
-//   node --env-file=.env.local scripts/copy-production-to-preview.mjs --to=preview [--overwrite]
+//   (credenciales de KV en .env.kv.local — ver docs/preview-production.md)
+//   node --env-file=.env.kv.local scripts/copy-production-to-preview.mjs --to=preview [--overwrite]
 
 import { rawKv } from '../lib/db.js';
 

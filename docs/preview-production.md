@@ -1,103 +1,125 @@
 # Preview y Production: separación de datos
 
-## Situación comprobada (2026-09-29, proyecto Vercel `cmms-biomedico`)
+## 1. Situación comprobada (2026-09-29, proyecto Vercel `cmms-biomedico`)
 
-| Variable | Store | Entornos |
+| Variable | Origen | Entornos |
 |---|---|---|
-| `KV_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN`, `REDIS_URL` | `store_iZXs0uzTeHHLwy7Q` (uno solo) | Production **y** Preview |
-| `AUTH_USER`, `AUTH_PASSWORD_HASH` | — | Production y Preview |
-| `RESEND_API_KEY` | — | Production y Preview |
-| `CAPACITACIONES_SHEETS` | — | **Solo Production** |
+| `KV_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN`, `REDIS_URL` | Un único store: `store_iZXs0uzTeHHLwy7Q` | Production **y** Preview (no Development) |
+| `AUTH_USER`, `AUTH_PASSWORD_HASH` | Manual | Production y Preview |
+| `RESEND_API_KEY` | Manual | Production y Preview |
+| `CAPACITACIONES_SHEETS` | Manual | Solo Production |
+| `KV_NAMESPACE`, `SUPERADMIN_*` | — | No existen |
 
-**Conclusión:** Preview y Production comparten la misma base de datos. Hasta este cambio no
-había ningún prefijo. Cualquier login, alta o edición hecha en una URL de Preview modificaba los
-datos reales.
+**Preview y Production comparten físicamente la misma base de datos.** El código separa los datos
+lógicamente (sección 2).
 
-⚠️ **Ya ocurrió al menos una vez.** El 2026-09-29 se desplegó en Preview el commit `ae58656`, la
-primera versión multiempresa, sin namespaces. Si alguien inició sesión en esa URL, las
-migraciones y los cambios quedaron en los datos de Production:
+Protección de deployments en Vercel: **Vercel Authentication (SSO) activa para todos los
+deployments salvo los dominios personalizados.** Solo los miembros del equipo con sesión en
+Vercel pueden abrir una URL de Preview.
 
-- se crearon `cmms:empresas`, `cmms:usuarios` y `cmms:schema_migrations`;
-- se creó el SUPER_ADMIN desde `AUTH_USER`;
-- quedaron guardados los usuarios o empresas de prueba que se hayan creado.
+### El Preview sin protección (`ae58656`)
 
-Ninguna migración borra ni modifica equipos, personal ni reportes. Aun así, después del deploy a
-Production conviene revisar **Administración → Usuarios** y **Empresas**, y eliminar o desactivar
-lo que haya sido de prueba.
+- **Qué es:** el deployment `dpl_BQF6fMXc6CnNKGjGNyuDBLh5VNsQ`
+  (`cmms-biomedico-z6mtltgqx-cmms2.vercel.app`) es la primera versión multiempresa, **sin
+  namespaces**. Si se usa, escribe en las claves de Production.
+- **Qué pasó:** según los logs de ejecución de Vercel, revisados el 2026-09-29, **ese deployment no
+  recibió ninguna petición** a sus funciones. Tampoco el de `1eee7c3`. Los logs cubren todo el
+  periodo, porque el deployment de Production `43b2136`, creado antes que ambos Previews, sí
+  registra peticiones.
+- **Consecuencia:** no se ejecutaron migraciones ni se escribió nada en Production desde Preview.
+- **Riesgo que queda:** el deployment **sigue vivo**. Si alguien abre esa URL exacta e inicia
+  sesión, escribiría en Production. **Elimínalo** (sección 4).
 
-## Protección ya implementada en código (no requiere configurar nada)
+## 2. Protección implementada en código
 
-`lib/db.js` prefija todas las claves según `VERCEL_ENV`, que Vercel define siempre:
+`lib/db.js` prefija cada clave de KV según el entorno:
 
-- **Production:** sin prefijo. Son las claves de siempre, así que los datos existentes siguen
-  intactos y visibles.
-- **Preview:** `preview:cmms:*`. Tiene sus propios usuarios, empresas, sesiones y migraciones, y
-  arranca vacío.
-- **Aviso visible:** la app muestra un aviso morado, "Entorno de pruebas (preview)".
+| Entorno (`VERCEL_ENV`) | Prefijo | Qué ve |
+|---|---|---|
+| production | ninguno | Las mismas claves `cmms:*` de siempre, con los datos reales intactos |
+| preview | `preview:` | Solo sus propios datos, usuarios, sesiones y migraciones. Arranca vacío |
+| development (`vercel dev`) | `development:` | Ídem |
 
-Es decir: **Preview ya no puede contaminar Production**, aunque compartan el store.
+- **Falla cerrado.** Si en un deployment no se puede determinar el entorno (sin `VERCEL_ENV` ni
+  `KV_NAMESPACE`), toda operación de KV lanza un error: la API responde 500 y **no se escribe
+  nada**. Nunca se cae en silencio a un namespace equivocado.
+- **No hay cruce en ningún sentido.**
+  - Una clave de Preview siempre empieza por `preview:`.
+  - Ninguna clave de Production empieza así: todas son `cmms:*`, `session:*`, `user_sessions:*`,
+    `login_fail:*` o `rate:*`.
+  - Production no puede leer ni escribir datos de Preview, y Preview no puede leer ni escribir
+    datos de Production.
+- **Sesiones separadas.** Una cookie de Preview no es válida en Production. Además, las cookies son
+  por dominio.
+- **Comprobable antes del login.** `GET /api/login` devuelve `"entorno"` incluso sin sesión, y la
+  app muestra un aviso morado "Entorno de pruebas" fuera de Production.
+- **Migraciones con candado.** Dos instancias arrancando a la vez no pueden crear dos SUPER_ADMIN.
+- **Scripts explícitos.** Exigen `--env=...`, y además `--confirm-production` para escribir en
+  Production.
 
-### Probar Preview con datos reales (opcional)
+## 3. Credenciales para scripts
 
-Este script **solo lee** Production y copia a `preview:` los datos de negocio: empresas,
-equipos, personal, reportes y documentos. No copia usuarios, sesiones ni correos de alerta.
+Las variables de KV son de tipo **sensitive** y solo tienen destino Production y Preview. Por eso
+`vercel env pull` **no** las descarga. Para usar los scripts desde tu computador:
 
-```bash
-vercel link                     # una vez
-vercel env pull .env.local      # trae KV_REST_API_URL / KV_REST_API_TOKEN
-node --env-file=.env.local scripts/copy-production-to-preview.mjs --to=preview
-# si Preview ya tenía datos y quieres reemplazarlos:
-node --env-file=.env.local scripts/copy-production-to-preview.mjs --to=preview --overwrite
-```
+1. En Vercel → **Storage** → tu base de datos, busca la pestaña **.env.local** / **Quickstart**
+   (pulsa "Show secret").
+2. Copia `KV_REST_API_URL` y `KV_REST_API_TOKEN` a un archivo `.env.kv.local` en la raíz del
+   proyecto. `.gitignore` ya ignora `.env*`, así que nunca se sube a git.
+3. Ejecuta, por ejemplo: `node --env-file=.env.kv.local scripts/migrate.mjs status --env=preview`.
 
-En Preview entras con el mismo `AUTH_USER` y la misma contraseña: la migración 002 crea allí un
-SUPER_ADMIN propio.
+Los scripts son opcionales: la app aplica las migraciones sola.
 
-## Aislamiento físico total (recomendado, manual en Vercel)
+## 4. Cambios manuales en Vercel
 
-Los prefijos separan los datos lógicamente, pero el store y el token siguen siendo compartidos.
-Un bug o un script mal usado aún podría leer claves de Production desde Preview. Para separarlos
-físicamente:
+| # | Acción | ¿Obligatoria? | Motivo |
+|---|---|---|---|
+| 1 | **Eliminar el deployment `dpl_BQF6fMXc6CnNKGjGNyuDBLh5VNsQ`** (Deployments → `cmms-biomedico-z6mtltgqx…` → ⋯ → Delete) | **Sí, antes de probar** | Es la única vía que queda para escribir en Production desde Preview |
+| 2 | **No crear `KV_NAMESPACE`** en ningún entorno | Sí | El namespace se deduce de `VERCEL_ENV`. En Production, cualquier valor distinto de `production` ocultaría los datos reales |
+| 3 | No desactivar Settings → Environment Variables → "Automatically expose System Environment Variables" | Sí | Aporta `VERCEL_ENV`. Si se desactiva, la app falla cerrada (500) en vez de mezclar datos |
+| 4 | `SUPERADMIN_EMAIL` (tu correo) y `SUPERADMIN_NOMBRE` en **Production** | Recomendada | Solo se leen al crear el SUPER_ADMIN, en el primer login |
+| 5 | Store separado para Preview (sección 5) | Opcional | Aislamiento **físico** además del lógico |
 
-1. **Crea el store de Preview.** En Vercel → **Storage** → **Create Database**, elige el mismo
-   proveedor que el actual (Upstash for Redis / KV). Ponle un nombre como `cmms-preview`.
-2. **Quita Preview del store actual.** Abre el store actual → **Projects** → conexión con
-   `cmms-biomedico` → editar entornos → deja **solo Production**. Así desaparecen de Preview las
-   variables `KV_*`/`REDIS_URL` del store real.
-3. **Conecta el store nuevo solo a Preview.** Abre `cmms-preview` → **Connect Project** →
-   `cmms-biomedico` → marca **solo Preview** (y Development si usas `vercel dev`). Usa el prefijo
-   de variables por defecto (**KV**) para que se generen `KV_REST_API_URL` y `KV_REST_API_TOKEN`,
-   los nombres que lee `@vercel/kv`. No hay que cambiar código.
-4. **Redespliega** el deployment de Preview: las variables nuevas solo se aplican a deployments
-   nuevos.
-5. **Verifica.** En **Settings → Environment Variables**, `KV_REST_API_URL` debe aparecer dos
-   veces: una con destino Production (store actual) y otra con destino Preview (`cmms-preview`).
+## 5. Aislamiento físico total (opcional)
 
-Con stores separados, el prefijo `preview:` se sigue aplicando dentro del store de Preview. Es
-inofensivo y deja una segunda barrera.
+1. **Crea el store de Preview.** Vercel → **Storage** → **Create Database**, con el mismo
+   proveedor que el actual (Upstash for Redis / KV). Llámalo, por ejemplo, `cmms-preview`.
+2. **Deja el store actual solo en Production.** En el store actual → **Projects** → conexión con
+   `cmms-biomedico` → entornos: **solo Production**.
+3. **Conecta el store nuevo solo a Preview.** En `cmms-preview` → **Connect Project** →
+   `cmms-biomedico` → **solo Preview**, con el prefijo de variables por defecto (**KV**). Así se
+   generan `KV_REST_API_URL` y `KV_REST_API_TOKEN`.
+4. **Redespliega** la rama de Preview.
+5. **Verifica** en Settings → Environment Variables que `KV_REST_API_URL` aparece dos veces:
+   Production (store actual) y Preview (store nuevo).
 
-## Variables de entorno
+## 6. Procedimiento para probar Preview
 
-| Variable | ¿Obligatoria? | Production | Preview | Nota |
-|---|---|---|---|---|
-| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Sí | Ya existe | Ya existe (compartida; ver "Aislamiento físico") | Las crea Vercel al conectar el store |
-| `AUTH_USER`, `AUTH_PASSWORD_HASH` | Sí (o la pareja `SUPERADMIN_*`) | Ya existe | Ya existe | Crean el SUPER_ADMIN inicial de **cada** entorno |
-| `SUPERADMIN_EMAIL` | Recomendada | Agregar | Opcional | Tu email real; así el SUPER_ADMIN tiene email desde el inicio |
-| `SUPERADMIN_NOMBRE` | Opcional | Agregar | Opcional | Nombre visible |
-| `KV_NAMESPACE` | **No agregar** | — | — | Solo para casos especiales: el namespace se deduce de `VERCEL_ENV`. En Production **no** debe tener otro valor que `production`, o la app dejaría de ver los datos reales |
-| `CAPACITACIONES_SHEETS` | Para capacitaciones | Ya existe | No existe | Si quieres sincronizar capacitaciones en Preview, agrégala también ahí |
-| `RESEND_API_KEY` | Para correos | Ya existe | Ya existe | — |
+1. Elimina el deployment `dpl_BQF6fMXc6CnNKGjGNyuDBLh5VNsQ` (sección 4, acción 1).
+2. Usa **solo** el deployment más reciente de la rama `claude/wonderful-wright-h0kmax`, desde
+   Vercel → Deployments. Comprueba que su commit es el último de la rama.
+3. **Antes de iniciar sesión**, abre `https://<url-del-preview>/api/login`. Debe responder
+   exactamente `{"authenticated":false,"entorno":"preview"}`.
+   - Si dice `"production"`, o responde 500 o cualquier otra cosa: **no inicies sesión** y avisa.
+4. Abre la URL del Preview e inicia sesión con tu `AUTH_USER` y tu contraseña. Debe aparecer arriba
+   la franja morada "Entorno de pruebas (preview)". El Preview arranca vacío: tendrá las 5
+   empresas sin equipos.
+5. Prueba libremente: crear empresas, usuarios, equipos, desactivar, cambiar de empresa, etc. Todo
+   queda en `preview:*`.
+6. **Opcional:** para probar con datos reales copiados (solo lectura sobre Production), ejecuta
+   `node --env-file=.env.kv.local scripts/copy-production-to-preview.mjs --to=preview`.
 
-## Pasos después del deploy a Production
+## 7. Procedimiento para pasar a Production
 
-1. **Primer login.** Entra con tu `AUTH_USER` y tu contraseña de siempre. Las migraciones se
-   aplican solas y quedas como SUPER_ADMIN. Las sesiones anteriores ya no son válidas, así que
-   todos deben volver a entrar.
-2. **Revisa los usuarios.** En **Administración → Usuarios**, confirma que solo existan usuarios
-   legítimos (ver el aviso sobre el Preview `ae58656`). Edita tu usuario para ponerle nombre y
-   email si no configuraste `SUPERADMIN_EMAIL`/`SUPERADMIN_NOMBRE`.
-3. **Completa las empresas.** En **Administración → Empresas**, completa NIT y datos de contacto
-   de las 5 empresas. Revisa también la sección **Registros existentes sin empresa asignada**.
-4. **Crea usuarios.** Crea al menos un usuario por empresa, con rol `EMPRESA` o `LECTURA`.
-5. **Prueba el aislamiento.** Inicia sesión con un usuario de empresa y confirma que solo ve su
+1. **Opcional:** agrega `SUPERADMIN_EMAIL` y `SUPERADMIN_NOMBRE` con destino Production.
+2. Fusiona la rama en `main`. Vercel despliega Production.
+3. Abre `https://cmms-biomedico.vercel.app/api/login`. Debe responder
+   `{"authenticated":false,"entorno":"production"}`.
+4. Inicia sesión con tu `AUTH_USER` y tu contraseña de siempre. Las migraciones crean las 5
+   empresas y tu SUPER_ADMIN. Los equipos y demás datos existentes deben verse igual que antes.
+   Todos los usuarios deberán iniciar sesión de nuevo.
+5. **Revisa lo creado:**
+   - Administración → Empresas: completa NIT y contacto, y revisa "Registros sin empresa".
+   - Administración → Usuarios: debe existir solo tu SUPER_ADMIN.
+6. **Crea los usuarios de las empresas** y verifica, entrando con uno de ellos, que solo ve su
    empresa.

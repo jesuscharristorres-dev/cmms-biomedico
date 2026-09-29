@@ -161,7 +161,7 @@ describe('Checklist de seguridad multiempresa', () => {
     assert.equal(post.status, 200);
     assert.equal(post.body.reportes, undefined);
     // GET /api/login sin sesión no revela nada más que "no autenticado".
-    assert.deepEqual((await call(login, {})).body, { authenticated: false });
+    assert.deepEqual((await call(login, {})).body, { authenticated: false, entorno: 'production' });
   });
 
   test('14b. send-email ya no es un relay público', async () => {
@@ -205,6 +205,66 @@ describe('Separación de entornos (Preview / Production) sobre un mismo KV', () 
     assert.equal(currentNamespace({}), 'local');
     assert.equal(currentNamespace({ VERCEL_ENV: 'production', KV_NAMESPACE: 'staging' }), 'staging');
     assert.throws(() => currentNamespace({ KV_NAMESPACE: 'x:y' }));
+  });
+
+  test('falla cerrado: sin VERCEL_ENV ni KV_NAMESPACE no se toca KV (ni se hace login)', async () => {
+    const raw = createMemoryKv({ 'cmms:equipos': [{ id: 'eq_real', empresa: A }] });
+    setKvForTests(raw, { strict: true }); // mismo modo que el cliente real
+    const prevNs = process.env.KV_NAMESPACE;
+    const prevEnv = process.env.VERCEL_ENV;
+    try {
+      delete process.env.KV_NAMESPACE;
+      delete process.env.VERCEL_ENV;
+      resetEnsureSchemaForTests();
+      await assert.rejects(() => kv.get('cmms:equipos'), /No se pudo determinar el entorno/);
+      const g = await call(login, {});
+      assert.equal(g.status, 500);
+      const p = await call(login, { method: 'POST', body: { user: ADMIN_USER, pass: ADMIN_PASS } });
+      assert.equal(p.status, 500);
+      assert.equal(p.headers['set-cookie'], undefined);
+      assert.deepEqual([...raw.store.keys()], ['cmms:equipos'], 'no se escribió nada');
+    } finally {
+      process.env.KV_NAMESPACE = prevNs;
+      if (prevEnv !== undefined) process.env.VERCEL_ENV = prevEnv;
+    }
+  });
+
+  test('VERCEL_ENV real decide el namespace (sin KV_NAMESPACE)', async () => {
+    const raw = createMemoryKv({});
+    setKvForTests(raw, { strict: true });
+    const prevNs = process.env.KV_NAMESPACE;
+    try {
+      delete process.env.KV_NAMESPACE;
+      process.env.VERCEL_ENV = 'preview';
+      assert.equal((await call(login, {})).body.entorno, 'preview');
+      await kv.set('cmms:x', 1);
+      process.env.VERCEL_ENV = 'production';
+      assert.equal((await call(login, {})).body.entorno, 'production');
+      assert.equal(await kv.get('cmms:x'), null, 'production no ve la clave escrita en preview');
+      assert.equal(await raw.get('preview:cmms:x'), 1);
+    } finally {
+      process.env.KV_NAMESPACE = prevNs;
+      delete process.env.VERCEL_ENV;
+    }
+  });
+
+  test('las migraciones son idempotentes y no crean dos SUPER_ADMIN en paralelo', async () => {
+    const raw = createMemoryKv({});
+    setKvForTests(raw);
+    const prevNs = process.env.KV_NAMESPACE;
+    try {
+      process.env.KV_NAMESPACE = 'production';
+      const { runPending } = await import('../lib/migrations.js');
+      await Promise.all([runPending(), runPending(), runPending()]);
+      await runPending();
+      const usuarios = await raw.get('cmms:usuarios');
+      assert.equal(usuarios.filter(u => u.role === 'SUPER_ADMIN').length, 1);
+      assert.equal((await raw.get('cmms:empresas')).length, 5);
+      assert.equal((await raw.get('cmms:schema_migrations')).length, 3);
+      assert.equal(await raw.get('cmms:schema_migrations:lock'), null, 'el candado se libera');
+    } finally {
+      process.env.KV_NAMESPACE = prevNs;
+    }
   });
 
   test('un login y cambios en Preview no tocan los datos de Production', async () => {

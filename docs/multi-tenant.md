@@ -93,11 +93,11 @@ aplicadas se registran en `cmms:schema_migrations`.
   instancia serverless. Un despliegue nuevo funciona sin pasos manuales.
 - **Manual:**
   ```bash
-  vercel env pull .env.local
-  node --env-file=.env.local scripts/migrate.mjs status --env=production
-  node --env-file=.env.local scripts/migrate.mjs up --env=preview
-  node --env-file=.env.local scripts/migrate.mjs audit --env=production --confirm-production
-  node --env-file=.env.local scripts/migrate.mjs down 003_auditoria_sin_empresa --env=preview
+  # credenciales de KV en .env.kv.local (ver docs/preview-production.md → "Credenciales para scripts")
+  node --env-file=.env.kv.local scripts/migrate.mjs status --env=production
+  node --env-file=.env.kv.local scripts/migrate.mjs up --env=preview
+  node --env-file=.env.kv.local scripts/migrate.mjs audit --env=production --confirm-production
+  node --env-file=.env.kv.local scripts/migrate.mjs down 003_auditoria_sin_empresa --env=preview
   ```
 
 **Registros sin empresa.** Si un registro heredado tiene una `empresa` desconocida, no se inventa
@@ -242,6 +242,11 @@ clave según `VERCEL_ENV`, variable que Vercel define siempre:
 | scripts o tests locales sin `VERCEL_ENV` | `local:` | Ídem |
 
 `KV_NAMESPACE` es opcional y fuerza el namespace. El valor `production` significa sin prefijo.
+
+**Falla cerrado.** Con el cliente real de KV, si no hay ni `VERCEL_ENV` ni `KV_NAMESPACE`, toda
+operación lanza un error: la API responde 500 y no se escribe nada. `GET /api/login` devuelve el
+`entorno` incluso sin sesión, así que puede comprobarse antes del primer login. Las migraciones
+se ejecutan bajo un candado (`SET NX`).
 
 Con esto:
 

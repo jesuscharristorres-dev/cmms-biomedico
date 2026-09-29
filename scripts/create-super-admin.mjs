@@ -6,8 +6,8 @@
 // se lee de la variable SUPERADMIN_PASSWORD o se pide por consola.
 //
 // Uso:
-//   vercel env pull .env.local
-//   node --env-file=.env.local scripts/create-super-admin.mjs admin@empresa.com "Nombre Apellido" --env=production --confirm-production
+//   (credenciales de KV en .env.kv.local — ver docs/preview-production.md)
+//   node --env-file=.env.kv.local scripts/create-super-admin.mjs admin@empresa.com "Nombre Apellido" --env=production --confirm-production
 
 import readline from 'node:readline/promises';
 import { seleccionarEntorno, argumentosPosicionales } from './_target.mjs';

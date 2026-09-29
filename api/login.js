@@ -23,7 +23,7 @@ import { findUsuarioByLogin, usuarioPublico } from '../lib/usuarios.js';
 import { getEmpresa, listEmpresas } from '../lib/empresas.js';
 import { ensureSchema } from '../lib/migrations.js';
 import { sendError, methodNotAllowed } from '../lib/http.js';
-import { currentNamespace } from '../lib/db.js';
+import { currentNamespace, namespaceExplicito } from '../lib/db.js';
 
 const CREDENCIALES_INVALIDAS = 'Usuario o contraseña incorrectos';
 
@@ -40,16 +40,26 @@ async function logout(req, res) {
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
+    // `entorno` también va en la respuesta SIN sesión: permite comprobar, antes de iniciar
+    // sesión, contra qué datos trabaja un deployment (production / preview). No es sensible.
+    let entorno;
+    try {
+      if (!namespaceExplicito()) throw new Error('entorno no determinado');
+      entorno = currentNamespace();
+    } catch (err) {
+      console.error('[api/login] Entorno de datos no determinado:', err.message);
+      return sendError(res, 500, 'El servidor no pudo determinar su entorno de datos. No inicies sesión y revisa la configuración.');
+    }
     try {
       const ctx = await getAuthContext(req);
-      if (!ctx) return res.status(200).json({ authenticated: false });
+      if (!ctx) return res.status(200).json({ authenticated: false, entorno });
       const empresas = ctx.isSuperAdmin ? await listEmpresas() : [ctx.empresa];
       // `entorno`: namespace de datos activo (production / preview / ...), para que la UI avise
       // cuando NO se está trabajando sobre los datos reales.
-      return res.status(200).json({ authenticated: true, user: usuarioPublico(ctx.user), empresas, entorno: currentNamespace() });
+      return res.status(200).json({ authenticated: true, user: usuarioPublico(ctx.user), empresas, entorno });
     } catch (err) {
       console.error('[api/login] Error verificando sesión (GET):', err);
-      return res.status(200).json({ authenticated: false });
+      return res.status(200).json({ authenticated: false, entorno });
     }
   }
 
