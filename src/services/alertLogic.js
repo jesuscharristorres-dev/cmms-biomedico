@@ -15,8 +15,18 @@ import { estadoActualPreventivo } from './preventivoSchedule';
 export const PREVENTIVO_ALERTA_DIAS = 15;
 export const CALIBRACION_ALERTA_DIAS = 15;
 
+// Un equipo con "N/A" en Período de calibración (Hoja de vida) nunca aplica a
+// calibración, sin importar lo que diga equipo.aplicaCalibracion — ese flag es anterior al
+// desplegable ANUAL/N-A y en datos existentes puede haber quedado desincronizado (equipos
+// marcados "N/A" en Período de calibración cuyo aplicaCalibracion nunca se actualizó). "N/A"
+// en el Período siempre manda: es el dato más reciente y explícito que el usuario eligió.
+export function aplicaCalibracionEfectiva(equipo) {
+  if (equipo.periodicidadCalibracion === 'N/A') return false;
+  return !!equipo.aplicaCalibracion;
+}
+
 export function calibStatus(equipo) {
-  if (!equipo.aplicaCalibracion || !equipo.fechaUltimaCalibracion) return { status: 'sin_dato', diffDays: null, next: null };
+  if (!aplicaCalibracionEfectiva(equipo) || !equipo.fechaUltimaCalibracion) return { status: 'sin_dato', diffDays: null, next: null };
   const last = new Date(equipo.fechaUltimaCalibracion + 'T00:00:00');
   if (isNaN(last.getTime())) return { status: 'sin_dato', diffDays: null, next: null };
   const next = new Date(last); next.setFullYear(next.getFullYear() + 1);

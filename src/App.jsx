@@ -18,7 +18,7 @@ import {
 // filas plano que el resto de esta función espera.
 import { readSheet } from 'read-excel-file/browser';
 import writeXlsxFile from 'write-excel-file/browser';
-import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts } from './services/alertLogic';
+import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts, aplicaCalibracionEfectiva } from './services/alertLogic';
 import { preventivoDelMes } from './services/preventivoSchedule';
 // Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
@@ -2354,7 +2354,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
                 </div>
 
                 <div className="col-span-2 flex gap-4 mt-1 items-center">
-                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={equipo.aplicaCalibracion} disabled={readOnly} onChange={e => patch('aplicaCalibracion', e.target.checked)} /> Aplica calibración</label>
+                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={aplicaCalibracionEfectiva(equipo)} disabled={readOnly} onChange={e => patch('aplicaCalibracion', e.target.checked)} /> Aplica calibración</label>
                   <span className="text-xs">Mantenimiento preventivo: <span className="font-semibold">{equipo.aplicaPreventivo ? 'Aplicable' : 'No aplica'}</span></span>
                 </div>
               </div>
@@ -5386,7 +5386,7 @@ function InventarioPage({ mode, equipos, t, accentBg, filters, setFilters, onCha
                       const tip = `${STATUS_LABEL[st]}${fecha ? ' — ' + formatFechaCorta(fecha) : ''}`;
                       return <td key={m.k} className="px-2 py-2 text-center" title={tip}><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: STATUS_HEX[st] }} role="img" aria-label={tip} /></td>;
                     })}
-                    <td className="px-3 py-2 text-center">{e.aplicaCalibracion ? '✓' : '✗'}</td>
+                    <td className="px-3 py-2 text-center">{aplicaCalibracionEfectiva(e) ? '✓' : '✗'}</td>
                     <td className="px-3 py-2 text-center">{e.aplicaPreventivo ? '✓' : '—'}</td>
                     <td className="px-3 py-2">{e.periodicidadMantenimiento || '—'}</td>
                     <td className="px-3 py-2">{e.periodicidadCalibracion || '—'}</td>
