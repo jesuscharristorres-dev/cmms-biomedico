@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // scripts/hash-password.mjs
-// Genera el valor para la variable de entorno AUTH_PASSWORD_HASH (Vercel → Project
+// Genera el valor para SUPERADMIN_PASSWORD_HASH (o la histórica AUTH_PASSWORD_HASH) (Vercel → Project
 // Settings → Environment Variables), usando el mismo algoritmo (scrypt) que verifica
 // api/login.js vía lib/auth.js. La contraseña en texto plano NUNCA se guarda en ningún
 // archivo — solo se usa en memoria para calcular el hash que se imprime en pantalla.
@@ -8,7 +8,7 @@
 // Uso:
 //   node scripts/hash-password.mjs "tu-contraseña-nueva"
 
-import { hashPassword } from '../lib/auth.js';
+import { hashPassword } from '../lib/password.js';
 
 const password = process.argv[2];
 
@@ -25,5 +25,5 @@ if (password.length < 8) {
 const hash = hashPassword(password);
 
 console.log('\nAgrega esto en Vercel → Project Settings → Environment Variables:\n');
-console.log('  AUTH_PASSWORD_HASH =', hash);
+console.log('  SUPERADMIN_PASSWORD_HASH =', hash);
 console.log('\n(Aplica a Production, Preview y Development. No compartas este valor fuera de Vercel.)\n');

@@ -27,8 +27,8 @@ export default defineConfig([
   {
     // api/ y lib/ corren en funciones serverless de Vercel (Node), no en el navegador —
     // usaban los globals de browser por defecto y eso marcaba `process`/`Buffer` como
-    // no definidos aunque el código es correcto.
-    files: ['api/**/*.js', 'lib/**/*.js'],
+    // no definidos aunque el código es correcto. tests/ y scripts/ también corren en Node.
+    files: ['api/**/*.js', 'lib/**/*.js', 'tests/**/*.js', 'scripts/**/*.{js,mjs}'],
     languageOptions: {
       globals: globals.node,
     },

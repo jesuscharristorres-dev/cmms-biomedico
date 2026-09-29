@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import {
   Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X, Menu,
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
@@ -6,7 +6,7 @@ import {
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
   IdCard, Save, SprayCan, ClipboardList, Paperclip, MoreVertical, Pencil, Filter, Zap, ExternalLink,
-  GraduationCap, RefreshCw
+  GraduationCap, RefreshCw, Users, UserPlus, Power, UserCog, Link2
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -84,12 +84,18 @@ class AppErrorBoundary extends React.Component {
 /* ---------------------------------------------------------------- */
 
 const NEUTRAL_ACCENT = '#4FD1C5';
-// Modo invitado: cuando es true, toda la app queda en solo lectura (ver ConfigPage "Cerrar sesión"
-// y el wrapper App() al final del archivo). Se consume con useContext(ReadOnlyContext).
+// Solo lectura: true para usuarios con rol LECTURA (reemplaza al antiguo "Modo invitado"
+// anónimo). Se consume con useContext(ReadOnlyContext). Es solo presentación: el servidor
+// rechaza igual (403) cualquier escritura de un usuario de solo lectura.
 const ReadOnlyContext = React.createContext(false);
+// Usuario autenticado tal como lo describe el servidor (GET /api/login): { id, nombre,
+// email, role, empresa_id, estado }. La UI lo usa para adaptar menú y selectores; la
+// autorización real SIEMPRE la decide la API a partir de la sesión, nunca de este objeto.
+const AuthUserContext = React.createContext(null);
+const ROLE_LABELS = { SUPER_ADMIN: 'Super administrador', EMPRESA: 'Usuario de empresa', LECTURA: 'Solo lectura' };
 // Sello de versión — actualízalo cuando reemplaces App.jsx, así confirmas en Configuración
 // que el navegador está sirviendo la versión más reciente y no una copia en caché.
-const APP_BUILD = '2026-08-02 · Resumen diario automático de alertas (8am, Vercel Cron + KV)';
+const APP_BUILD = '2026-09-29 · Arquitectura multiempresa (SUPER_ADMIN, empresas y usuarios)';
 
 // Cierre de sesión por inactividad (ver useInactivityLogout más abajo, y AppInner donde
 // se usa): 15 minutos sin actividad real cierran la sesión; el aviso aparece 1 minuto
@@ -177,14 +183,49 @@ function SessionWarningModal({ segundos, onContinuar, onCerrarAhora }) {
   );
 }
 
-const COMPANIES = [
+// MULTIEMPRESA: las empresas ya NO están fijas en el código — viven en el servidor
+// (Administración → Empresas, api/admin.js) y se cargan al iniciar sesión (GET /api/login).
+// DEFAULT_COMPANIES solo es el respaldo visual (colores/logos originales) de las 5 empresas
+// sembradas y el valor inicial antes de cargar. `COMPANIES` es la lista VIGENTE: se reemplaza
+// en sitio con setCompanies() — para un usuario de empresa contiene SOLO su empresa (el
+// servidor no le envía las demás), así que selectores, pestañas y dashboards de toda la app
+// se recortan solos. Esto es solo presentación: el aislamiento real lo aplica la API.
+const DEFAULT_COMPANIES = [
   { key: 'MACROMED', color: '#002485', gradient: 'linear-gradient(135deg, #002485 0%, #1F4FB8 100%)', sedes: ['Bogotá'], logo: '/logos/MACROMED.png' },
   { key: 'MEIDE', color: '#24546A', gradient: 'linear-gradient(135deg, #24546A 0%, #3B7088 100%)', sedes: ['Armenia Berlín','Armenia Fundadores','Manizales Belén','Manizales Arboleda','La Dorada','Unidad Móvil'], logo: '/logos/MEIDE.png' },
   { key: 'NP MEDICAL', color: '#3F8E6F', gradient: 'linear-gradient(135deg, #3F8E6F 0%, #63B48F 100%)', sedes: ['Bogotá Samper','Bogotá Sur','Fontibón','Girardot','Tunja'], logo: '/logos/NP_MEDICAL.png' },
   { key: 'DIAGNOSTIK', color: '#C62828', gradient: 'linear-gradient(135deg, #C62828 0%, #E53935 100%)', sedes: ['Armenia Berlín','Armenia Fundadores','Manizales Belén','Bogotá','Chapinero','Villavicencio','La Dorada'], logo: '/logos/DIAGNOSTIK.png' },
   { key: 'AUNAR SALUD', color: '#009EB7', gradient: 'linear-gradient(135deg, #009EB7 0%, #33C4D8 100%)', sedes: ['Bogotá','Bogotá - Segundo Piso','Bogotá - Quinto Piso','Bogotá - Sexto Piso','Villavicencio','Neiva'], logo: '/logos/AUNAR.png' },
 ];
-const companyOf = (key) => COMPANIES.find(c => c.key === key);
+const COMPANIES = [...DEFAULT_COMPANIES];
+
+// Convierte una empresa del servidor ({ id, nombre, color, sedes, logo, ... }) al formato que
+// usa toda la UI ({ key, color, gradient, sedes, logo }). `key` es el empresa_id.
+function empresaToCompany(e) {
+  const base = DEFAULT_COMPANIES.find(c => c.key === e.id);
+  const color = e.color || base?.color || NEUTRAL_ACCENT;
+  return {
+    key: e.id,
+    nombre: e.nombre || e.id,
+    estado: e.estado || 'activo',
+    color,
+    gradient: base && base.color === color ? base.gradient : `linear-gradient(135deg, ${color} 0%, ${shade(color, 0.25)} 100%)`,
+    sedes: Array.isArray(e.sedes) && e.sedes.length ? e.sedes : ['Principal'],
+    logo: e.logo || base?.logo || '',
+  };
+}
+function setCompanies(empresas) {
+  if (!Array.isArray(empresas) || empresas.length === 0) return;
+  COMPANIES.splice(0, COMPANIES.length, ...empresas.map(empresaToCompany));
+}
+// Para una clave que no coincide con ninguna empresa (registros heredados sin empresa válida,
+// que solo ve el SUPER_ADMIN hasta asignarlos en Administración → Empresas) se devuelve una
+// empresa "placeholder" neutra en vez de undefined, para que ninguna vista se caiga.
+const UNKNOWN_COMPANY_COLOR = '#94A3B8';
+const companyOf = (key) => COMPANIES.find(c => c.key === key) || (key && key !== 'TODAS' ? {
+  key, nombre: `${key} (sin empresa válida)`, estado: 'inactivo', color: UNKNOWN_COMPANY_COLOR,
+  gradient: `linear-gradient(135deg, ${UNKNOWN_COMPANY_COLOR} 0%, #CBD5E1 100%)`, sedes: [], logo: '', desconocida: true,
+} : undefined);
 
 // Color fijo (independiente del tema de cada empresa) para resaltar el ícono de
 // observaciones en el inventario cuando el equipo tiene una observación guardada.
@@ -315,8 +356,11 @@ const ESTADOS_EQUIPO = ['Operativo', 'Fuera de servicio', 'En mantenimiento', 'D
 // equipo.estado de siempre; no es una lógica nueva, solo se acortan las opciones visibles aquí).
 const ESTADOS_MANTENIMIENTOS = ['Operativo', 'Dado de baja'];
 const PERIODICIDADES = ['Mensual', 'Bimestral', 'Trimestral', 'Cuatrimestral', 'Semestral', 'Anual', 'N/A'];
-// `guestHidden`: oculto del menú (y de cualquier acceso directo) en Modo Invitado — ese modo
-// solo debe ofrecer consulta de lectura, sin las secciones operativas/administrativas.
+// `guestHidden`: oculto para usuarios de SOLO LECTURA (rol LECTURA) — solo consulta, sin las
+// secciones operativas/administrativas.
+// `superOnly`: solo para SUPER_ADMIN (vista global de empresas, configuración y el grupo
+// Administración). Ocultarlo del menú NO es la medida de seguridad: la API responde 403 igual.
+// `group`: encabezado de sección en el sidebar.
 const MENU = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'alertas', label: 'Alertas', icon: BellRing, guestHidden: true },
@@ -326,7 +370,7 @@ const MENU = [
   { key: 'tecnovigilancia', label: 'Tecnovigilancia', icon: ShieldAlert },
   { key: 'personal', label: 'Hojas de vida personal', icon: IdCard },
   { key: 'limpieza', label: 'Formatos de limpieza y desinfección', icon: SprayCan },
-  { key: 'empresas', label: 'Empresas', icon: Building2 },
+  { key: 'empresas', label: 'Empresas', icon: Building2, superOnly: true },
   { key: 'inventario', label: 'Inventario', icon: ListTree },
   // 'mantenimientos' / 'correctivos' / 'calibraciones' se ocultaron del menú principal a
   // pedido del usuario (menú más limpio, sin duplicar lo que ya se consulta desde la Hoja
@@ -337,7 +381,9 @@ const MENU = [
   // pantalla (ningún otro lugar de la app navegaba ahí), así que se eliminó también el
   // componente ReportesPage y las funciones que solo él usaba (generarInformeMensualPDF,
   // InformeF140Modal, generarF140PDF, computeInformeF140/Mensual, etc.).
-  { key: 'configuracion', label: 'Configuración', icon: Settings, guestHidden: true },
+  { key: 'configuracion', label: 'Configuración', icon: Settings, guestHidden: true, superOnly: true },
+  { key: 'admin_empresas', label: 'Empresas', icon: Building2, superOnly: true, group: 'Administración' },
+  { key: 'admin_usuarios', label: 'Usuarios', icon: Users, superOnly: true, group: 'Administración' },
 ];
 // Semáforo semántico compartido — mantenimientos y calibraciones usan el mismo
 // significado de color (verde=bien, ámbar=próximo, rojo=vencido, gris=sin dato),
@@ -743,6 +789,35 @@ function ReporteTecnicoButton({ equipo, record, tipoKey, onSave, accent, t, read
 /* PERSISTENCIA                                                      */
 /* ---------------------------------------------------------------- */
 
+// Envoltorio de fetch para la API de datos: si el servidor responde 401 (sesión expirada,
+// usuario desactivado/eliminado o movido de empresa), avisa a AppInner para volver al login
+// en vez de dejar la app mostrando datos que ya no se pueden refrescar.
+async function apiFetch(url, options) {
+  const res = await fetch(url, options);
+  if (res.status === 401) window.dispatchEvent(new Event('cmms:unauthorized'));
+  return res;
+}
+
+// Las cachés locales (localStorage) son por navegador, no por usuario: si en el mismo equipo
+// entra otro usuario, se borran para que nunca vea (ni siquiera sin conexión) datos en caché
+// de otra empresa. CACHE_OWNER_KEY recuerda de qué usuario son las cachés actuales.
+const CACHE_PREFIX = 'cmms-';
+const CACHE_OWNER_KEY = 'cmms_cache_owner';
+function clearDataCaches() {
+  try {
+    Object.keys(localStorage).filter(k => k.startsWith(CACHE_PREFIX)).forEach(k => localStorage.removeItem(k));
+  } catch { /* caché best-effort */ }
+}
+function claimDataCaches(user) {
+  try {
+    const owner = localStorage.getItem(CACHE_OWNER_KEY);
+    // Primer inicio tras la actualización multiempresa: las cachés existentes eran del único
+    // administrador que había — se conservan solo si quien entra es SUPER_ADMIN.
+    if (owner ? owner !== user.id : user.role !== 'SUPER_ADMIN') clearDataCaches();
+    localStorage.setItem(CACHE_OWNER_KEY, user.id);
+  } catch { /* caché best-effort */ }
+}
+
 // Caché local best-effort compartida por todos los loadX/crearX/actualizarX de abajo — cada
 // recurso sigue teniendo su propia clave y su propia lógica de fetch/migración (son distintas
 // entre sí), pero el pequeño ritual de guardar/leer en localStorage sin que un error ahí
@@ -764,7 +839,7 @@ function cacheGet(key, fallback) {
 const EQUIPOS_KEY = 'cmms-equipos';
 async function loadEquipos() {
   try {
-    const res = await fetch('/api/equipos');
+    const res = await apiFetch('/api/equipos');
     if (res.ok) {
       const { equipos } = await res.json();
       // Migración única: si el servidor aún no tiene nada pero este navegador sí tiene
@@ -775,7 +850,7 @@ async function loadEquipos() {
         try { locales = JSON.parse(localStorage.getItem(EQUIPOS_KEY) || '[]'); } catch { /* nada que migrar */ }
         if (locales.length > 0) {
           try {
-            const migRes = await fetch('/api/equipos', {
+            const migRes = await apiFetch('/api/equipos', {
               method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipos: locales }),
             });
             if (migRes.ok) {
@@ -796,28 +871,28 @@ async function loadEquipos() {
   return cacheGet(EQUIPOS_KEY, []);
 }
 async function crearEquipo(equipo) {
-  const res = await fetch('/api/equipos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipo }) });
+  const res = await apiFetch('/api/equipos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipo }) });
   if (!res.ok) throw new Error('No se pudo guardar el equipo en la base de datos compartida.');
   const { equipos } = await res.json();
   cacheSet(EQUIPOS_KEY, equipos);
   return equipos;
 }
 async function crearEquipos(nuevos) {
-  const res = await fetch('/api/equipos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipos: nuevos }) });
+  const res = await apiFetch('/api/equipos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipos: nuevos }) });
   if (!res.ok) throw new Error('No se pudo importar los equipos a la base de datos compartida.');
   const { equipos } = await res.json();
   cacheSet(EQUIPOS_KEY, equipos);
   return equipos;
 }
 async function actualizarEquipo(id, patch) {
-  const res = await fetch('/api/equipos', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }) });
+  const res = await apiFetch('/api/equipos', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }) });
   if (!res.ok) throw new Error('No se pudo actualizar el equipo en la base de datos compartida.');
   const { equipos } = await res.json();
   cacheSet(EQUIPOS_KEY, equipos);
   return equipos;
 }
 async function eliminarEquipo(id) {
-  const res = await fetch('/api/equipos', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+  const res = await apiFetch('/api/equipos', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
   if (!res.ok) throw new Error('No se pudo eliminar el equipo en la base de datos compartida.');
   const { equipos } = await res.json();
   cacheSet(EQUIPOS_KEY, equipos);
@@ -834,7 +909,7 @@ async function eliminarEquipo(id) {
 const REPORTES_KEY = 'cmms-reportes-falla';
 async function loadReportes() {
   try {
-    const res = await fetch('/api/reportes-falla');
+    const res = await apiFetch('/api/reportes-falla');
     if (res.ok) {
       const { reportes } = await res.json();
       cacheSet(REPORTES_KEY, reportes);
@@ -852,18 +927,21 @@ async function loadReportes() {
 // así dos coordinadores reportando casi al mismo tiempo desde computadores distintos no se
 // pisan entre sí. Devuelve el arreglo completo ya actualizado.
 async function crearReporteFalla(reporte) {
-  const res = await fetch('/api/reportes-falla', {
+  const res = await apiFetch('/api/reportes-falla', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reporte }),
   });
-  if (!res.ok) throw new Error('No se pudo guardar el reporte en la base de datos compartida.');
-  const { reportes } = await res.json();
-  cacheSet(REPORTES_KEY, reportes);
-  return reportes;
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detalle = body.details ? Object.values(body.details)[0] : '';
+    throw new Error(detalle || body.error || 'No se pudo guardar el reporte en la base de datos compartida.');
+  }
+  // Endpoint público: la respuesta trae solo el reporte creado, nunca el listado completo.
+  return body.reporte;
 }
 // Actualiza UN reporte por id (estado, técnico asignado, observaciones, etc.) — mismo
 // principio: el servidor hace el merge, el cliente nunca sobrescribe el arreglo completo.
 async function actualizarReporteFalla(id, patch) {
-  const res = await fetch('/api/reportes-falla', {
+  const res = await apiFetch('/api/reportes-falla', {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }),
   });
   if (!res.ok) throw new Error('No se pudo actualizar el reporte en la base de datos compartida.');
@@ -874,7 +952,7 @@ async function actualizarReporteFalla(id, patch) {
 // Elimina UN reporte de falla por id (p. ej. uno duplicado o registrado por error) — a
 // diferencia de vaciarReportesFalla(), no toca el resto del histórico.
 async function eliminarReporteFalla(id) {
-  const res = await fetch(`/api/reportes-falla?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const res = await apiFetch(`/api/reportes-falla?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('No se pudo eliminar el reporte de falla.');
   const { reportes } = await res.json();
   cacheSet(REPORTES_KEY, reportes);
@@ -883,7 +961,7 @@ async function eliminarReporteFalla(id) {
 // Vacía TODO el histórico de reportes de falla en el servidor — pensado para limpiar datos
 // de prueba, no para uso rutinario. Mismo principio de caché que crear/actualizar.
 async function vaciarReportesFalla() {
-  const res = await fetch('/api/reportes-falla', { method: 'DELETE' });
+  const res = await apiFetch('/api/reportes-falla', { method: 'DELETE' });
   if (!res.ok) throw new Error('No se pudo vaciar el histórico de reportes de falla.');
   const { reportes } = await res.json();
   cacheSet(REPORTES_KEY, reportes);
@@ -896,7 +974,7 @@ async function vaciarReportesFalla() {
 const PLANES_KEY = 'cmms-planes-programas';
 async function loadPlanesProgramas() {
   try {
-    const res = await fetch('/api/planes-programas');
+    const res = await apiFetch('/api/planes-programas');
     if (res.ok) {
       const { data } = await res.json();
       if (Object.keys(data).length === 0) {
@@ -924,7 +1002,7 @@ async function loadPlanesProgramas() {
   return cacheGet(PLANES_KEY, {});
 }
 async function actualizarPlanPrograma(empresaKey, campo, valor) {
-  const res = await fetch('/api/planes-programas', {
+  const res = await apiFetch('/api/planes-programas', {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empresaKey, campo, valor }),
   });
   if (!res.ok) throw new Error('No se pudo guardar en la base de datos compartida.');
@@ -939,7 +1017,7 @@ async function actualizarPlanPrograma(empresaKey, campo, valor) {
 const CAPACITACIONES_KEY = 'cmms-capacitaciones';
 async function loadCapacitaciones() {
   try {
-    const res = await fetch('/api/capacitaciones');
+    const res = await apiFetch('/api/capacitaciones');
     if (res.ok) {
       const { data } = await res.json();
       if (data) cacheSet(CAPACITACIONES_KEY, data);
@@ -952,7 +1030,7 @@ async function loadCapacitaciones() {
   return cacheGet(CAPACITACIONES_KEY, null);
 }
 async function sincronizarCapacitaciones() {
-  const res = await fetch('/api/capacitaciones', { method: 'POST' });
+  const res = await apiFetch('/api/capacitaciones', { method: 'POST' });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || 'No se pudo sincronizar las capacitaciones.');
@@ -986,7 +1064,7 @@ const PLANES_CATEGORIAS = [
 const TECNO_TRANSVERSAL_KEY = 'cmms-tecno-transversal';
 async function loadTecnoTransversal() {
   try {
-    const res = await fetch('/api/tecno-transversal');
+    const res = await apiFetch('/api/tecno-transversal');
     if (res.ok) {
       const { data } = await res.json();
       if (Object.keys(data).length === 0) {
@@ -1013,7 +1091,7 @@ async function loadTecnoTransversal() {
 // arriba) — para el uso normal (guardar la URL de UN documento para UNA empresa) siempre
 // se pasan los tres argumentos.
 async function actualizarTecnoTransversal(docKey, empresaKey, valor) {
-  const res = await fetch('/api/tecno-transversal', {
+  const res = await apiFetch('/api/tecno-transversal', {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ docKey, empresaKey, valor }),
   });
   if (!res.ok) throw new Error('No se pudo guardar en la base de datos compartida.');
@@ -1033,7 +1111,7 @@ const TECNO_DOCS = [
 const TECNO_REPORTES_KEY = 'cmms-tecno-reportes';
 async function loadTecnoReportes() {
   try {
-    const res = await fetch('/api/tecno-reportes');
+    const res = await apiFetch('/api/tecno-reportes');
     if (res.ok) {
       const { data } = await res.json();
       if (Object.keys(data).length === 0) {
@@ -1065,7 +1143,7 @@ async function loadTecnoReportes() {
   return cacheGet(TECNO_REPORTES_KEY, {});
 }
 async function actualizarTecnoReporte(empresaKey, sede, anio, trimestre, valor) {
-  const res = await fetch('/api/tecno-reportes', {
+  const res = await apiFetch('/api/tecno-reportes', {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empresaKey, sede, anio, trimestre, valor }),
   });
   if (!res.ok) throw new Error('No se pudo guardar en la base de datos compartida.');
@@ -1097,7 +1175,7 @@ const TECNO_CIUDADES = {
 const PERSONAL_KEY = 'cmms-personal';
 async function loadPersonal() {
   try {
-    const res = await fetch('/api/personal');
+    const res = await apiFetch('/api/personal');
     if (res.ok) {
       const { personal } = await res.json();
       if (personal.length === 0) {
@@ -1121,14 +1199,14 @@ async function loadPersonal() {
   return cacheGet(PERSONAL_KEY, []);
 }
 async function crearPersonal(record) {
-  const res = await fetch('/api/personal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ record }) });
+  const res = await apiFetch('/api/personal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ record }) });
   if (!res.ok) throw new Error('No se pudo guardar el registro en la base de datos compartida.');
   const { personal } = await res.json();
   cacheSet(PERSONAL_KEY, personal);
   return personal;
 }
 async function actualizarPersonal(id, patch) {
-  const res = await fetch('/api/personal', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }) });
+  const res = await apiFetch('/api/personal', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }) });
   if (!res.ok) throw new Error('No se pudo actualizar el registro en la base de datos compartida.');
   const { personal } = await res.json();
   cacheSet(PERSONAL_KEY, personal);
@@ -1141,12 +1219,12 @@ const ESTADO_PERSONAL_HEX = { Activo: '#22C55E', Inactivo: '#94A3B8' };
 // Formatos de limpieza y desinfección — un enlace externo (Drive/OneDrive/SharePoint) por
 // sede · mes del año actual. Nunca se sube el documento en sí, solo su URL — igual que
 // Planes y programas / Tecnovigilancia. Fuente de verdad COMPARTIDA: api/limpieza-desinfeccion.js
-// (Vercel KV). A diferencia de esos otros recursos, aquí el PATCH NO requiere sesión de admin
-// a propósito: el Modo Invitado también puede pegar/actualizar el enlace del mes.
+// (Vercel KV). Con la arquitectura multiempresa el PATCH exige sesión con permiso de escritura
+// y solo sobre la empresa del usuario (antes era público para el antiguo Modo Invitado).
 const LIMPIEZA_KEY = 'cmms-limpieza-desinfeccion';
 async function loadLimpiezaDesinfeccion() {
   try {
-    const res = await fetch('/api/limpieza-desinfeccion');
+    const res = await apiFetch('/api/limpieza-desinfeccion');
     if (res.ok) {
       const { data } = await res.json();
       cacheSet(LIMPIEZA_KEY, data);
@@ -1159,7 +1237,7 @@ async function loadLimpiezaDesinfeccion() {
   return cacheGet(LIMPIEZA_KEY, {});
 }
 async function actualizarLimpiezaDesinfeccion(empresaKey, sede, anio, mes, url) {
-  const res = await fetch('/api/limpieza-desinfeccion', {
+  const res = await apiFetch('/api/limpieza-desinfeccion', {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empresaKey, sede, anio, mes, url }),
   });
   if (!res.ok) throw new Error('No se pudo guardar el enlace en la base de datos compartida.');
@@ -1173,13 +1251,12 @@ async function actualizarLimpiezaDesinfeccion(empresaKey, sede, anio, mes, url) 
 // archivo se guarda tal cual en la base de datos compartida, como Data URI base64 (mismo
 // mecanismo ya usado antes para documentos de equipo vía `archivoDatos`, ver abrirDocumento()
 // más abajo), así que sí se puede ver/descargar sin depender de un servicio externo.
-// Cargar/reemplazar/eliminar SÍ requieren sesión de admin (api/limpieza-plantillas.js usa
-// requireAdmin) — a diferencia del enlace por sede·mes de arriba, aquí el Modo Invitado solo
-// puede consultar/descargar, nunca modificar. Fuente de verdad: api/limpieza-plantillas.js.
+// Cargar/reemplazar/eliminar requieren un rol con escritura y solo sobre la empresa propia
+// (api/limpieza-plantillas.js). Fuente de verdad: api/limpieza-plantillas.js.
 const LIMPIEZA_PLANTILLAS_KEY = 'cmms-limpieza-plantillas';
 async function loadLimpiezaPlantillas() {
   try {
-    const res = await fetch('/api/limpieza-plantillas');
+    const res = await apiFetch('/api/limpieza-plantillas');
     if (res.ok) {
       const { data } = await res.json();
       cacheSet(LIMPIEZA_PLANTILLAS_KEY, data);
@@ -1192,7 +1269,7 @@ async function loadLimpiezaPlantillas() {
   return cacheGet(LIMPIEZA_PLANTILLAS_KEY, {});
 }
 async function guardarLimpiezaPlantilla(empresaKey, { nombre, tipo, archivoDatos }) {
-  const res = await fetch('/api/limpieza-plantillas', {
+  const res = await apiFetch('/api/limpieza-plantillas', {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ empresaKey, nombre, tipo, archivoDatos }),
   });
@@ -1202,7 +1279,7 @@ async function guardarLimpiezaPlantilla(empresaKey, { nombre, tipo, archivoDatos
   return body.data;
 }
 async function eliminarLimpiezaPlantillaRemota(empresaKey) {
-  const res = await fetch('/api/limpieza-plantillas', {
+  const res = await apiFetch('/api/limpieza-plantillas', {
     method: 'DELETE', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ empresaKey }),
   });
@@ -3295,7 +3372,7 @@ const LOGIN_SCREEN_STYLES = `
     .login-illus, .login-decor, .login-glow, .login-bg-blob, .login-card-wrap, .login-field-in { animation: none; }
   }
 `;
-function LoginScreen({ notice, onLogin, onGuest, onReportarFalla, onBack }) {
+function LoginScreen({ notice, onLogin, onReportarFalla, onBack }) {
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -3430,7 +3507,7 @@ function LoginScreen({ notice, onLogin, onGuest, onReportarFalla, onBack }) {
 
             <form onSubmit={submit} className="space-y-4">
               <div className="login-field-in">
-                <label className="text-3xs uppercase tracking-wide text-slate-500 font-semibold">Usuario</label>
+                <label className="text-3xs uppercase tracking-wide text-slate-500 font-semibold">Usuario o correo</label>
                 <div className="relative mt-1.5">
                   <User size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
@@ -3474,11 +3551,6 @@ function LoginScreen({ notice, onLogin, onGuest, onReportarFalla, onBack }) {
               </button>
             </form>
 
-            <button type="button" onClick={onGuest}
-              className="login-fast w-full mt-3 rounded-xl py-3 text-sm font-semibold border border-slate-200 text-slate-600 hover:border-sky-300 hover:text-sky-700 hover:bg-sky-50/50">
-              Ingresar como Invitado
-            </button>
-
             <div className="flex items-center gap-2 mt-5 mb-1">
               <div className="flex-1 h-px bg-slate-200" />
               <span className="text-3xs uppercase tracking-wide text-slate-400 font-semibold">¿Eres coordinador de sede?</span>
@@ -3519,20 +3591,21 @@ function equipoLabelCompleto(e) {
 // parcial y sin distinguir mayúsculas/minúsculas; `value`/`onChange` siguen manejando el
 // mismo `equipoId` de siempre, así que el resto del formulario no se entera del cambio.
 function EquipoSearchSelect({ t, equipos, value, onChange }) {
-  const [query, setQuery] = useState('');
+  const selected = equipos.find(e => e.id === value);
+  const [query, setQuery] = useState(() => (selected ? equipoLabelCompleto(selected) : ''));
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
-
-  const selected = equipos.find(e => e.id === value);
 
   // Refleja el equipo seleccionado en el texto del campo — pero solo mientras el
   // desplegable está cerrado, para no pisar lo que el usuario está escribiendo ahora
   // mismo. Así también se limpia el campo si `value` se resetea desde afuera (p. ej.
-  // al cambiar de empresa/sede).
-  useEffect(() => {
+  // al cambiar de empresa/sede). Ajuste de estado durante el render (patrón recomendado
+  // por React) en vez de un efecto que dispare un render en cascada.
+  const [prevSync, setPrevSync] = useState({ value, open });
+  if (prevSync.value !== value || prevSync.open !== open) {
+    setPrevSync({ value, open });
     if (!open) setQuery(selected ? equipoLabelCompleto(selected) : '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, open]);
+  }
 
   useEffect(() => {
     const cerrar = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
@@ -3585,10 +3658,25 @@ function EquipoSearchSelect({ t, equipos, value, onChange }) {
 /* ---------------------------------------------------------------- */
 /* FORMULARIO PÚBLICO — REPORTE DE FALLA (coordinadores de sede)     */
 /* ---------------------------------------------------------------- */
+// Catálogo PÚBLICO mínimo para el formulario de reporte de falla (sin sesión): empresas
+// activas con sus sedes y los equipos solo con sus datos de identificación — ver
+// api/reportes-falla.js → catalogoPublico. El inventario completo exige sesión.
+async function loadCatalogoPublico() {
+  try {
+    const res = await fetch('/api/reportes-falla?catalogo=1');
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.error('No se pudo cargar el catálogo público de equipos', err);
+  }
+  return null;
+}
+
 function ReporteFallaForm({ onBack }) {
   const [equipos, setEquipos] = useState([]);
-  const [empresa, setEmpresa] = useState(COMPANIES[0].key);
-  const [sede, setSede] = useState(COMPANIES[0].sedes[0]);
+  // Empresas del catálogo público (las activas en el servidor); mientras carga, las por defecto.
+  const [empresas, setEmpresas] = useState(DEFAULT_COMPANIES);
+  const [empresa, setEmpresa] = useState(DEFAULT_COMPANIES[0].key);
+  const [sede, setSede] = useState(DEFAULT_COMPANIES[0].sedes[0]);
   const [equipoId, setEquipoId] = useState('');
   const [persona, setPersona] = useState('');
   const [descripcion, setDescripcion] = useState('');
@@ -3598,8 +3686,24 @@ function ReporteFallaForm({ onBack }) {
   const [dark, setDark] = useState(false);
   const t = uiTheme(dark);
 
-  useEffect(() => { loadEquipos().then(setEquipos); }, []);
+  useEffect(() => {
+    loadCatalogoPublico().then(cat => {
+      if (!cat) return;
+      setEquipos(cat.equipos || []);
+      if (Array.isArray(cat.empresas) && cat.empresas.length) {
+        const lista = cat.empresas.map(empresaToCompany);
+        setEmpresas(lista);
+        setEmpresa(prev => lista.some(c => c.key === prev) ? prev : lista[0].key);
+        setSede(prev => {
+          const actual = lista.find(c => c.key === empresa) || lista[0];
+          return actual.sedes.includes(prev) ? prev : actual.sedes[0];
+        });
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  const empresaActual = empresas.find(c => c.key === empresa) || empresas[0];
   const equiposFiltrados = equipos.filter(e => e.empresa === empresa && e.sede === sede);
 
   const submit = async (e) => {
@@ -3627,7 +3731,7 @@ function ReporteFallaForm({ onBack }) {
       await crearReporteFalla(nuevo);
     } catch (err) {
       console.error('No se pudo guardar el reporte de falla', err);
-      setError('No se pudo enviar el reporte — verifica tu conexión e intenta de nuevo.');
+      setError(err.message || 'No se pudo enviar el reporte — verifica tu conexión e intenta de nuevo.');
       return;
     }
     setSent(true);
@@ -3671,18 +3775,18 @@ function ReporteFallaForm({ onBack }) {
           <form onSubmit={submit} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Empresa">
-                <SelectInput t={t} value={empresa} options={COMPANIES.map(c => c.key)}
-                  onChange={v => { setEmpresa(v); setSede(companyOf(v).sedes[0]); setEquipoId(''); }} />
+                <SelectInput t={t} value={empresa} options={empresas.map(c => c.key)}
+                  onChange={v => { setEmpresa(v); setSede((empresas.find(c => c.key === v) || empresas[0]).sedes[0]); setEquipoId(''); }} />
               </Field>
               <Field label="Sede">
-                <SelectInput upper t={t} value={sede} options={companyOf(empresa).sedes}
+                <SelectInput upper t={t} value={sede} options={empresaActual.sedes}
                   onChange={v => { setSede(v); setEquipoId(''); }} />
               </Field>
             </div>
 
             <Field label="Equipo biomédico">
               <EquipoSearchSelect t={t} equipos={equiposFiltrados} value={equipoId} onChange={setEquipoId} />
-              {equiposFiltrados.length === 0 && <p className="text-2xs mt-1" style={{ color: '#D97706' }}>No hay equipos cargados para esta sede todavía en este dispositivo.</p>}
+              {equiposFiltrados.length === 0 && <p className="text-2xs mt-1" style={{ color: '#D97706' }}>No hay equipos registrados para esta sede todavía.</p>}
             </Field>
 
             <Field label="Fecha del reporte"><TextInput t={t} disabled value={todayISO()} onChange={() => {}} /></Field>
@@ -3767,6 +3871,9 @@ function AmbientBackground({ theme, dark }) {
 /* (columna fija) y el drawer móvil (superpuesto con backdrop)       */
 /* ---------------------------------------------------------------- */
 function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dark, setDark, onLogout, readOnly, onCloseMobile }) {
+  const user = useContext(AuthUserContext);
+  const isSuper = user?.role === 'SUPER_ADMIN';
+  const items = MENU.filter(m => !(readOnly && m.guestHidden) && !(m.superOnly && !isSuper));
   return (
     <>
       <div className="h-1" style={{ background: accentBg }} />
@@ -3785,11 +3892,16 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
         )}
       </div>
       <div className="flex-1 py-3 overflow-y-auto">
-        {MENU.filter(m => !(readOnly && m.guestHidden)).map(m => {
+        {items.map((m, i) => {
           const Icon = m.icon;
           const active = menu === m.key;
+          const header = m.group && m.group !== items[i - 1]?.group;
           return (
-            <button key={m.key} onClick={() => onNavigate(m.key)}
+            <React.Fragment key={m.key}>
+            {header && (
+              <div className={`px-4 pt-4 pb-1 text-3xs uppercase tracking-widest font-semibold ${t.muted}`}>{m.group}</div>
+            )}
+            <button onClick={() => onNavigate(m.key)}
               className={`w-full flex items-center gap-2.5 px-4 min-h-11 text-xs text-left transition ${active ? 'font-semibold' : t.muted}`}
               style={active
                 ? (dark
@@ -3801,15 +3913,29 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
                 <span className="ml-auto rounded-full text-3xs font-mono px-1.5 py-0.5" style={{ background: '#EF4444', color: '#fff' }}>{nuevosReportes}</span>
               )}
             </button>
+            </React.Fragment>
           );
         })}
       </div>
       <div className="p-4 border-t space-y-2" style={{ borderColor: 'inherit' }}>
+        {user && (
+          <div className="flex items-center gap-2 min-w-0 pb-1">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: accent + '1A', color: accent }}>
+              <UserCog size={15} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-semibold truncate" title={user.email}>{user.nombre || user.email}</div>
+              <div className={`text-3xs truncate ${t.muted}`}>
+                {ROLE_LABELS[user.role] || user.role}{user.empresa_id ? ` · ${companyOf(user.empresa_id)?.nombre || user.empresa_id}` : ''}
+              </div>
+            </div>
+          </div>
+        )}
         <button onClick={() => setDark(!dark)} className={`w-full flex items-center justify-center gap-2 rounded-md min-h-11 text-xs border ${t.border}`}>
           {dark ? <Sun size={14} /> : <Moon size={14} />} {dark ? 'Modo claro' : 'Modo oscuro'}
         </button>
         <button onClick={onLogout} className={`w-full flex items-center justify-center rounded-md min-h-11 text-xs border ${t.border} ${t.muted}`}>
-          {readOnly ? 'Salir del modo invitado' : 'Cerrar sesión'}
+          Cerrar sesión
         </button>
       </div>
     </>
@@ -3820,11 +3946,20 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
 /* APP PRINCIPAL                                                     */
 /* ---------------------------------------------------------------- */
 
-function MainApp({ onLogout, readOnly }) {
+function MainApp({ user, onLogout, readOnly }) {
   const [equipos, setEquipos] = useState([]);
   const [dark, setDark] = useState(false);
   const [menu, setMenu] = useState('dashboard');
-  const [activeCompany, setActiveCompany] = useState('TODAS');
+  // MULTIEMPRESA: el SUPER_ADMIN empieza en "Todas" y puede filtrar por cualquier empresa.
+  // Un usuario de empresa queda fijo en SU empresa (la que asignó el servidor) y no puede
+  // cambiarla — y aunque lo intentara desde DevTools, la API solo le devuelve sus datos.
+  const isSuper = user.role === 'SUPER_ADMIN';
+  const lockedCompany = isSuper ? null : user.empresa_id;
+  const [activeCompany, setActiveCompanyRaw] = useState(lockedCompany || 'TODAS');
+  const setActiveCompany = (k) => setActiveCompanyRaw(lockedCompany || k);
+  // Recarga completa de datos tras cambios que afectan a varias colecciones (p. ej. asignar
+  // empresa a registros heredados desde Administración).
+  const [dataVersion, setDataVersion] = useState(0);
   const [filters, setFilters] = useState({ sede: '', ubicacion: '', estado: '', marca: '', clasificacion: '' });
   const [search, setSearch] = useState('');
   const [searchText, setSearchText] = useState('');
@@ -3848,8 +3983,8 @@ function MainApp({ onLogout, readOnly }) {
   const [limpiezaPlantillas, setLimpiezaPlantillas] = useState({});
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  useEffect(() => { loadEquipos().then(setEquipos); }, []);
-  useEffect(() => { loadReportes().then(setReportesFalla); }, []);
+  useEffect(() => { loadEquipos().then(setEquipos); }, [dataVersion]);
+  useEffect(() => { loadReportes().then(setReportesFalla); }, [dataVersion]);
   // Notificación en vivo: si otra pestaña del mismo navegador refresca la caché local, esta la recoge de inmediato.
   useEffect(() => {
     const handler = (e) => { if (e.key === REPORTES_KEY) loadReportes().then(setReportesFalla); };
@@ -3962,7 +4097,7 @@ function MainApp({ onLogout, readOnly }) {
     });
   };
 
-  useEffect(() => { loadPersonal().then(setPersonal); }, []);
+  useEffect(() => { loadPersonal().then(setPersonal); }, [dataVersion]);
   const addPersonal = (record) => {
     setPersonal(prev => [...prev, record]);
     crearPersonal(record).catch(err => {
@@ -4350,7 +4485,7 @@ function MainApp({ onLogout, readOnly }) {
     <div className={`flex flex-col min-h-dvh font-sans ${t.bg} ${t.text}`} style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
       {readOnly && (
         <div className="shrink-0 flex items-center justify-center gap-2 py-1.5 text-2xs font-semibold text-white" style={{ background: '#B45309' }}>
-          <Lock size={12} /> Modo invitado — solo lectura, no se pueden guardar cambios
+          <Lock size={12} /> Usuario de solo lectura — no se pueden guardar cambios
         </div>
       )}
       {/* BARRA SUPERIOR MÓVIL — solo <lg, abre el sidebar como drawer */}
@@ -4390,7 +4525,16 @@ function MainApp({ onLogout, readOnly }) {
       <div className="flex-1 relative overflow-hidden">
         <AmbientBackground theme={theme} dark={dark} />
         <div className="absolute inset-0 overflow-y-auto p-6">
-        {/* Empresa pills */}
+        {/* Empresa pills — solo SUPER_ADMIN puede cambiar de empresa; un usuario de empresa
+            ve únicamente la suya, fija. */}
+        {!isSuper ? (
+          <div className="flex gap-2 flex-wrap mb-5">
+            <span className="px-3 min-h-11 flex items-center gap-1.5 rounded-full text-2xs font-mono border text-white font-semibold"
+              style={{ background: companyOf(activeCompany)?.gradient, borderColor: companyOf(activeCompany)?.color }}>
+              <Building2 size={12} /> {companyOf(activeCompany)?.nombre || activeCompany}
+            </span>
+          </div>
+        ) : !menu.startsWith('admin_') && (
         <div className="flex gap-2 flex-wrap mb-5">
           <button onClick={() => changeCompany('TODAS')}
             className={`px-3 min-h-11 flex items-center rounded-full text-2xs font-mono border transition ${t.border}`}
@@ -4401,14 +4545,15 @@ function MainApp({ onLogout, readOnly }) {
             <button key={c.key} onClick={() => changeCompany(c.key)}
               className={`px-3 min-h-11 flex items-center rounded-full text-2xs font-mono border transition ${activeCompany === c.key ? 'text-white font-semibold' : t.border}`}
               style={activeCompany === c.key ? { background: c.gradient, borderColor: c.color } : {}}>
-              {c.key}
+              {c.nombre || c.key}{c.estado === 'inactivo' ? ' (inactiva)' : ''}
             </button>
           ))}
         </div>
+        )}
 
         {menu === 'dashboard' && <Dashboard equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} accent={accent} theme={theme} t={t} readOnly={readOnly} onGoAlerts={readOnly ? undefined : () => setMenu('alertas')} onGoFallas={readOnly ? undefined : () => setMenu('fallas')} onGoInventario={() => setMenu('inventario')} />}
         {menu === 'alertas' && !readOnly && <AlertasPage equipos={equipos} activeCompany={activeCompany} onChangeEmpresa={changeCompany} t={t} onOpen={setDrawerId} />}
-        {menu === 'empresas' && <EmpresasPage equipos={equipos} t={t} onSelect={(k) => { changeCompany(k); setMenu('inventario'); }} />}
+        {menu === 'empresas' && isSuper && <EmpresasPage equipos={equipos} t={t} onSelect={(k) => { changeCompany(k); setMenu('inventario'); }} />}
         {(menu === 'inventario' || ((menu === 'mantenimientos' || menu === 'calibraciones' || menu === 'correctivos') && !readOnly)) && (
           <InventarioPage
             mode={menu} equipos={filtered} t={t} accent={accent} accentBg={accentBg}
@@ -4431,7 +4576,7 @@ function MainApp({ onLogout, readOnly }) {
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
         {menu === 'capacitaciones' && (
           <CapacitacionesPage capacitaciones={capacitaciones} activeCompany={activeCompany} onChangeEmpresa={setActiveCompany} t={t} accent={accent}
-            onActualizar={actualizarCapacitaciones} sincronizando={capSincronizando} syncStatus={capSyncStatus} readOnly={readOnly} />
+            onActualizar={actualizarCapacitaciones} sincronizando={capSincronizando} syncStatus={capSyncStatus} readOnly={readOnly || !isSuper} />
         )}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
@@ -4439,7 +4584,9 @@ function MainApp({ onLogout, readOnly }) {
           <LimpiezaDesinfeccionPage data={limpiezaDesinfeccion} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateLimpiezaDesinfeccion}
             plantillas={limpiezaPlantillas} onUploadPlantilla={subirLimpiezaPlantilla} onDeletePlantilla={eliminarLimpiezaPlantilla} readOnly={readOnly} />
         )}
-        {menu === 'configuracion' && !readOnly && <ConfigPage t={t} onLogout={onLogout} readOnly={readOnly} />}
+        {menu === 'configuracion' && isSuper && <ConfigPage t={t} onLogout={onLogout} />}
+        {menu === 'admin_empresas' && isSuper && <AdminEmpresasPage t={t} accent={accent} onDataChanged={() => setDataVersion(v => v + 1)} />}
+        {menu === 'admin_usuarios' && isSuper && <AdminUsuariosPage t={t} accent={accent} currentUserId={user.id} />}
         </div>
       </div>
 
@@ -4461,7 +4608,7 @@ function Dashboard({ equipos, reportesFalla, activeCompany, accent, theme, t, re
         <h2 className="text-sm font-bold mb-1">Todavía no hay equipos cargados</h2>
         <p className={`text-xs mb-5 max-w-sm mx-auto ${t.muted}`}>
           {readOnly
-            ? 'En modo invitado puedes explorar el CMMS, pero necesitas iniciar sesión para agregar equipos.'
+            ? 'Tu usuario es de solo lectura: puedes explorar el CMMS, pero no agregar equipos.'
             : 'Agrega tu primer equipo biomédico al inventario para empezar a ver el dashboard con datos reales.'}
         </p>
         {!readOnly && <Button variant="primary" accent={accent} icon={Plus} onClick={onGoInventario}>Agregar equipo</Button>}
@@ -6152,7 +6299,7 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
         <h2 className="text-sm font-bold mb-1">Aún no hay datos de capacitaciones sincronizados</h2>
         <p className={`text-xs mb-5 max-w-sm mx-auto ${t.muted}`}>
           {readOnly
-            ? 'Inicia sesión como administrador para traer los datos desde los formularios.'
+            ? 'El administrador global debe sincronizar los datos desde los formularios.'
             : 'Presiona "Actualizar información" para traer las respuestas desde los formularios de Google.'}
         </p>
         {EstadoSync}
@@ -6405,6 +6552,9 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
 // Tecnovigilancia: documentación transversal (compartida por todas las empresas) +
 // reportes trimestrales que se consultan empresa → sede → año → trimestre.
 function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, onUpdateTransversal, onUpdateReporte, readOnly }) {
+  // El documento único compartido por todas las empresas solo lo edita el SUPER_ADMIN (la
+  // API lo exige igual: 403 para cualquier otro rol).
+  const isSuper = useContext(AuthUserContext)?.role === 'SUPER_ADMIN';
   const [empresaSelLocal, setEmpresaSelLocal] = useState(null);
   const [sedeSel, setSedeSel] = useState(null);
   const [anio, setAnio] = useState(new Date().getFullYear());
@@ -6424,8 +6574,10 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
   // que todavía no tenga su propia URL guardada.
   const urlDeDoc = (doc, empresaKey) => {
     const v = transversal[doc.key];
-    if (!doc.porEmpresa) return (v && typeof v === 'object') ? '' : (v || '');
-    if (v && typeof v === 'object') return v[empresaKey] || '';
+    // `_default`: valor compartido heredado que el servidor conserva cuando un documento
+    // plano pasa al formato por empresa (ver api/tecno-transversal.js).
+    if (!doc.porEmpresa) return (v && typeof v === 'object') ? (v._default || '') : (v || '');
+    if (v && typeof v === 'object') return v[empresaKey] || v._default || '';
     return v || '';
   };
   // Si cambia la empresa activa del selector superior, se limpia la sede/trimestre ya
@@ -6494,7 +6646,7 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
             if (!doc.porEmpresa) {
               return [{
                 cardKey: doc.key, icon: doc.icon, titulo: doc.label, subtitulo: 'Documento único (todas las empresas)',
-                url: urlDeDoc(doc), onChange: v => onUpdateTransversal(doc.key, null, v), color: accent,
+                url: urlDeDoc(doc), onChange: v => onUpdateTransversal(doc.key, null, v), color: accent, soloSuperAdmin: true,
               }];
             }
             if (modoGlobal) {
@@ -6522,7 +6674,7 @@ function TecnovigilanciaPage({ transversal, reportes, activeCompany, t, accent, 
                       <div className="text-2xs mt-0.5 font-semibold" style={{ color: card.color }}>{card.subtitulo}</div>
                     </div>
                   </div>
-                  <DocumentoEstadoAcciones url={card.url} onChange={card.onChange} readOnly={readOnly} t={t} accent={card.color} />
+                  <DocumentoEstadoAcciones url={card.url} onChange={card.onChange} readOnly={readOnly || (card.soloSuperAdmin && !isSuper)} t={t} accent={card.color} />
                 </div>
               </div>
             );
@@ -6851,11 +7003,10 @@ const PLANTILLA_LIMPIEZA_MAX_BYTES = 3 * 1024 * 1024;
 // diferencia del resto de "documentos" de la app (que solo guardan una URL externa), aquí el
 // archivo se sube y se guarda de verdad (ver guardarLimpiezaPlantilla/loadLimpiezaPlantillas
 // más arriba), reutilizando el mecanismo de Data URI base64 que ya existía para
-// `archivoDatos`. Cargar/reemplazar/eliminar están gateados por `readOnly` en la UI (el Modo
-// Invitado no ve esos botones) Y, además, el servidor (requireAdmin en
-// api/limpieza-plantillas.js) rechaza esas operaciones sin sesión de admin aunque alguien
-// llame al endpoint directamente sin pasar por esta interfaz — la restricción no depende
-// solo de ocultar el botón.
+// `archivoDatos`. Cargar/reemplazar/eliminar están gateados por `readOnly` en la UI (el rol
+// LECTURA no ve esos botones) Y, además, el servidor (api/limpieza-plantillas.js) rechaza esas
+// operaciones sin permiso de escritura o sobre otra empresa aunque alguien llame al endpoint
+// directamente — la restricción no depende solo de ocultar el botón.
 function PlantillaLimpiezaCard({ empresa, plantilla, onUpload, onDelete, readOnly, t }) {
   const [subiendo, setSubiendo] = useState(false);
   const [eliminando, setEliminando] = useState(false);
@@ -6976,13 +7127,8 @@ function PlantillaLimpiezaCard({ empresa, plantilla, onUpload, onDelete, readOnl
 /* PÁGINA: FORMATOS DE LIMPIEZA Y DESINFECCIÓN                        */
 /* ---------------------------------------------------------------- */
 // Un enlace externo (Drive/OneDrive/SharePoint) por sede · mes del año actual — nunca se
-// sube el documento en sí, solo su URL. A diferencia de las demás secciones administrativas,
-// esta página SÍ es editable en Modo Invitado para ese enlace (pegar/guardar/reemplazar el
-// enlace del mes) — por eso el endpoint que la respalda (api/limpieza-desinfeccion.js) deja
-// su PATCH abierto sin sesión de admin. La plantilla por empresa (PlantillaLimpiezaCard, más
-// arriba) es la excepción dentro de esta misma página: sí requiere `readOnly` porque el
-// invitado únicamente puede consultarla/descargarla, nunca cargarla ni eliminarla — por eso
-// esta página sí recibe `readOnly` ahora, a diferencia de antes.
+// sube el documento en sí, solo su URL. Tanto el enlace del mes como la plantilla por empresa
+// respetan `readOnly` (rol LECTURA) y el aislamiento por empresa lo aplica la API.
 function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, plantillas, onUploadPlantilla, onDeletePlantilla, readOnly }) {
   const [empresaSelLocal, setEmpresaSelLocal] = useState(null);
   const [sedeSel, setSedeSel] = useState(null);
@@ -7102,7 +7248,7 @@ function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, pl
                   </button>
                   {open && (
                     <div className={`p-3 border-t space-y-2 ${t.border} ${t.panel3}`}>
-                      <TextInput t={t} value={registro?.url} placeholder="URL del formato"
+                      <TextInput t={t} value={registro?.url} placeholder="URL del formato" disabled={readOnly}
                         onChange={v => onUpdate(empresaSel, sedeSel, year, m.idx, v)} />
                       <PdfLink url={registro?.url} t={t} label="Ver / Descargar" title={`${m.full} · ${sedeSel}`} emptyLabel="Enlace no cargado" />
                     </div>
@@ -7120,7 +7266,510 @@ function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, pl
 /* ---------------------------------------------------------------- */
 /* PÁGINA: CONFIGURACIÓN                                              */
 /* ---------------------------------------------------------------- */
-function ConfigPage({ t, onLogout, readOnly }) {
+/* ---------------------------------------------------------------- */
+/* ADMINISTRACIÓN (solo SUPER_ADMIN) — EMPRESAS Y USUARIOS             */
+/* ---------------------------------------------------------------- */
+// Interfaz del módulo de administración multiempresa. Toda la autorización y validación
+// real vive en api/admin.js (requireSuperAdmin + validaciones de lib/empresas.js y
+// lib/usuarios.js); aquí solo se muestran los mensajes que devuelve el servidor.
+
+// Llamada a la API de administración. Devuelve el JSON o lanza un Error con el mensaje del
+// servidor y, si viene, el detalle por campo (err.details) para mostrarlo en el formulario.
+async function adminApi(resource, { method = 'GET', id, body, query = {} } = {}) {
+  const params = new URLSearchParams({ resource, ...(id ? { id } : {}), ...query });
+  const res = await apiFetch(`/api/admin?${params.toString()}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || MENSAJE_HTTP[res.status] || 'No se pudo completar la operación.');
+    err.status = res.status;
+    err.details = data.details || null;
+    throw err;
+  }
+  return data;
+}
+const MENSAJE_HTTP = {
+  401: 'Tu sesión expiró. Inicia sesión de nuevo.',
+  403: 'No tienes permiso para realizar esta operación.',
+  404: 'El registro ya no existe.',
+  409: 'El registro entra en conflicto con uno existente.',
+  422: 'Revisa los datos del formulario.',
+  500: 'Error inesperado del servidor. Intenta de nuevo.',
+};
+const ESTADO_HEX = { activo: '#22C55E', inactivo: '#94A3B8' };
+
+function AdminMensaje({ msg }) {
+  if (!msg) return null;
+  const ok = msg.type === 'success';
+  return (
+    <div className="flex items-start gap-2 text-xs rounded-lg px-3 py-2 border mb-3"
+      style={{ color: ok ? '#15803D' : '#DC2626', background: ok ? '#22C55E14' : '#EF444414', borderColor: ok ? '#22C55E55' : '#EF444455' }}>
+      {ok ? <CheckCircle2 size={13} className="shrink-0 mt-px" /> : <AlertTriangle size={13} className="shrink-0 mt-px" />}
+      <span>{msg.text}</span>
+    </div>
+  );
+}
+
+function FieldError({ error }) {
+  return error ? <span className="text-3xs" style={{ color: '#DC2626' }}>{error}</span> : null;
+}
+
+function AdminModal({ t, accent, subtitulo, titulo, onClose, children, footer }) {
+  return (
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+      <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className={`animate-modal-in relative w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-xl border p-5 ${t.panel} ${t.border}`}>
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <div className="text-3xs uppercase tracking-wide" style={{ color: accent }}>{subtitulo}</div>
+            <div className="text-sm font-bold">{titulo}</div>
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" className="flex items-center justify-center w-11 h-11 -mr-2 -mt-2"><X size={18} /></button>
+        </div>
+        {children}
+        <div className="flex justify-end gap-2 mt-5">{footer}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Empresas ---------- */
+
+function EmpresaFormModal({ t, accent, empresa, onClose, onSaved }) {
+  const editando = !!empresa;
+  const [form, setForm] = useState(() => ({
+    nombre: empresa?.nombre || '', nit: empresa?.nit || '', direccion: empresa?.direccion || '',
+    telefono: empresa?.telefono || '', email: empresa?.email || '', estado: empresa?.estado || 'activo',
+    color: empresa?.color || '#2F8FD1', sedes: (empresa?.sedes || []).join('\n'),
+  }));
+  const [errores, setErrores] = useState({});
+  const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const patch = (k, v) => { setForm(f => ({ ...f, [k]: v })); setErrores(e => ({ ...e, [k]: undefined })); };
+
+  const guardar = async () => {
+    const locales = {};
+    if (!form.nombre.trim()) locales.nombre = 'Campo obligatorio.';
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.email.trim())) locales.email = 'Email no válido.';
+    if (!form.sedes.split(/[\n,]/).some(x => x.trim())) locales.sedes = 'Agrega al menos una sede.';
+    if (Object.keys(locales).length) { setErrores(locales); return; }
+    setGuardando(true);
+    setError('');
+    try {
+      const body = { ...form, sedes: form.sedes.split(/[\n,]/).map(x => x.trim()).filter(Boolean) };
+      const data = editando
+        ? await adminApi('empresas', { method: 'PATCH', id: empresa.id, body })
+        : await adminApi('empresas', { method: 'POST', body });
+      onSaved(data.empresa, editando);
+    } catch (err) {
+      setError(err.message);
+      if (err.details) setErrores(err.details);
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <AdminModal t={t} accent={accent} subtitulo={editando ? `Editar empresa · ${empresa.id}` : 'Nueva empresa'} titulo="Información de la empresa" onClose={onClose}
+      footer={<>
+        <Button variant="outline" t={t} onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" accent={accent} icon={Save} disabled={guardando} onClick={guardar}>{guardando ? 'Guardando…' : 'Guardar'}</Button>
+      </>}>
+      <AdminMensaje msg={error ? { type: 'error', text: error } : null} />
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Field label="Nombre *"><TextInput t={t} value={form.nombre} onChange={v => patch('nombre', v)} /><FieldError error={errores.nombre} /></Field>
+        <Field label="NIT / Identificador"><TextInput t={t} value={form.nit} onChange={v => patch('nit', v)} /><FieldError error={errores.nit} /></Field>
+        <Field label="Dirección"><TextInput t={t} value={form.direccion} onChange={v => patch('direccion', v)} /><FieldError error={errores.direccion} /></Field>
+        <Field label="Teléfono"><TextInput t={t} value={form.telefono} onChange={v => patch('telefono', v)} /><FieldError error={errores.telefono} /></Field>
+        <Field label="Email"><TextInput t={t} type="email" value={form.email} onChange={v => patch('email', v)} /><FieldError error={errores.email} /></Field>
+        <Field label="Estado"><SelectInput t={t} value={form.estado} options={['activo', 'inactivo']} onChange={v => patch('estado', v)} /></Field>
+        <Field label="Color de la empresa">
+          <div className="flex items-center gap-2">
+            <input type="color" value={form.color} onChange={e => patch('color', e.target.value)} className="w-10 h-8 rounded border-0 bg-transparent" aria-label="Color" />
+            <span className={`text-2xs font-mono ${t.muted}`}>{form.color}</span>
+          </div>
+          <FieldError error={errores.color} />
+        </Field>
+        <Field label="Sedes (una por línea) *">
+          <textarea rows={4} value={form.sedes} onChange={e => patch('sedes', e.target.value)}
+            className={`w-full rounded-md px-2.5 py-2 text-xs border ${t.input}`} />
+          <FieldError error={errores.sedes} />
+        </Field>
+      </div>
+      {!editando && <p className={`text-3xs mt-3 ${t.muted}`}>El identificador interno de la empresa se genera a partir del nombre y no cambia aunque luego se edite el nombre.</p>}
+    </AdminModal>
+  );
+}
+
+// Registros heredados (de antes de la arquitectura multiempresa) cuya empresa no coincide con
+// ninguna empresa existente — el servidor los lista (migración 003) y aquí se asignan uno a uno.
+function RegistrosSinEmpresa({ t, accent, empresas, onDataChanged }) {
+  const [informe, setInforme] = useState(null);
+  const [destino, setDestino] = useState({});
+  const [msg, setMsg] = useState(null);
+  const cargar = () => adminApi('sin-empresa').then(d => setInforme(d.informe)).catch(err => setMsg({ type: 'error', text: err.message }));
+  useEffect(() => { cargar(); }, []);
+  if (!informe || (informe.total === 0 && informe.clavesHuerfanas.length === 0)) return null;
+
+  const asignar = async (item) => {
+    const empresa = destino[`${item.coleccion}:${item.id}`];
+    if (!empresa) return;
+    try {
+      const d = await adminApi('sin-empresa', { method: 'PATCH', body: { coleccion: item.coleccion, id: item.id, empresa } });
+      setInforme(d.informe);
+      setMsg({ type: 'success', text: 'Registro asignado correctamente.' });
+      onDataChanged();
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message });
+    }
+  };
+
+  return (
+    <div className={`rounded-xl border p-4 mt-6 ${t.panel} ${t.border}`}>
+      <div className="flex items-center gap-2 mb-1">
+        <Link2 size={15} style={{ color: '#D97706' }} />
+        <div className="text-xs font-semibold">Registros existentes sin empresa asignada ({informe.total})</div>
+      </div>
+      <p className={`text-2xs mb-3 ${t.muted}`}>
+        Estos registros vienen de antes de la arquitectura multiempresa y su empresa no coincide con ninguna empresa registrada.
+        No se borraron: solo el administrador global los ve hasta que se les asigne una empresa.
+      </p>
+      <AdminMensaje msg={msg} />
+      <div className="space-y-2">
+        {informe.items.map(item => {
+          const k = `${item.coleccion}:${item.id}`;
+          return (
+            <div key={k} className={`flex flex-wrap items-center gap-2 text-2xs rounded-lg border px-3 py-2 ${t.border}`}>
+              <Badge color="#D97706">{item.coleccion}</Badge>
+              <span className="font-semibold flex-1 min-w-40">{item.etiqueta || item.id}</span>
+              <span className={t.muted}>empresa actual: {item.empresaActual ? `"${item.empresaActual}"` : '(vacía)'}</span>
+              <select value={destino[k] || ''} onChange={e => setDestino(d => ({ ...d, [k]: e.target.value }))}
+                className={`rounded-md border px-2 py-1 text-2xs ${t.input}`} aria-label="Empresa destino">
+                <option value="">Asignar a…</option>
+                {empresas.filter(e => e.estado === 'activo').map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+              </select>
+              <Button size="sm" variant="primary" accent={accent} disabled={!destino[k]} onClick={() => asignar(item)}>Asignar</Button>
+            </div>
+          );
+        })}
+        {informe.clavesHuerfanas.map(c => (
+          <div key={`${c.coleccion}:${c.empresaKey}`} className={`text-2xs rounded-lg border px-3 py-2 ${t.border} ${t.muted}`}>
+            <Badge color="#D97706">{c.coleccion}</Badge> Documentos guardados bajo una empresa desconocida: <b>{c.empresaKey}</b> — requiere revisión manual (ver docs/multi-tenant.md).
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AdminEmpresasPage({ t, accent, onDataChanged }) {
+  const [empresas, setEmpresas] = useState(null);
+  const [busqueda, setBusqueda] = useState('');
+  const [modal, setModal] = useState(null); // null | 'nueva' | empresa
+  const [msg, setMsg] = useState(null);
+
+  const cargar = () => adminApi('empresas')
+    .then(d => setEmpresas(d.empresas))
+    .catch(err => { setEmpresas([]); setMsg({ type: 'error', text: err.message }); });
+  useEffect(() => { cargar(); }, []);
+
+  // Tras cualquier cambio se recargan también las empresas que usa el resto de la app
+  // (pestañas, selectores, formularios), así una empresa nueva aparece sin recargar la página.
+  const refrescarGlobal = async () => {
+    const d = await adminApi('empresas');
+    setEmpresas(d.empresas);
+    setCompanies(d.empresas);
+    onDataChanged();
+  };
+
+  const toggleEstado = async (e) => {
+    const nuevo = e.estado === 'activo' ? 'inactivo' : 'activo';
+    if (nuevo === 'inactivo' && !window.confirm(`¿Desactivar ${e.nombre}? Sus usuarios no podrán iniciar sesión mientras esté inactiva.`)) return;
+    try {
+      await adminApi('empresas', { method: 'PATCH', id: e.id, body: { estado: nuevo } });
+      setMsg({ type: 'success', text: `${e.nombre} quedó ${nuevo}.` });
+      await refrescarGlobal();
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message });
+    }
+  };
+
+  const q = busqueda.trim().toLowerCase();
+  const lista = (empresas || []).filter(e => !q || [e.nombre, e.nit, e.email, e.id].filter(Boolean).join(' ').toLowerCase().includes(q));
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div>
+          <div className="text-3xs uppercase tracking-widest" style={{ color: accent }}>Administración</div>
+          <h1 className="text-lg font-bold">Empresas</h1>
+          <p className={`text-2xs ${t.muted}`}>Cada empresa ve y gestiona únicamente su propia información.</p>
+        </div>
+        <Button variant="primary" accent={accent} icon={Plus} onClick={() => setModal('nueva')}>Nueva empresa</Button>
+      </div>
+      <AdminMensaje msg={msg} />
+      <div className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 mb-4 max-w-sm ${t.input}`}>
+        <Search size={13} className={t.muted} />
+        <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar por nombre, NIT o email…"
+          aria-label="Buscar empresas" className={`flex-1 min-w-0 bg-transparent text-xs outline-none ${t.text}`} />
+      </div>
+
+      {empresas === null ? (
+        <div className={`text-xs ${t.muted}`}>Cargando empresas…</div>
+      ) : lista.length === 0 ? (
+        <div className={`text-xs ${t.muted}`}>No hay empresas que coincidan.</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {lista.map(e => (
+            <div key={e.id} className={`rounded-xl border overflow-hidden shadow-sm ${t.panel} ${t.border} ${e.estado !== 'activo' ? 'opacity-70' : ''}`}>
+              <div className="h-1" style={{ background: e.color }} />
+              <div className="p-4">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold truncate">{e.nombre}</div>
+                    <div className={`text-3xs font-mono ${t.muted}`}>ID: {e.id}{e.nit ? ` · NIT ${e.nit}` : ''}</div>
+                  </div>
+                  <Badge color={ESTADO_HEX[e.estado] || '#94A3B8'}>{e.estado}</Badge>
+                </div>
+                <div className={`text-2xs space-y-0.5 mb-3 ${t.muted}`}>
+                  {e.direccion && <div className="flex items-center gap-1"><MapPin size={11} /> {e.direccion}</div>}
+                  {(e.telefono || e.email) && <div>{[e.telefono, e.email].filter(Boolean).join(' · ')}</div>}
+                  <div>{e.sedes.length} sede{e.sedes.length !== 1 ? 's' : ''} · <b>{e.usuarios}</b> usuario{e.usuarios !== 1 ? 's' : ''}</div>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" t={t} icon={Pencil} onClick={() => setModal(e)}>Editar</Button>
+                  <Button size="sm" t={t} icon={Power} onClick={() => toggleEstado(e)}>{e.estado === 'activo' ? 'Desactivar' : 'Activar'}</Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {empresas && <RegistrosSinEmpresa t={t} accent={accent} empresas={empresas} onDataChanged={onDataChanged} />}
+
+      {modal && (
+        <EmpresaFormModal t={t} accent={accent} empresa={modal === 'nueva' ? null : modal} onClose={() => setModal(null)}
+          onSaved={async (emp, editado) => {
+            setModal(null);
+            setMsg({ type: 'success', text: `Empresa ${emp.nombre} ${editado ? 'actualizada' : 'creada'} correctamente.` });
+            await refrescarGlobal();
+          }} />
+      )}
+    </div>
+  );
+}
+
+/* ---------- Usuarios ---------- */
+
+const ROLES_USUARIO = ['EMPRESA', 'LECTURA', 'SUPER_ADMIN'];
+
+function UsuarioFormModal({ t, accent, usuario, empresas, onClose, onSaved }) {
+  const editando = !!usuario;
+  const activas = empresas.filter(e => e.estado === 'activo' || e.id === usuario?.empresa_id);
+  const [form, setForm] = useState(() => ({
+    nombre: usuario?.nombre || '', email: usuario?.email || '', password: '',
+    role: usuario?.role || 'EMPRESA', empresa_id: usuario?.empresa_id || '', estado: usuario?.estado || 'activo',
+  }));
+  const [errores, setErrores] = useState({});
+  const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const patch = (k, v) => { setForm(f => ({ ...f, [k]: v })); setErrores(e => ({ ...e, [k]: undefined })); };
+  const requiereEmpresa = form.role !== 'SUPER_ADMIN';
+
+  const guardar = async () => {
+    const locales = {};
+    if (!form.nombre.trim()) locales.nombre = 'Campo obligatorio.';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.email.trim())) locales.email = 'Email no válido.';
+    if (!editando && form.password.length < 8) locales.password = 'Mínimo 8 caracteres.';
+    if (editando && form.password && form.password.length < 8) locales.password = 'Mínimo 8 caracteres.';
+    if (requiereEmpresa && !form.empresa_id) locales.empresa_id = 'La empresa es obligatoria para este rol.';
+    if (Object.keys(locales).length) { setErrores(locales); return; }
+    setGuardando(true);
+    setError('');
+    const body = { ...form, empresa_id: requiereEmpresa ? form.empresa_id : null };
+    if (editando && !body.password) delete body.password;
+    try {
+      const data = editando
+        ? await adminApi('usuarios', { method: 'PATCH', id: usuario.id, body })
+        : await adminApi('usuarios', { method: 'POST', body });
+      onSaved(data.usuario, editando);
+    } catch (err) {
+      setError(err.message);
+      if (err.details) setErrores(err.details);
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <AdminModal t={t} accent={accent} subtitulo={editando ? 'Editar usuario' : 'Nuevo usuario'} titulo={editando ? usuario.nombre : 'Datos de acceso'} onClose={onClose}
+      footer={<>
+        <Button variant="outline" t={t} onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" accent={accent} icon={Save} disabled={guardando} onClick={guardar}>{guardando ? 'Guardando…' : 'Guardar'}</Button>
+      </>}>
+      <AdminMensaje msg={error ? { type: 'error', text: error } : null} />
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Field label="Nombre *"><TextInput t={t} value={form.nombre} onChange={v => patch('nombre', v)} /><FieldError error={errores.nombre} /></Field>
+        <Field label="Email *"><TextInput t={t} type="email" value={form.email} onChange={v => patch('email', v)} /><FieldError error={errores.email} /></Field>
+        <Field label={editando ? 'Nueva contraseña (opcional)' : 'Contraseña *'}>
+          <TextInput t={t} type="password" value={form.password} placeholder={editando ? 'Dejar vacío para no cambiarla' : 'Mínimo 8 caracteres'} onChange={v => patch('password', v)} />
+          <FieldError error={errores.password} />
+        </Field>
+        <Field label="Rol">
+          <select value={form.role} onChange={e => patch('role', e.target.value)} className={`rounded-md border px-2.5 py-1.5 text-xs ${t.input}`}>
+            {ROLES_USUARIO.map(r => <option key={r} value={r}>{ROLE_LABELS[r]} ({r})</option>)}
+          </select>
+          <FieldError error={errores.role} />
+        </Field>
+        <Field label={requiereEmpresa ? 'Empresa *' : 'Empresa'}>
+          <select value={requiereEmpresa ? form.empresa_id : ''} disabled={!requiereEmpresa} onChange={e => patch('empresa_id', e.target.value)}
+            className={`rounded-md border px-2.5 py-1.5 text-xs ${t.input} ${!requiereEmpresa ? 'opacity-60 cursor-not-allowed' : ''}`}>
+            <option value="">{requiereEmpresa ? 'Selecciona una empresa…' : 'Todas (acceso global)'}</option>
+            {activas.map(e => <option key={e.id} value={e.id}>{e.nombre}{e.estado !== 'activo' ? ' (inactiva)' : ''}</option>)}
+          </select>
+          <FieldError error={errores.empresa_id} />
+        </Field>
+        <Field label="Estado"><SelectInput t={t} value={form.estado} options={['activo', 'inactivo']} onChange={v => patch('estado', v)} /><FieldError error={errores.estado} /></Field>
+      </div>
+      <p className={`text-3xs mt-3 ${t.muted}`}>
+        {form.role === 'SUPER_ADMIN'
+          ? 'El super administrador tiene acceso global a todas las empresas y al módulo de administración.'
+          : form.role === 'LECTURA'
+            ? 'Solo puede consultar la información de su empresa; no puede crear ni modificar registros.'
+            : 'Puede consultar y gestionar únicamente la información de su empresa.'}
+        {editando && ' Si cambias la empresa, el rol, el estado o la contraseña, sus sesiones abiertas se cierran.'}
+      </p>
+    </AdminModal>
+  );
+}
+
+function AdminUsuariosPage({ t, accent, currentUserId }) {
+  const [usuarios, setUsuarios] = useState(null);
+  const [empresas, setEmpresas] = useState([]);
+  const [filtroEmpresa, setFiltroEmpresa] = useState('');
+  const [busqueda, setBusqueda] = useState('');
+  const [modal, setModal] = useState(null); // null | 'nuevo' | usuario
+  const [msg, setMsg] = useState(null);
+
+  const cargar = () => Promise.all([adminApi('usuarios'), adminApi('empresas')])
+    .then(([u, e]) => { setUsuarios(u.usuarios); setEmpresas(e.empresas); })
+    .catch(err => { setUsuarios([]); setMsg({ type: 'error', text: err.message }); });
+  useEffect(() => { cargar(); }, []);
+
+  const nombreEmpresa = (id) => empresas.find(e => e.id === id)?.nombre || id || '—';
+
+  const cambiarEstado = async (u) => {
+    const nuevo = u.estado === 'activo' ? 'inactivo' : 'activo';
+    try {
+      await adminApi('usuarios', { method: 'PATCH', id: u.id, body: { estado: nuevo } });
+      setMsg({ type: 'success', text: `${u.nombre} quedó ${nuevo}.` });
+      cargar();
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message });
+    }
+  };
+  const eliminar = async (u) => {
+    if (!window.confirm(`¿Eliminar definitivamente al usuario ${u.nombre} (${u.email})? Si solo quieres bloquear su acceso, usa "Desactivar".`)) return;
+    try {
+      await adminApi('usuarios', { method: 'DELETE', id: u.id });
+      setMsg({ type: 'success', text: `Usuario ${u.nombre} eliminado.` });
+      cargar();
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message });
+    }
+  };
+
+  const q = busqueda.trim().toLowerCase();
+  const lista = (usuarios || [])
+    .filter(u => !filtroEmpresa || (filtroEmpresa === '__global' ? !u.empresa_id : u.empresa_id === filtroEmpresa))
+    .filter(u => !q || [u.nombre, u.email, u.username].filter(Boolean).join(' ').toLowerCase().includes(q))
+    .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div>
+          <div className="text-3xs uppercase tracking-widest" style={{ color: accent }}>Administración</div>
+          <h1 className="text-lg font-bold">Usuarios</h1>
+          <p className={`text-2xs ${t.muted}`}>Cada usuario de empresa solo accede a la información de la empresa asignada.</p>
+        </div>
+        <Button variant="primary" accent={accent} icon={UserPlus} onClick={() => setModal('nuevo')}>Nuevo usuario</Button>
+      </div>
+      <AdminMensaje msg={msg} />
+      <div className="flex flex-wrap gap-2 mb-4">
+        <div className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 flex-1 min-w-48 max-w-sm ${t.input}`}>
+          <Search size={13} className={t.muted} />
+          <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar por nombre o email…"
+            aria-label="Buscar usuarios" className={`flex-1 min-w-0 bg-transparent text-xs outline-none ${t.text}`} />
+        </div>
+        <select value={filtroEmpresa} onChange={e => setFiltroEmpresa(e.target.value)} aria-label="Filtrar por empresa"
+          className={`rounded-md border px-2.5 py-1.5 text-xs ${t.input}`}>
+          <option value="">Empresa: Todas</option>
+          <option value="__global">Acceso global (SUPER_ADMIN)</option>
+          {empresas.map(e => <option key={e.id} value={e.id}>Empresa: {e.nombre}</option>)}
+        </select>
+      </div>
+
+      {usuarios === null ? (
+        <div className={`text-xs ${t.muted}`}>Cargando usuarios…</div>
+      ) : (
+        <div className={`rounded-xl border overflow-x-auto ${t.panel} ${t.border}`}>
+          <table className="w-full text-xs min-w-[760px]">
+            <thead>
+              <tr className={`text-left text-3xs uppercase tracking-wide ${t.muted} border-b ${t.border}`}>
+                <th className="px-3 py-2">Nombre</th>
+                <th className="px-3 py-2">Email</th>
+                <th className="px-3 py-2">Empresa</th>
+                <th className="px-3 py-2">Rol</th>
+                <th className="px-3 py-2">Estado</th>
+                <th className="px-3 py-2">Creado</th>
+                <th className="px-3 py-2 text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lista.length === 0 && (
+                <tr><td colSpan={7} className={`px-3 py-6 text-center ${t.muted}`}>No hay usuarios que coincidan.</td></tr>
+              )}
+              {lista.map(u => {
+                const esYo = u.id === currentUserId;
+                return (
+                  <tr key={u.id} className={`border-b last:border-0 ${t.border}`}>
+                    <td className="px-3 py-2 font-semibold">{u.nombre}{esYo && <span className={`ml-1 text-3xs ${t.muted}`}>(tú)</span>}</td>
+                    <td className="px-3 py-2">{u.email || u.username}</td>
+                    <td className="px-3 py-2">{u.empresa_id ? nombreEmpresa(u.empresa_id) : <span className={t.muted}>Todas</span>}</td>
+                    <td className="px-3 py-2"><Badge color={u.role === 'SUPER_ADMIN' ? '#7C3AED' : u.role === 'LECTURA' ? '#64748B' : '#0EA5E9'}>{u.role}</Badge></td>
+                    <td className="px-3 py-2"><Badge color={ESTADO_HEX[u.estado] || '#94A3B8'}>{u.estado}</Badge></td>
+                    <td className="px-3 py-2 whitespace-nowrap">{u.created_at ? formatFechaCorta(u.created_at) : '—'}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end gap-1.5">
+                        <Button size="sm" t={t} icon={Pencil} onClick={() => setModal(u)} title="Editar, cambiar empresa o rol">Editar</Button>
+                        {!esYo && <Button size="sm" t={t} icon={Power} onClick={() => cambiarEstado(u)}>{u.estado === 'activo' ? 'Desactivar' : 'Activar'}</Button>}
+                        {!esYo && <Button size="sm" variant="ghost" t={t} icon={Trash2} onClick={() => eliminar(u)} aria-label={`Eliminar ${u.nombre}`} />}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {modal && (
+        <UsuarioFormModal t={t} accent={accent} usuario={modal === 'nuevo' ? null : modal} empresas={empresas} onClose={() => setModal(null)}
+          onSaved={(u, editado) => {
+            setModal(null);
+            setMsg({ type: 'success', text: `Usuario ${u.nombre} ${editado ? 'actualizado' : 'creado'} correctamente.` });
+            cargar();
+          }} />
+      )}
+    </div>
+  );
+}
+
+function ConfigPage({ t, onLogout }) {
   return (
     <div>
       <h1 className="text-lg font-bold mb-1">Configuración</h1>
@@ -7128,8 +7777,8 @@ function ConfigPage({ t, onLogout, readOnly }) {
 
       <div className={`rounded-lg border p-4 max-w-md ${t.panel} ${t.border}`}>
         <div className="text-xs font-semibold mb-1">Sesión</div>
-        <p className={`text-2xs mb-3 ${t.muted}`}>{readOnly ? 'Sales del modo invitado en este navegador.' : 'Cierra tu sesión en este navegador. Te pedirá usuario y contraseña de nuevo.'}</p>
-        <Button variant="outline" t={t} onClick={onLogout}>{readOnly ? 'Salir del modo invitado' : 'Cerrar sesión'}</Button>
+        <p className={`text-2xs mb-3 ${t.muted}`}>Cierra tu sesión en este navegador. Te pedirá usuario y contraseña de nuevo.</p>
+        <Button variant="outline" t={t} onClick={onLogout}>Cerrar sesión</Button>
       </div>
     </div>
   );
@@ -7147,73 +7796,80 @@ export default function App() {
 }
 
 function AppInner() {
-  // authed empieza en null ("verificando") — a propósito ya NO se lee de localStorage,
-  // que cualquiera puede falsificar desde DevTools sin conocer la contraseña. La única
-  // fuente de verdad es la cookie de sesión HttpOnly, que el navegador no deja leer ni
-  // escribir desde JavaScript; le preguntamos al servidor si es válida.
-  const [authed, setAuthed] = useState(null);
-  const [guestMode, setGuestMode] = useState(false);
+  // session empieza en null ("verificando") — a propósito NO se lee de localStorage, que
+  // cualquiera puede falsificar desde DevTools. La única fuente de verdad es la cookie de
+  // sesión HttpOnly; le preguntamos al servidor quién es el usuario (rol y empresa_id los
+  // decide el servidor) y qué empresas puede ver.
+  //   null                       → verificando
+  //   { authenticated: false }   → sin sesión
+  //   { authenticated: true, user, empresas }
+  const [session, setSession] = useState(null);
+  const authed = session === null ? null : !!session.authenticated;
+  const user = session?.user || null;
   const [publicView, setPublicView] = useState(null); // null | 'reporte'
-  // Puerta de entrada pública: se muestra la landing antes del formulario de login (calco
-  // del sitio de mercadeo del v1) — pasa a true al pulsar "Iniciar sesión" desde la landing.
+  // Puerta de entrada pública: se muestra la landing antes del formulario de login.
   const [showLogin, setShowLogin] = useState(false);
-  // Aviso de cierre por inactividad y mensaje que se muestra luego en LoginScreen —
-  // ver useInactivityLogout más abajo.
+  // Aviso de cierre por inactividad y mensaje que se muestra luego en LoginScreen.
   const [sessionWarning, setSessionWarning] = useState(false);
   const [warningSegundos, setWarningSegundos] = useState(IDLE_WARNING_MS / 1000);
   const [sessionNotice, setSessionNotice] = useState('');
 
-  // Extraída para poder reusarla exactamente igual en dos momentos: al cargar la página
-  // (efecto de abajo) y justo después de un login exitoso (ver checkSession() más abajo).
-  // Antes, el login hacía un setAuthed(true) "optimista" sin volver a preguntarle al
-  // servidor — un camino distinto al del refresh (que sí pasa por aquí), y esa diferencia
-  // es la sospechosa más probable de la pantalla en blanco: si por lo que sea la cookie
-  // recién puesta no queda 100% lista para el siguiente render, el camino optimista no
-  // tenía ninguna repregunta que lo corrigiera. Ahora ambos caminos son el mismo código.
+  // Mismo camino al cargar la página y justo después de un login exitoso: siempre se le
+  // repregunta al servidor en vez de suponer el resultado.
   const checkSession = () => {
     fetch('/api/login')
       .then((res) => (res.ok ? res.json() : { authenticated: false }))
-      .then((data) => setAuthed(!!data.authenticated))
-      .catch(() => setAuthed(false));
+      .then((data) => {
+        if (data.authenticated && data.user) {
+          claimDataCaches(data.user);
+          setCompanies(data.empresas);
+          setSession({ authenticated: true, user: data.user, empresas: data.empresas || [] });
+        } else {
+          setSession({ authenticated: false });
+        }
+      })
+      .catch(() => setSession({ authenticated: false }));
   };
 
   useEffect(() => { checkSession(); }, []);
 
-  // Cierre de sesión REAL (no solo ocultar la interfaz): POST /api/logout destruye el
-  // token en Vercel KV y borra la cookie HttpOnly en el servidor (ver lib/auth.js →
-  // destroySession/clearSessionCookie) — una sesión robada o una pestaña olvidada deja de
-  // servir de inmediato, no solo hasta que el navegador decida limpiar su propio estado.
-  // `motivo` es opcional: lo usa el cierre automático por inactividad para explicarle al
-  // usuario, en la pantalla de login, por qué se cerró su sesión.
+  // Cierre de sesión REAL: POST /api/logout destruye el token en Vercel KV y borra la cookie.
+  // `motivo` (opcional) se muestra luego en la pantalla de login.
   const cerrarSesion = async (motivo = '') => {
     setSessionWarning(false);
     if (authed) {
       try { await fetch('/api/logout', { method: 'POST' }); } catch { /* igual limpiamos el estado local */ }
     }
-    setAuthed(false);
-    setGuestMode(false);
+    setCompanies(DEFAULT_COMPANIES.map(c => ({ id: c.key, nombre: c.key, color: c.color, sedes: c.sedes, logo: c.logo })));
+    setSession({ authenticated: false });
     setSessionNotice(motivo);
   };
 
-  // Activo tanto para sesión real como para modo invitado — una pantalla de solo lectura
-  // olvidada y abierta también expone datos del inventario. `active` en false mientras se
-  // está en la pantalla de login (no hay nada que cerrar todavía).
+  // Cualquier 401 de la API (sesión expirada, usuario desactivado/eliminado o cambiado de
+  // empresa por el administrador) devuelve al login — ver apiFetch.
+  useEffect(() => {
+    if (!authed) return undefined;
+    const onUnauthorized = () => cerrarSesion('Tu sesión expiró o tus permisos cambiaron. Inicia sesión de nuevo.');
+    window.addEventListener('cmms:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('cmms:unauthorized', onUnauthorized);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed]);
+
   useInactivityLogout({
-    active: authed === true || guestMode,
+    active: authed === true,
     onActivity: () => setSessionWarning(false),
     onWarn: () => { setWarningSegundos(IDLE_WARNING_MS / 1000); setSessionWarning(true); },
     onTimeout: () => cerrarSesion('Tu sesión se cerró automáticamente por inactividad.'),
   });
 
-  // Cuenta regresiva SOLO visual del aviso (el cierre real lo dispara el timer de
-  // useInactivityLogout, no este intervalo) — se detiene apenas se oculta el aviso.
+  // Cuenta regresiva SOLO visual del aviso (el cierre real lo dispara useInactivityLogout).
   useEffect(() => {
     if (!sessionWarning) return undefined;
     const id = setInterval(() => setWarningSegundos(s => Math.max(0, s - 1)), 1000);
     return () => clearInterval(id);
   }, [sessionWarning]);
 
-  if (publicView === 'reporte' && !authed && !guestMode) {
+  if (publicView === 'reporte' && !authed) {
     return <ReporteFallaForm onBack={() => setPublicView(null)} />;
   }
 
@@ -7225,29 +7881,30 @@ function AppInner() {
     );
   }
 
-  if (!authed && !guestMode) {
-    // El aviso de cierre por inactividad salta directo al formulario de login (no tendría
-    // sentido obligar a pasar de nuevo por la landing solo para ver ese mensaje).
+  if (!authed) {
     if (!showLogin && !sessionNotice) {
       return <LandingPage onIniciarSesion={() => setShowLogin(true)} onReportarFalla={() => setPublicView('reporte')} />;
     }
     return (
       <LoginScreen
         notice={sessionNotice}
-        onLogin={checkSession}
-        onGuest={() => setGuestMode(true)}
+        onLogin={() => { setSessionNotice(''); checkSession(); }}
         onReportarFalla={() => setPublicView('reporte')}
         onBack={sessionNotice ? undefined : () => setShowLogin(false)}
       />
     );
   }
 
+  const readOnly = user.role === 'LECTURA';
   return (
-    <ReadOnlyContext.Provider value={guestMode}>
-      <MainApp onLogout={() => cerrarSesion()} readOnly={guestMode} />
-      {sessionWarning && (
-        <SessionWarningModal segundos={warningSegundos} onContinuar={() => setSessionWarning(false)} onCerrarAhora={() => cerrarSesion()} />
-      )}
-    </ReadOnlyContext.Provider>
+    <AuthUserContext.Provider value={user}>
+      <ReadOnlyContext.Provider value={readOnly}>
+        {/* key: si cambia el usuario, MainApp se monta de cero (sin estado de otra sesión). */}
+        <MainApp key={user.id} user={user} onLogout={() => cerrarSesion()} readOnly={readOnly} />
+        {sessionWarning && (
+          <SessionWarningModal segundos={warningSegundos} onContinuar={() => setSessionWarning(false)} onCerrarAhora={() => cerrarSesion()} />
+        )}
+      </ReadOnlyContext.Provider>
+    </AuthUserContext.Provider>
   );
 }

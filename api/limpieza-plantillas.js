@@ -7,14 +7,15 @@
 // depender de un servicio externo.
 // Forma: { [empresaKey]: { nombre, tipo, tamano, archivoDatos, updatedAt } }
 //
-// A diferencia de api/limpieza-desinfeccion.js (cuyo PATCH es intencionalmente público para
-// el Modo Invitado), aquí NO hay excepción: cargar, reemplazar y eliminar SIEMPRE requieren
-// sesión de admin (requireAdmin) — el invitado solo puede leer (GET). La UI ya oculta esos
-// botones en Modo Invitado, pero la restricción real vive aquí: aunque alguien llame a este
-// endpoint directamente sin pasar por la interfaz, el servidor la rechaza igual.
+// MULTIEMPRESA: GET exige sesión y devuelve solo las plantillas de las empresas visibles para
+// el usuario; cargar, reemplazar y eliminar exigen un rol con escritura y solo se permiten
+// sobre la empresa del usuario (SUPER_ADMIN: cualquiera existente). La restricción real vive
+// aquí: aunque alguien llame a este endpoint directamente, el servidor la aplica igual.
 
-import { kv } from '@vercel/kv';
-import { requireAdmin } from '../lib/auth.js';
+import { kv } from '../lib/db.js';
+import { requireAuth } from '../lib/auth.js';
+import { empresaFilter, scopeKeyed, assertKeyedWrite } from '../lib/tenancy.js';
+import { HttpError } from '../lib/http.js';
 
 const KV_KEY = 'cmms:limpiezaPlantillas';
 const MAX_KEY_LEN = 80;
@@ -39,19 +40,21 @@ function esTextoValido(v, maxLen) {
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      const data = (await kv.get(KV_KEY)) || {};
+      const ctx = await requireAuth(req);
+      const data = scopeKeyed(ctx, (await kv.get(KV_KEY)) || {}, empresaFilter(ctx, req.query));
       return res.status(200).json({ data });
     }
 
-    // Cargar, reemplazar y eliminar son operaciones administrativas: sin sesión de admin
-    // válida, la petición se rechaza aquí mismo (401), sin llegar a tocar la base de datos.
-    if (!(await requireAdmin(req, res))) return;
+    // Cargar, reemplazar y eliminar: sin sesión con permiso de escritura, la petición se
+    // rechaza aquí mismo (401/403), sin llegar a tocar la base de datos.
+    const ctx = await requireAuth(req, { write: true });
 
     if (req.method === 'PATCH') {
       const { empresaKey, nombre, tipo, archivoDatos } = req.body || {};
       if (!esTextoValido(empresaKey, MAX_KEY_LEN)) {
         return res.status(400).json({ error: 'Falta empresaKey o es inválido.' });
       }
+      await assertKeyedWrite(ctx, empresaKey);
       if (!esTextoValido(nombre, MAX_NOMBRE_LEN)) {
         return res.status(400).json({ error: 'Falta el nombre del archivo.' });
       }
@@ -75,7 +78,7 @@ export default async function handler(req, res) {
         },
       };
       await kv.set(KV_KEY, actualizado);
-      return res.status(200).json({ data: actualizado });
+      return res.status(200).json({ data: scopeKeyed(ctx, actualizado) });
     }
 
     if (req.method === 'DELETE') {
@@ -83,16 +86,18 @@ export default async function handler(req, res) {
       if (!esTextoValido(empresaKey, MAX_KEY_LEN)) {
         return res.status(400).json({ error: 'Falta empresaKey.' });
       }
+      await assertKeyedWrite(ctx, empresaKey);
       const data = (await kv.get(KV_KEY)) || {};
       const actualizado = { ...data };
       delete actualizado[empresaKey];
       await kv.set(KV_KEY, actualizado);
-      return res.status(200).json({ data: actualizado });
+      return res.status(200).json({ data: scopeKeyed(ctx, actualizado) });
     }
 
     res.setHeader('Allow', ['GET', 'PATCH', 'DELETE']);
     return res.status(405).json({ error: 'Método no permitido.' });
   } catch (err) {
+    if (err instanceof HttpError) return res.status(err.status).json({ error: err.message, ...(err.details ? { details: err.details } : {}) });
     console.error('[api/limpieza-plantillas] Error:', err);
     return res.status(500).json({ error: 'No se pudo acceder a la base de datos compartida de plantillas de limpieza y desinfección.' });
   }

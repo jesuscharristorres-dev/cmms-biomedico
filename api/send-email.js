@@ -16,7 +16,7 @@
 // en https://tu-dominio.vercel.app/api/send-email
 
 import { Resend } from 'resend';
-import { kv } from '@vercel/kv';
+import { kv } from '../lib/db.js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'CMMS Biomédico <onboarding@resend.dev>';

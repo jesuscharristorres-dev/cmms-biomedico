@@ -1,93 +1,130 @@
 // api/reportes-falla.js
-// Fuente de verdad COMPARTIDA de los reportes de falla — reemplaza el uso de localStorage
-// como almacenamiento principal. Corre en el servidor (Vercel serverless + Vercel KV), así
-// que cualquier usuario, desde cualquier computador, lee y escribe siempre el mismo dato.
+// Fuente de verdad COMPARTIDA de los reportes de falla ('cmms:reportesFalla').
 //
-// A propósito NO recibe nunca el arreglo completo desde el cliente para sobrescribirlo:
-// eso es lo que causaba (con localStorage) que un reporte creado en un computador solo
-// existiera ahí. Aquí cada operación es puntual (crear UNO, actualizar UNO por id) y el
-// servidor hace el read-modify-write sobre KV, así dos usuarios guardando casi al mismo
-// tiempo desde computadores distintos no se pisan ni se pierden reportes entre sí.
+// Endpoints PÚBLICOS (sin sesión) — los usan los coordinadores de sede sin cuenta desde el
+// formulario "Reportar falla":
+//   GET  ?catalogo=1 → catálogo MÍNIMO para el formulario: empresas activas (nombre, sedes)
+//                      y equipos (solo id, empresa, sede y datos de identificación). Nunca
+//                      mantenimientos, calibraciones, observaciones ni documentos.
+//   POST             → crea UN reporte. El servidor reconstruye el registro con una whitelist
+//                      de campos, valida que la empresa exista y esté activa, que la sede sea
+//                      de esa empresa y que el equipo pertenezca a esa empresa y sede.
 //
-// Requiere Vercel KV conectado al proyecto (Vercel dashboard → Storage → Create Database → KV),
-// igual que api/sync-data.js.
+// Endpoints AUTENTICADOS con aislamiento multiempresa (lib/tenancy.js):
+//   GET              → reportes visibles para el usuario (SUPER_ADMIN: todos o ?empresa=).
+//   PATCH            → actualizar UN reporte de una empresa accesible.
+//   DELETE ?id=      → borrar UN reporte de una empresa accesible.
+//   DELETE (sin id)  → vaciar el histórico: SUPER_ADMIN vacía todo (o ?empresa=); un usuario
+//                      de empresa solo puede vaciar los de SU empresa.
 
-import { kv } from '@vercel/kv';
-import { requireAdmin } from '../lib/auth.js';
+import { kv } from '../lib/db.js';
+import { requireAuth } from '../lib/auth.js';
+import { listEmpresas, getEmpresa, empresaPublica } from '../lib/empresas.js';
+import { empresaFilter, scopeArray, findOwned, applyScopedPatch } from '../lib/tenancy.js';
+import { HttpError, withErrors, methodNotAllowed } from '../lib/http.js';
 
 const KV_KEY = 'cmms:reportesFalla';
+const EQUIPOS_KEY = 'cmms:equipos';
+const PRIORIDADES = ['Baja', 'Media', 'Alta', 'Crítica'];
 
-export default async function handler(req, res) {
-  try {
-    if (req.method === 'GET') {
-      let reportes = (await kv.get(KV_KEY)) || [];
-      // Filtrado por empresa a nivel de servidor (opcional): ?empresa=MACROMED recorta
-      // la respuesta antes de enviarla — no depende de ocultar visualmente en el cliente.
-      const { empresa } = req.query || {};
-      if (empresa) reportes = reportes.filter(r => r.empresa === empresa);
-      return res.status(200).json({ reportes });
-    }
-
-    if (req.method === 'POST') {
-      const { reporte } = req.body || {};
-      if (!reporte || !reporte.id) {
-        return res.status(400).json({ error: 'Falta el reporte a crear (con id).' });
-      }
-      const reportes = (await kv.get(KV_KEY)) || [];
-      // Idempotencia: si por un reintento de red llega el mismo id dos veces, no se duplica.
-      if (reportes.some(r => r.id === reporte.id)) {
-        return res.status(200).json({ reporte, reportes });
-      }
-      const actualizados = [...reportes, reporte];
-      await kv.set(KV_KEY, actualizados);
-      return res.status(200).json({ reporte, reportes: actualizados });
-    }
-
-    if (req.method === 'PATCH') {
-      // A diferencia de GET/POST (que debe seguir público — es el formulario que usan
-      // los coordinadores de sede SIN cuenta), actualizar el estado de un reporte
-      // (asignar técnico, cerrar, etc.) sí requiere sesión de admin.
-      if (!(await requireAdmin(req, res))) return;
-      const { id, patch } = req.body || {};
-      if (!id || !patch) {
-        return res.status(400).json({ error: 'Falta id o patch para actualizar el reporte.' });
-      }
-      const reportes = (await kv.get(KV_KEY)) || [];
-      const idx = reportes.findIndex(r => r.id === id);
-      if (idx === -1) {
-        return res.status(404).json({ error: 'No existe un reporte con ese id.' });
-      }
-      const { id: _ignored, ...patchSeguro } = patch;
-      const actualizado = { ...reportes[idx], ...patchSeguro };
-      const actualizados = [...reportes];
-      actualizados[idx] = actualizado;
-      await kv.set(KV_KEY, actualizados);
-      return res.status(200).json({ reporte: actualizado, reportes: actualizados });
-    }
-
-    if (req.method === 'DELETE') {
-      // Solo admin, igual que PATCH. Con ?id=... borra UN reporte puntual (uso rutinario,
-      // p. ej. una falla duplicada o registrada por error); sin id, vacía TODO el histórico
-      // compartido (pensado para limpiar datos de prueba) reemplazando el arreglo completo.
-      if (!(await requireAdmin(req, res))) return;
-      const { id } = req.query || {};
-      if (id) {
-        const reportes = (await kv.get(KV_KEY)) || [];
-        const actualizados = reportes.filter(r => r.id !== id);
-        if (actualizados.length === reportes.length) {
-          return res.status(404).json({ error: 'No existe un reporte con ese id.' });
-        }
-        await kv.set(KV_KEY, actualizados);
-        return res.status(200).json({ reportes: actualizados });
-      }
-      await kv.set(KV_KEY, []);
-      return res.status(200).json({ reportes: [] });
-    }
-
-    res.setHeader('Allow', ['GET', 'POST', 'PATCH', 'DELETE']);
-    return res.status(405).json({ error: 'Método no permitido.' });
-  } catch (err) {
-    console.error('[api/reportes-falla] Error:', err);
-    return res.status(500).json({ error: 'No se pudo acceder a la base de datos compartida de reportes.' });
-  }
+function texto(v, max) {
+  return typeof v === 'string' ? v.trim().slice(0, max) : '';
 }
+
+async function catalogoPublico(res) {
+  const empresas = (await listEmpresas()).filter(e => e.estado === 'activo');
+  const activas = new Set(empresas.map(e => e.id));
+  const equipos = ((await kv.get(EQUIPOS_KEY)) || [])
+    .filter(e => e && activas.has(e.empresa))
+    .map(e => ({
+      id: e.id, empresa: e.empresa, sede: e.sede,
+      equipo: e.equipo || '', marca: e.marca || '', modelo: e.modelo || '',
+      numeroSerie: e.numeroSerie || '', inventario: e.inventario || '',
+    }));
+  return res.status(200).json({ empresas: empresas.map(empresaPublica), equipos });
+}
+
+/** Reconstruye el reporte en el servidor: nada que no esté en esta whitelist se guarda. */
+async function construirReportePublico(body) {
+  const r = body && typeof body === 'object' ? body : {};
+  const errores = {};
+  const id = typeof r.id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(r.id) ? r.id : null;
+  if (!id) errores.id = 'Id no válido.';
+
+  const empresa = await getEmpresa(typeof r.empresa === 'string' ? r.empresa : '');
+  if (!empresa || empresa.estado !== 'activo') errores.empresa = 'La empresa no existe o no está activa.';
+  const sede = texto(r.sede, 80);
+  if (empresa && !empresa.sedes.includes(sede)) errores.sede = 'La sede no pertenece a la empresa.';
+
+  const equipos = (await kv.get(EQUIPOS_KEY)) || [];
+  const equipo = equipos.find(e => e && e.id === r.equipoId);
+  if (!equipo || !empresa || equipo.empresa !== empresa.id || equipo.sede !== sede) {
+    errores.equipoId = 'El equipo no pertenece a la empresa y sede seleccionadas.';
+  }
+  const personaReporta = texto(r.personaReporta, 120);
+  if (!personaReporta) errores.personaReporta = 'Campo obligatorio.';
+  const descripcion = texto(r.descripcion, 2000);
+  if (!descripcion) errores.descripcion = 'Campo obligatorio.';
+  const prioridad = PRIORIDADES.includes(r.prioridad) ? r.prioridad : 'Media';
+  const fecha = typeof r.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.fecha) ? r.fecha : new Date().toISOString().slice(0, 10);
+
+  if (Object.keys(errores).length) throw new HttpError(422, 'Los datos del reporte no son válidos.', errores);
+  return {
+    id, empresa: empresa.id, sede, equipoId: equipo.id, equipoNombre: equipo.equipo || '',
+    fecha, personaReporta, descripcion, prioridad,
+    adjuntos: [],
+    estado: 'Reportado', tecnicoAsignado: '', fechaCierre: '', observacionesReparacion: '',
+    fechaHoraReporte: new Date().toISOString(), fechaHoraSolucion: '',
+    visto: false,
+  };
+}
+
+export default withErrors('api/reportes-falla', 'No se pudo acceder a la base de datos compartida de reportes.', async (req, res) => {
+  if (req.method === 'GET') {
+    if (req.query?.catalogo) return catalogoPublico(res);
+    const ctx = await requireAuth(req);
+    const reportes = scopeArray(ctx, (await kv.get(KV_KEY)) || [], empresaFilter(ctx, req.query));
+    return res.status(200).json({ reportes });
+  }
+
+  if (req.method === 'POST') {
+    const reporte = await construirReportePublico(req.body?.reporte);
+    const reportes = (await kv.get(KV_KEY)) || [];
+    // Idempotencia: si por un reintento de red llega el mismo id dos veces, no se duplica.
+    // La respuesta pública solo devuelve el propio reporte, nunca el listado.
+    if (reportes.some(r => r.id === reporte.id)) return res.status(200).json({ reporte });
+    await kv.set(KV_KEY, [...reportes, reporte]);
+    return res.status(200).json({ reporte });
+  }
+
+  const ctx = await requireAuth(req, { write: true });
+
+  if (req.method === 'PATCH') {
+    const { id, patch } = req.body || {};
+    if (typeof id !== 'string' || !id || !patch) throw new HttpError(400, 'Falta id o patch para actualizar el reporte.');
+    const reportes = (await kv.get(KV_KEY)) || [];
+    const idx = findOwned(ctx, reportes, id);
+    const actualizado = await applyScopedPatch(ctx, reportes[idx], patch);
+    const actualizados = [...reportes];
+    actualizados[idx] = actualizado;
+    await kv.set(KV_KEY, actualizados);
+    return res.status(200).json({ reporte: actualizado, reportes: scopeArray(ctx, actualizados) });
+  }
+
+  if (req.method === 'DELETE') {
+    const { id } = req.query || {};
+    const reportes = (await kv.get(KV_KEY)) || [];
+    if (id) {
+      findOwned(ctx, reportes, id);
+      const actualizados = reportes.filter(r => r.id !== id);
+      await kv.set(KV_KEY, actualizados);
+      return res.status(200).json({ reportes: scopeArray(ctx, actualizados) });
+    }
+    const empresa = empresaFilter(ctx, req.query); // null solo para SUPER_ADMIN sin filtro
+    const actualizados = empresa ? reportes.filter(r => r.empresa !== empresa) : [];
+    await kv.set(KV_KEY, actualizados);
+    return res.status(200).json({ reportes: scopeArray(ctx, actualizados) });
+  }
+
+  return methodNotAllowed(res, ['GET', 'POST', 'PATCH', 'DELETE']);
+});

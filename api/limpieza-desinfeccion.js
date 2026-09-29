@@ -1,20 +1,19 @@
 // api/limpieza-desinfeccion.js
 // Fuente de verdad COMPARTIDA de los formatos de limpieza y desinfección, organizados por
-// empresa · sede · año · mes. Forma: { [empresaKey]: { [sede]: { [anio]: { [mes]: { url, updatedAt } } } } }.
+// empresa · sede · año · mes. Forma: { [empresaId]: { [sede]: { [anio]: { [mes]: { url, updatedAt } } } } }.
 // Solo se guardan metadatos mínimos (sede/año/mes van en la ruta; url y updatedAt en la hoja) —
 // el documento en sí vive en un servicio externo (Drive/OneDrive/SharePoint), nunca aquí.
 //
-// A diferencia de los demás recursos administrativos (planes, tecnovigilancia, personal...),
-// el PATCH de este endpoint es intencionalmente PÚBLICO — el Modo Invitado (que no tiene
-// sesión de servidor: es un estado puramente del cliente) también puede pegar/actualizar el
-// enlace de cada sede·mes, sin iniciar sesión de admin. Es la única excepción del proyecto:
-// ningún otro endpoint se toca ni se relaja por este cambio. Como cualquiera con la URL del
-// endpoint puede escribir aquí (no solo quien use la UI de la app), la validación de abajo es
-// más estricta que en el resto de endpoints: tipos y tamaños acotados, y el esquema del enlace
-// restringido a http(s) — así un valor con `javascript:` no puede colarse como enlace guardado
-// y ejecutarse si alguien más adelante hace clic en "Ver / Descargar".
+// MULTIEMPRESA: antes el PATCH era público (lo usaba el antiguo "Modo invitado" anónimo).
+// Con aislamiento entre empresas eso ya no es aceptable: cualquiera podía escribir enlaces en
+// cualquier empresa. Ahora GET y PATCH exigen sesión, y el PATCH solo se permite sobre la
+// empresa del usuario (SUPER_ADMIN: cualquiera existente). La validación estricta de tipos,
+// tamaños y esquema http(s) del enlace se conserva.
 
-import { kv } from '@vercel/kv';
+import { kv } from '../lib/db.js';
+import { requireAuth } from '../lib/auth.js';
+import { empresaFilter, scopeKeyed, assertKeyedWrite } from '../lib/tenancy.js';
+import { HttpError } from '../lib/http.js';
 
 const KV_KEY = 'cmms:limpiezaDesinfeccion';
 const MAX_KEY_LEN = 80;
@@ -29,11 +28,13 @@ function esTextoValido(v, maxLen) {
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      const data = (await kv.get(KV_KEY)) || {};
+      const ctx = await requireAuth(req);
+      const data = scopeKeyed(ctx, (await kv.get(KV_KEY)) || {}, empresaFilter(ctx, req.query));
       return res.status(200).json({ data });
     }
 
     if (req.method === 'PATCH') {
+      const ctx = await requireAuth(req, { write: true });
       const { empresaKey, sede, anio, mes, url } = req.body || {};
       const anioNum = Number(anio);
       const mesNum = Number(mes);
@@ -50,6 +51,7 @@ export default async function handler(req, res) {
       if (limpio && (!/^https?:\/\//i.test(limpio) || limpio.length > MAX_URL_LEN)) {
         return res.status(400).json({ error: 'El enlace debe ser una URL http(s) válida.' });
       }
+      await assertKeyedWrite(ctx, empresaKey);
 
       const data = (await kv.get(KV_KEY)) || {};
       const emp = data[empresaKey] || {};
@@ -66,12 +68,13 @@ export default async function handler(req, res) {
         [empresaKey]: { ...emp, [sede]: { ...sedeObj, [anioNum]: anioObj } },
       };
       await kv.set(KV_KEY, actualizado);
-      return res.status(200).json({ data: actualizado });
+      return res.status(200).json({ data: scopeKeyed(ctx, actualizado) });
     }
 
     res.setHeader('Allow', ['GET', 'PATCH']);
     return res.status(405).json({ error: 'Método no permitido.' });
   } catch (err) {
+    if (err instanceof HttpError) return res.status(err.status).json({ error: err.message, ...(err.details ? { details: err.details } : {}) });
     console.error('[api/limpieza-desinfeccion] Error:', err);
     return res.status(500).json({ error: 'No se pudo acceder a la base de datos compartida de limpieza y desinfección.' });
   }

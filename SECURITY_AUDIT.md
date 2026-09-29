@@ -180,3 +180,31 @@ Ver tabla de prioridad — `npm audit`: 1 moderada, 3 altas (una sin fix disponi
 4. Diseñar una CSP progresiva (empezar en modo `Report-Only` para medir qué rompería) antes de aplicarla de verdad.
 5. Sistema de logs de auditoría (login, borrado, cambios) — quedó fuera de esta pasada por alcance/tiempo.
 6. Si el negocio llega a necesitar más de un usuario o roles distintos de "admin"/"invitado", el modelo de sesión (`lib/auth.js`) ya soporta agregar un `role` distinto por sesión sin rediseño.
+
+---
+
+## ACTUALIZACIÓN 2026-09-29 — Arquitectura multiempresa
+
+Se resolvieron los hallazgos pendientes de esta auditoría sobre aislamiento por empresa y roles.
+El diseño completo está en `docs/multi-tenant.md`.
+
+- **🔴 "Sin aislamiento por empresa en el servidor": resuelto.** Toda API de datos exige sesión y
+  recorta lecturas y escrituras a la empresa del usuario (`lib/tenancy.js`). Pedir otra empresa
+  por query, body o id responde 403. Hay pruebas automatizadas (`npm test`).
+- **Usuarios y roles reales:** `SUPER_ADMIN`, `EMPRESA` y `LECTURA`, guardados en KV con hash
+  scrypt y administrados desde la app. El usuario histórico `AUTH_USER` se migra a SUPER_ADMIN.
+- **Modo invitado anónimo eliminado:** leía datos de todas las empresas sin sesión. Lo reemplaza
+  el rol `LECTURA`, autenticado y limitado a su empresa.
+- **`api/limpieza-desinfeccion.js` PATCH ya no es público.**
+- **Mass assignment:** `id` es inmutable y `empresa` solo la cambia el SUPER_ADMIN. El reporte
+  público de falla se reconstruye en el servidor con una whitelist.
+- **Sesiones:** se revalida el usuario en cada petición, y se cierran todas sus sesiones al
+  desactivarlo, eliminarlo o cambiarle la empresa, el rol o la contraseña.
+
+**Riesgos residuales conocidos:**
+
+- El formulario público de fallas expone un catálogo mínimo de equipos (id, sede, nombre, marca,
+  modelo, serie, inventario). Es necesario para que los coordinadores sin cuenta elijan el equipo.
+- `api/send-email.js` sigue siendo público, aunque limitado a destinatarios configurados.
+- KV no tiene transacciones: el patrón read-modify-write puede perder una escritura bajo
+  concurrencia extrema. Ya era así antes del cambio.
