@@ -94,10 +94,10 @@ aplicadas se registran en `cmms:schema_migrations`.
 - **Manual:**
   ```bash
   vercel env pull .env.local
-  node --env-file=.env.local scripts/migrate.mjs status
-  node --env-file=.env.local scripts/migrate.mjs up
-  node --env-file=.env.local scripts/migrate.mjs audit
-  node --env-file=.env.local scripts/migrate.mjs down 003_auditoria_sin_empresa
+  node --env-file=.env.local scripts/migrate.mjs status --env=production
+  node --env-file=.env.local scripts/migrate.mjs up --env=preview
+  node --env-file=.env.local scripts/migrate.mjs audit --env=production --confirm-production
+  node --env-file=.env.local scripts/migrate.mjs down 003_auditoria_sin_empresa --env=preview
   ```
 
 **Registros sin empresa.** Si un registro heredado tiene una `empresa` desconocida, no se inventa
@@ -135,7 +135,8 @@ Helpers centralizados:
 | `requireSuperAdmin(req)` | `lib/auth.js` | 403 si no es SUPER_ADMIN |
 | `empresaFilter(ctx, query)` | `lib/tenancy.js` | SUPER_ADMIN: `?empresa=` opcional. Usuario de empresa: siempre su empresa; pedir otra → 403 |
 | `scopeArray` / `scopeKeyed` | `lib/tenancy.js` | Recortan cualquier respuesta a las empresas visibles |
-| `findOwned(ctx, list, id)` | `lib/tenancy.js` | Anti-IDOR: 404 si no existe, 403 si es de otra empresa |
+| `findOwned(ctx, list, id)` | `lib/tenancy.js` | Anti-IDOR: busca el id **solo entre los registros visibles**. Un registro de otra empresa responde 404, igual que uno inexistente, para que no se pueda inferir su existencia |
+| `idOcupadoPorOtraEmpresa` | `lib/tenancy.js` | Alta con un id ya usado por otra empresa: 409 genérico. Nunca sobrescribe ni mueve el registro ajeno |
 | `resolveEmpresaForWrite` | `lib/tenancy.js` | Decide la empresa de un registro nuevo. Nunca confía en el body para usuarios de empresa |
 | `applyScopedPatch` | `lib/tenancy.js` | Anti mass-assignment: `id` inmutable; `empresa` solo la cambia el SUPER_ADMIN |
 | `assertKeyedWrite` | `lib/tenancy.js` | Escrituras en documentos `{ [empresa_id]: … }` |
@@ -182,14 +183,24 @@ Así el proyecto sigue en 12 funciones serverless, el límite del plan Hobby de 
 |---|---|
 | 400 | Falta un parámetro obligatorio o el formato es inválido |
 | 401 | Sin sesión, sesión expirada o del esquema anterior, o usuario desactivado/eliminado |
-| 403 | Recurso o empresa ajenos, rol sin permiso, usuario o empresa inactivos al iniciar sesión |
-| 404 | El recurso no existe |
+| 403 | Empresa ajena pedida por `?empresa=` o por el body, rol sin permiso, usuario o empresa inactivos al iniciar sesión |
+| 404 | El recurso no existe **o pertenece a otra empresa** (respuesta idéntica) |
 | 409 | Email, nombre o NIT duplicado; auto-desactivación; quedarse sin SUPER_ADMIN activo |
 | 422 | Validación de campos: `details` trae el error por campo |
 | 429 | Demasiados intentos de login |
 | 500 | Error inesperado. El detalle solo va al log del servidor |
 
 Los mensajes son genéricos: no revelan datos de otra empresa ni detalles internos.
+
+### Endpoints públicos (sin sesión): qué exponen
+
+| Endpoint | Expone | Protección |
+|---|---|---|
+| `GET /api/login` | Solo `{ authenticated: false }` | — |
+| `POST /api/login` | Mensaje genérico de credenciales | Bloqueo tras 5 intentos por cuenta y por IP; hash señuelo contra la enumeración de emails |
+| `GET /api/reportes-falla?catalogo=1` | Empresas activas (id, nombre, color, logo, sedes). Equipos de empresas activas: id, empresa, sede, nombre, marca, modelo, serie, n.º de inventario | Nunca incluye mantenimientos, calibraciones, observaciones, documentos, datos de contacto ni usuarios |
+| `POST /api/reportes-falla` | Solo el reporte creado | Whitelist de campos; empresa activa; sede y equipo de esa empresa; 30 reportes por hora por IP |
+| `POST /api/send-email` | — | **Ya no es público**: solo SUPER_ADMIN. Antes permitía enviar HTML arbitrario a la lista interna de alertas |
 
 ## 7. Frontend
 
@@ -209,7 +220,46 @@ Los mensajes son genéricos: no revelan datos de otra empresa ni detalles intern
 **Ocultar opciones en la UI no es una medida de seguridad.** Todo lo anterior es presentación; la
 seguridad está en la API.
 
-## 8. Pruebas
+## 8. Preview y Production
+
+Esta sección se basa en lo auditado en Vercel el 2026-09-29.
+
+- `KV_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN` y `REDIS_URL`
+  vienen del **mismo store** (`store_iZXs0uzTeHHLwy7Q`) y tienen como destino **Production y
+  Preview**. Por lo tanto, **ambos entornos comparten la misma base de datos**.
+- El cliente `@vercel/kv` usa `KV_REST_API_URL` y `KV_REST_API_TOKEN`.
+- Antes de este cambio no había ni prefijos ni namespaces. Un login o una edición en una URL de
+  Preview escribía sobre los datos reales.
+
+**Protección implementada (en código, sin configurar nada en Vercel).** `lib/db.js` prefija cada
+clave según `VERCEL_ENV`, variable que Vercel define siempre:
+
+| Entorno | Prefijo | Efecto |
+|---|---|---|
+| production | ninguno | Las mismas claves `cmms:*` de siempre: no hay migración de datos |
+| preview | `preview:` | Datos, usuarios, sesiones y migraciones propios. Arranca vacío |
+| development (`vercel dev`) | `development:` | Ídem |
+| scripts o tests locales sin `VERCEL_ENV` | `local:` | Ídem |
+
+`KV_NAMESPACE` es opcional y fuerza el namespace. El valor `production` significa sin prefijo.
+
+Con esto:
+
+- Un login en Preview crea **su propio** SUPER_ADMIN (desde `AUTH_USER`/`AUTH_PASSWORD_HASH`,
+  que también están en Preview) y no toca Production.
+- Una cookie de sesión de Preview no es válida en Production.
+- La UI muestra un aviso morado, "Entorno de pruebas", fuera de Production.
+- Los scripts de mantenimiento exigen `--env=...`, y además `--confirm-production` para escribir
+  en Production.
+- Para probar Preview con datos realistas, `scripts/copy-production-to-preview.mjs --to=preview`
+  **lee** Production y copia solo los datos de negocio a `preview:`. Nunca copia usuarios,
+  sesiones ni correos de alerta.
+
+**Recomendación de aislamiento total (manual, en Vercel).** Los prefijos separan los datos, pero
+el store sigue siendo el mismo. Para un aislamiento físico se puede crear un segundo store y
+conectarlo solo a Preview. Los pasos están en [`preview-production.md`](preview-production.md).
+
+## 9. Pruebas
 
 `npm test` ejecuta `tests/multitenant.test.js` (con `node:test`, sin dependencias nuevas) contra
 los **handlers reales** de `api/*.js`, con un KV en memoria (`lib/db.js → setKvForTests`).
@@ -226,6 +276,23 @@ Cubre:
 - Cookie falsificada y sesión del esquema anterior; fuerza bruta; logout.
 - Formulario público.
 
-## 9. Agregar una empresa nueva
+`tests/security.test.js` recorre los 15 escenarios de la lista de verificación de seguridad (A = MACROMED,
+B = MEIDE) y la separación de entornos:
+
+- Preview no ve ni modifica Production.
+- Una sesión de Preview no sirve en Production.
+
+## 10. Agregar una empresa nueva
 
 Solo desde **Administración → Empresas → Nueva empresa**. No hay que tocar el código.
+
+## 11. Riesgos residuales
+
+Ver la tabla completa en [`SECURITY_AUDIT.md`](../SECURITY_AUDIT.md), sección "Segunda auditoría".
+En resumen:
+
+- **Store de KV compartido:** Preview y Production siguen usando físicamente el mismo store, con
+  los datos separados por prefijo, hasta que se separen en Vercel.
+- **Catálogo público:** el formulario de fallas expone un catálogo mínimo de equipos.
+- **Sin transacciones:** KV no tiene transacciones.
+- **Rate limit por IP:** el límite del formulario público es por IP.

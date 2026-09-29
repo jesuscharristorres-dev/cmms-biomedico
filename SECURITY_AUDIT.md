@@ -208,3 +208,51 @@ El diseño completo está en `docs/multi-tenant.md`.
 - `api/send-email.js` sigue siendo público, aunque limitado a destinatarios configurados.
 - KV no tiene transacciones: el patrón read-modify-write puede perder una escritura bajo
   concurrencia extrema. Ya era así antes del cambio.
+
+---
+
+## SEGUNDA AUDITORÍA 2026-09-29: inferencia entre empresas y separación Preview/Production
+
+Pregunta auditada: *¿puede un usuario de la empresa A obtener información de la empresa B
+manipulando una URL, un ID, un parámetro, el body, la query, la cookie, la sesión o un endpoint?*
+
+| # | Hallazgo | Severidad | Corrección |
+|---|---|---|---|
+| 1 | **Preview y Production comparten el mismo store de KV** (`KV_*`/`REDIS_URL` con destino Production y Preview, verificado en Vercel). Un login en Preview ejecutaba migraciones y escrituras sobre los datos reales. Ya existe un Preview (`ae58656`) desplegado sin protección | 🔴 Crítica | `lib/db.js` separa las claves por `VERCEL_ENV` (Production sin prefijo, Preview `preview:`); aviso visible en la UI; scripts con `--env` obligatorio; recomendación de store separado en `docs/preview-production.md` |
+| 2 | Oráculo de existencia: `PATCH`/`DELETE` por id devolvía 403 si el registro era de otra empresa y 404 si no existía, lo que permitía inferir ids ajenos | 🟠 Alta | `findOwned` busca solo entre los registros visibles: un registro ajeno devuelve la misma respuesta 404 que uno inexistente |
+| 3 | `DELETE` de equipos y reportes borraba **todos** los registros con ese id. Un usuario podía crear en su empresa un registro con el id de uno ajeno; cuando el SUPER_ADMIN borraba el suyo, se borraban ambos | 🟠 Alta | Las altas con un id que ya usa otra empresa reciben 409; el borrado se hace por posición del registro verificado |
+| 4 | `api/send-email.js` era público: cualquiera podía enviar asunto y HTML arbitrarios a la lista interna de alertas (phishing). Ningún componente del frontend lo usa | 🟠 Alta | Solo SUPER_ADMIN. El cliente de Resend se crea en el handler: antes, sin `RESEND_API_KEY`, la función se caía al cargar |
+| 5 | El `POST` público de reportes de falla no tenía límite de frecuencia: cualquiera podía inundar de reportes a una empresa | 🟡 Media | Máximo 30 reportes por hora por IP (429) |
+
+Verificado **sin hallazgos**:
+
+- **Sesión y cookie:** token de 64 hex validado con regex. La sesión solo guarda `userId`; rol y
+  empresa se releen de KV en cada petición, así que una sesión forjada con `role` no sirve.
+  Cookie HttpOnly con SameSite=Lax. Las sesiones de Preview no valen en Production.
+- **`?empresa=` y body:** para un usuario de empresa, cualquier otra empresa responde 403.
+  `empresa` e `id` no se pueden cambiar por patch (salvo el SUPER_ADMIN, que sí puede cambiar la
+  empresa).
+- **Respuestas:** todas las listas se recortan en el servidor. `GET /api/login` y
+  `GET /api/admin?resource=empresas` solo devuelven la empresa propia.
+- **Administración:** todas sus operaciones exigen SUPER_ADMIN (401 sin sesión, 403 con otro rol).
+- **Estados:** un usuario o empresa inactivos obtienen 403 al iniciar sesión y 401 en cualquier
+  petición posterior.
+
+Pruebas: `tests/security.test.js` cubre los 15 escenarios exigidos más la separación de entornos.
+Las pruebas de aislamiento se verificaron a la inversa: al desactivar el filtro de empresa o el
+prefijo de entorno, fallan.
+
+**Riesgos residuales:**
+
+1. **El store de KV sigue siendo físicamente compartido** hasta que se aplique el paso manual de
+   `docs/preview-production.md`. Los datos ya están separados lógicamente.
+2. **Posible residuo del Preview `ae58656`:** si alguien entró en ese Preview, sus cambios quedaron
+   en Production. Hay que revisar Administración → Usuarios y Empresas tras el deploy.
+3. **Catálogo público de equipos:** el formulario anónimo de fallas necesita mostrar nombre, marca,
+   modelo, serie e inventario de los equipos de las empresas activas. Los ids de equipo son por
+   tanto públicos, y un 409 al crear un equipo con un id ya usado confirma algo que ya se sabía.
+   Para personal y reportes, los ids son aleatorios.
+4. **Sin transacciones en KV:** el patrón leer-modificar-escribir puede perder una escritura bajo
+   concurrencia simultánea. Ya ocurría antes.
+5. **Rate limit por IP:** varios usuarios detrás de una misma IP (NAT de una clínica) comparten el
+   límite de 30 reportes por hora.

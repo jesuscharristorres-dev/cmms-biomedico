@@ -15,7 +15,7 @@
 
 import { kv } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
-import { empresaFilter, scopeArray, findOwned, resolveEmpresaForWrite, applyScopedPatch } from '../lib/tenancy.js';
+import { empresaFilter, scopeArray, findOwned, resolveEmpresaForWrite, applyScopedPatch, idOcupadoPorOtraEmpresa } from '../lib/tenancy.js';
 import { HttpError, withErrors, methodNotAllowed } from '../lib/http.js';
 
 const KV_KEY = 'cmms:equipos';
@@ -48,6 +48,9 @@ export default withErrors('api/equipos', 'No se pudo acceder a la base de datos 
       normalizados.push({ ...e, empresa: await resolveEmpresaForWrite(ctx, e.empresa) });
     }
     const equipos = (await kv.get(KV_KEY)) || [];
+    if (normalizados.some(e => idOcupadoPorOtraEmpresa(ctx, equipos, e.id))) {
+      throw new HttpError(409, 'El identificador del equipo ya está en uso. Intenta de nuevo.');
+    }
     const existentes = new Set(equipos.map(e => e.id));
     const aAgregar = normalizados.filter(e => !existentes.has(e.id));
     const actualizados = [...equipos, ...aAgregar];
@@ -71,8 +74,9 @@ export default withErrors('api/equipos', 'No se pudo acceder a la base de datos 
     const { id } = req.body || {};
     if (!idValido(id)) throw new HttpError(400, 'Falta id del equipo a eliminar.');
     const equipos = (await kv.get(KV_KEY)) || [];
-    findOwned(ctx, equipos, id);
-    const actualizados = equipos.filter(e => e.id !== id);
+    const idx = findOwned(ctx, equipos, id);
+    // Se elimina por posición (el registro ya verificado), nunca "todos los que tengan ese id".
+    const actualizados = equipos.filter((_, i) => i !== idx);
     await kv.set(KV_KEY, actualizados);
     return res.status(200).json({ equipos: scopeArray(ctx, actualizados) });
   }

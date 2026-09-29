@@ -2,21 +2,25 @@
 // scripts/migrate.mjs
 // Ejecuta / revierte las migraciones multiempresa (lib/migrations.js) contra Vercel KV.
 //
-// Requiere las credenciales de KV en el entorno (KV_REST_API_URL y KV_REST_API_TOKEN).
-// La forma más simple es traerlas de Vercel:
+// Requiere las credenciales de KV en el entorno (KV_REST_API_URL y KV_REST_API_TOKEN) y el
+// entorno destino EXPLÍCITO (--env=...; ver scripts/_target.mjs):
 //   vercel env pull .env.local
-//   node --env-file=.env.local scripts/migrate.mjs status
-//   node --env-file=.env.local scripts/migrate.mjs up
-//   node --env-file=.env.local scripts/migrate.mjs down 003_auditoria_sin_empresa
-//   node --env-file=.env.local scripts/migrate.mjs audit      # informe de registros sin empresa
+//   node --env-file=.env.local scripts/migrate.mjs status --env=preview
+//   node --env-file=.env.local scripts/migrate.mjs up --env=preview
+//   node --env-file=.env.local scripts/migrate.mjs up --env=production --confirm-production
+//   node --env-file=.env.local scripts/migrate.mjs down 003_auditoria_sin_empresa --env=preview
+//   node --env-file=.env.local scripts/migrate.mjs audit --env=production --confirm-production
 //
 // Nota: no es obligatorio correrlo a mano — la app aplica las migraciones pendientes sola en
 // la primera petición (lib/migrations.js → ensureSchema). Este script sirve para hacerlo de
 // forma controlada, revisar el estado o revertir.
 
+import { seleccionarEntorno, argumentosPosicionales } from './_target.mjs';
 import { MIGRATIONS, getAplicadas, runPending, revert, auditarSinEmpresa } from '../lib/migrations.js';
 
-const [cmd = 'status', arg] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const [cmd = 'status', arg] = argumentosPosicionales(argv);
+seleccionarEntorno(argv, { escribe: cmd !== 'status' });
 
 async function status() {
   const aplicadas = new Map((await getAplicadas()).map(a => [a.id, a.appliedAt]));

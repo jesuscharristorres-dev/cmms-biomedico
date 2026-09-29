@@ -3946,7 +3946,7 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
 /* APP PRINCIPAL                                                     */
 /* ---------------------------------------------------------------- */
 
-function MainApp({ user, onLogout, readOnly }) {
+function MainApp({ user, entorno, onLogout, readOnly }) {
   const [equipos, setEquipos] = useState([]);
   const [dark, setDark] = useState(false);
   const [menu, setMenu] = useState('dashboard');
@@ -4483,6 +4483,13 @@ function MainApp({ user, onLogout, readOnly }) {
   /* ---------------------------------------------------------------- */
   return (
     <div className={`flex flex-col min-h-dvh font-sans ${t.bg} ${t.text}`} style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
+      {entorno && entorno !== 'production' && (
+        // Preview/development usan su propio espacio de datos (ver lib/db.js): se avisa para
+        // que nadie confunda una URL de pruebas con el sistema real.
+        <div className="shrink-0 flex items-center justify-center gap-2 py-1.5 text-2xs font-semibold text-white" style={{ background: '#7C3AED' }}>
+          <AlertTriangle size={12} /> Entorno de pruebas ({entorno}) — los datos de aquí NO son los de producción
+        </div>
+      )}
       {readOnly && (
         <div className="shrink-0 flex items-center justify-center gap-2 py-1.5 text-2xs font-semibold text-white" style={{ background: '#B45309' }}>
           <Lock size={12} /> Usuario de solo lectura — no se pueden guardar cambios
@@ -7823,7 +7830,7 @@ function AppInner() {
         if (data.authenticated && data.user) {
           claimDataCaches(data.user);
           setCompanies(data.empresas);
-          setSession({ authenticated: true, user: data.user, empresas: data.empresas || [] });
+          setSession({ authenticated: true, user: data.user, empresas: data.empresas || [], entorno: data.entorno || 'production' });
         } else {
           setSession({ authenticated: false });
         }
@@ -7900,7 +7907,7 @@ function AppInner() {
     <AuthUserContext.Provider value={user}>
       <ReadOnlyContext.Provider value={readOnly}>
         {/* key: si cambia el usuario, MainApp se monta de cero (sin estado de otra sesión). */}
-        <MainApp key={user.id} user={user} onLogout={() => cerrarSesion()} readOnly={readOnly} />
+        <MainApp key={user.id} user={user} entorno={session.entorno} onLogout={() => cerrarSesion()} readOnly={readOnly} />
         {sessionWarning && (
           <SessionWarningModal segundos={warningSegundos} onContinuar={() => setSessionWarning(false)} onCerrarAhora={() => cerrarSesion()} />
         )}

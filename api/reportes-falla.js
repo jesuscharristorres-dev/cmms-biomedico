@@ -18,7 +18,7 @@
 //                      de empresa solo puede vaciar los de SU empresa.
 
 import { kv } from '../lib/db.js';
-import { requireAuth } from '../lib/auth.js';
+import { requireAuth, allowRate, getClientIp } from '../lib/auth.js';
 import { listEmpresas, getEmpresa, empresaPublica } from '../lib/empresas.js';
 import { empresaFilter, scopeArray, findOwned, applyScopedPatch } from '../lib/tenancy.js';
 import { HttpError, withErrors, methodNotAllowed } from '../lib/http.js';
@@ -26,6 +26,7 @@ import { HttpError, withErrors, methodNotAllowed } from '../lib/http.js';
 const KV_KEY = 'cmms:reportesFalla';
 const EQUIPOS_KEY = 'cmms:equipos';
 const PRIORIDADES = ['Baja', 'Media', 'Alta', 'Crítica'];
+const MAX_REPORTES_POR_HORA = 30;
 
 function texto(v, max) {
   return typeof v === 'string' ? v.trim().slice(0, max) : '';
@@ -88,6 +89,10 @@ export default withErrors('api/reportes-falla', 'No se pudo acceder a la base de
   }
 
   if (req.method === 'POST') {
+    // Endpoint anónimo: límite por IP para que no se pueda inundar de reportes a ninguna empresa.
+    if (!(await allowRate(`reporte-falla:${getClientIp(req)}`, MAX_REPORTES_POR_HORA, 60 * 60))) {
+      throw new HttpError(429, 'Se enviaron demasiados reportes desde esta conexión. Intenta más tarde.');
+    }
     const reporte = await construirReportePublico(req.body?.reporte);
     const reportes = (await kv.get(KV_KEY)) || [];
     // Idempotencia: si por un reintento de red llega el mismo id dos veces, no se duplica.
@@ -115,8 +120,8 @@ export default withErrors('api/reportes-falla', 'No se pudo acceder a la base de
     const { id } = req.query || {};
     const reportes = (await kv.get(KV_KEY)) || [];
     if (id) {
-      findOwned(ctx, reportes, id);
-      const actualizados = reportes.filter(r => r.id !== id);
+      const idx = findOwned(ctx, reportes, id);
+      const actualizados = reportes.filter((_, i) => i !== idx);
       await kv.set(KV_KEY, actualizados);
       return res.status(200).json({ reportes: scopeArray(ctx, actualizados) });
     }

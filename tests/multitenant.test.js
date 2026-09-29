@@ -194,21 +194,31 @@ describe('Arquitectura multiempresa', () => {
       assert.equal(r.status, 200);
       assert.equal(r.body.equipo.marca, 'Philips');
     });
-    test('IDOR: no puede leer/editar/eliminar por id un registro de otra empresa → 403', async () => {
+    test('IDOR: un registro de otra empresa pedido por id es indistinguible de uno inexistente (404)', async () => {
       const antes = JSON.stringify(await store.get('cmms:equipos'));
+      const inexistente = await call(equipos, { method: 'PATCH', cookie: cookies.MACROMED, body: { id: 'no-existe', patch: { marca: 'HACK' } } });
       const p = await call(equipos, { method: 'PATCH', cookie: cookies.MACROMED, body: { id: 'eq_1_1', patch: { marca: 'HACK' } } });
-      assert.equal(p.status, 403);
+      assert.equal(p.status, 404);
+      assert.deepEqual(p.body, inexistente.body, 'misma respuesta: no se puede inferir que el id existe');
       const d = await call(equipos, { method: 'DELETE', cookie: cookies.MACROMED, body: { id: 'eq_1_1' } });
-      assert.equal(d.status, 403);
+      assert.equal(d.status, 404);
       assert.equal(JSON.stringify(await store.get('cmms:equipos')), antes, 'nada cambió');
       const rp = await call(reportes, { method: 'PATCH', cookie: cookies.MACROMED, body: { id: 'rf_1', patch: { estado: 'Finalizado' } } });
-      assert.equal(rp.status, 403);
+      assert.equal(rp.status, 404);
       const rd = await call(reportes, { method: 'DELETE', cookie: cookies.MACROMED, query: { id: 'rf_1' } });
-      assert.equal(rd.status, 403);
+      assert.equal(rd.status, 404);
       const pp = await call(personal, { method: 'PATCH', cookie: cookies.MACROMED, body: { id: 'per_1', patch: { nombreCompleto: 'X' } } });
-      assert.equal(pp.status, 403);
-      const inexistente = await call(equipos, { method: 'PATCH', cookie: cookies.MACROMED, body: { id: 'no-existe', patch: {} } });
-      assert.equal(inexistente.status, 404);
+      assert.equal(pp.status, 404);
+      assert.equal((await store.get('cmms:personal')).find(x => x.id === 'per_1').nombreCompleto, 'Persona MEIDE');
+    });
+    test('crear un registro reutilizando el id de otra empresa no lo sobrescribe ni lo mueve (409)', async () => {
+      const r = await call(equipos, { method: 'POST', cookie: cookies.MACROMED, body: { equipo: { id: 'eq_1_2', equipo: 'Suplantado' } } });
+      assert.equal(r.status, 409);
+      const r2 = await call(personal, { method: 'POST', cookie: cookies.MACROMED, body: { record: { id: 'per_2', nombreCompleto: 'X' } } });
+      assert.equal(r2.status, 409);
+      const eq = (await store.get('cmms:equipos')).filter(e => e.id === 'eq_1_2');
+      assert.equal(eq.length, 1);
+      assert.equal(eq[0].empresa, 'MEIDE');
     });
     test('mass assignment: no puede mover un registro propio a otra empresa ni cambiar su id', async () => {
       const r = await call(equipos, { method: 'PATCH', cookie: cookies.MACROMED, body: { id: 'eq_0_2', patch: { empresa: 'MEIDE', id: 'otro' } } });
@@ -298,7 +308,7 @@ describe('Arquitectura multiempresa', () => {
       const eq = await call(equipos, { cookie: s2 });
       assert.ok(eq.body.equipos.length > 0 && eq.body.equipos.every(e => e.empresa === 'NP MEDICAL'));
       const ajeno = await call(equipos, { method: 'PATCH', cookie: s2, body: { id: 'eq_0_1', patch: { marca: 'x' } } });
-      assert.equal(ajeno.status, 403, 'ya no puede tocar MACROMED');
+      assert.equal(ajeno.status, 404, 'ya no puede tocar MACROMED');
     });
     test('usuario desactivado: no inicia sesión y sus sesiones abiertas dejan de servir', async () => {
       const c = cookies.MEIDE;

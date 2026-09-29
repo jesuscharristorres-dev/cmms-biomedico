@@ -41,6 +41,8 @@ export function setupStore(initial = datosHeredados()) {
   const store = createMemoryKv(initial);
   setKvForTests(store);
   resetEnsureSchemaForTests();
+  // Los datos de prueba se siembran con las claves de production (sin prefijo).
+  process.env.KV_NAMESPACE = 'production';
   process.env.AUTH_USER = ADMIN_USER;
   process.env.AUTH_PASSWORD_HASH = hashPassword(ADMIN_PASS);
   delete process.env.SUPERADMIN_EMAIL;

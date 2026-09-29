@@ -23,6 +23,7 @@ import { findUsuarioByLogin, usuarioPublico } from '../lib/usuarios.js';
 import { getEmpresa, listEmpresas } from '../lib/empresas.js';
 import { ensureSchema } from '../lib/migrations.js';
 import { sendError, methodNotAllowed } from '../lib/http.js';
+import { currentNamespace } from '../lib/db.js';
 
 const CREDENCIALES_INVALIDAS = 'Usuario o contraseña incorrectos';
 
@@ -43,7 +44,9 @@ export default async function handler(req, res) {
       const ctx = await getAuthContext(req);
       if (!ctx) return res.status(200).json({ authenticated: false });
       const empresas = ctx.isSuperAdmin ? await listEmpresas() : [ctx.empresa];
-      return res.status(200).json({ authenticated: true, user: usuarioPublico(ctx.user), empresas });
+      // `entorno`: namespace de datos activo (production / preview / ...), para que la UI avise
+      // cuando NO se está trabajando sobre los datos reales.
+      return res.status(200).json({ authenticated: true, user: usuarioPublico(ctx.user), empresas, entorno: currentNamespace() });
     } catch (err) {
       console.error('[api/login] Error verificando sesión (GET):', err);
       return res.status(200).json({ authenticated: false });

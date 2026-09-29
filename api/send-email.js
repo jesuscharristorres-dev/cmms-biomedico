@@ -17,8 +17,9 @@
 
 import { Resend } from 'resend';
 import { kv } from '../lib/db.js';
+import { requireSuperAdmin } from '../lib/auth.js';
+import { HttpError } from '../lib/http.js';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'CMMS Biomédico <onboarding@resend.dev>';
 const ALERT_EMAILS_KEY = 'cmms:alertEmails';
 
@@ -26,6 +27,22 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
     return res.status(405).json({ error: 'Método no permitido. Usa POST.' });
+  }
+
+  // MULTIEMPRESA / auditoría 2026-09-29: antes este endpoint era PÚBLICO — cualquiera en
+  // internet podía mandar un correo con asunto y HTML arbitrarios a la lista interna de
+  // alertas (vector de phishing con el dominio y la cuota de Resend del proyecto). Ningún
+  // flujo actual del frontend lo usa (src/services/emailService.js no se importa en ningún
+  // componente), así que se restringe al SUPER_ADMIN: la lista de alertas es global, no de
+  // una empresa. Si en el futuro el formulario público de fallas debe notificar por correo,
+  // el correo debe componerse EN EL SERVIDOR a partir del reporte guardado (no con HTML del
+  // cliente) — ver docs/multi-tenant.md.
+  try {
+    await requireSuperAdmin(req);
+  } catch (err) {
+    if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+    console.error('[api/send-email] Error verificando sesión:', err);
+    return res.status(500).json({ error: 'Error inesperado del servidor.' });
   }
 
   if (!process.env.RESEND_API_KEY) {
@@ -39,11 +56,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Faltan campos requeridos: to, subject, html.' });
   }
 
-  // Este endpoint NO exige sesión a propósito: lo dispara también el formulario público
-  // de reporte de fallas (coordinadores de sede sin cuenta). Para que eso no lo convierta
-  // en un relay de correo abierto, el destinatario nunca se toma tal cual del cliente —
-  // se valida contra la lista real de correos de alerta configurados en KV (Configuración).
-  // Cualquier dirección que el cliente mande y no esté en esa lista se descarta.
+  // Defensa adicional: el destinatario nunca se toma tal cual del cliente — se valida
+  // contra la lista real de correos de alerta configurados en KV. Cualquier dirección que
+  // no esté en esa lista se descarta.
   const solicitados = (Array.isArray(to) ? to : [to]).filter(Boolean);
   const permitidos = new Set((await kv.get(ALERT_EMAILS_KEY)) || []);
   const recipients = solicitados.filter((addr) => permitidos.has(addr));
@@ -53,6 +68,9 @@ export default async function handler(req, res) {
   }
 
   try {
+    // El cliente se crea aquí (no al cargar el módulo): sin RESEND_API_KEY el constructor
+    // lanza, y eso tumbaba la función completa antes de poder responder un error controlado.
+    const resend = new Resend(process.env.RESEND_API_KEY);
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: recipients,

@@ -94,10 +94,10 @@ mano:
 
 ```bash
 vercel env pull .env.local                                   # trae KV_REST_API_URL / KV_REST_API_TOKEN
-node --env-file=.env.local scripts/migrate.mjs status
-node --env-file=.env.local scripts/migrate.mjs up
-node --env-file=.env.local scripts/migrate.mjs audit          # registros sin empresa
-node --env-file=.env.local scripts/migrate.mjs down <id>      # revertir una migración
+node --env-file=.env.local scripts/migrate.mjs status --env=production
+node --env-file=.env.local scripts/migrate.mjs up --env=preview
+node --env-file=.env.local scripts/migrate.mjs audit --env=production --confirm-production   # registros sin empresa
+node --env-file=.env.local scripts/migrate.mjs down <id> --env=preview                      # revertir una migración
 ```
 
 Los registros heredados cuya empresa no se puede determinar **no se borran ni se asignan al azar**.
@@ -121,7 +121,7 @@ Hay dos opciones:
 **B. Por script**
 
 ```bash
-node --env-file=.env.local scripts/create-super-admin.mjs admin@tuempresa.com "Nombre Apellido"
+node --env-file=.env.local scripts/create-super-admin.mjs admin@tuempresa.com "Nombre Apellido" --env=production --confirm-production
 ```
 
 El script pide la contraseña por consola, o la toma de `SUPERADMIN_PASSWORD`.
@@ -133,6 +133,7 @@ Ninguna contraseña se escribe en el código: solo se guardan hashes scrypt con 
 | Variable | Obligatoria | Uso |
 |---|---|---|
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Sí | Vercel KV (se crean al conectar KV al proyecto) |
+| `KV_NAMESPACE` | **No** | Solo para casos especiales. El namespace de datos se deduce de `VERCEL_ENV` (ver sección 11) |
 | `AUTH_USER` + `AUTH_PASSWORD_HASH` | Una de las dos parejas | Administrador histórico, migrado a SUPER_ADMIN |
 | `SUPERADMIN_EMAIL` + `SUPERADMIN_PASSWORD_HASH` | Una de las dos parejas | SUPER_ADMIN inicial (alternativa) |
 | `SUPERADMIN_NOMBRE` | No | Nombre visible del SUPER_ADMIN inicial |
@@ -145,8 +146,9 @@ Ninguna contraseña se escribe en el código: solo se guardan hashes scrypt con 
 npm test
 ```
 
-Ejecuta `tests/multitenant.test.js` (`node:test`) contra los handlers reales de `api/`, con un KV
-en memoria. Cubre:
+Ejecuta `tests/multitenant.test.js` y `tests/security.test.js` (`node:test`) contra los handlers
+reales de `api/`, con un KV en memoria. `security.test.js` recorre los 15 escenarios de la lista
+de verificación de seguridad y la separación entre Preview y Production. Entre ambos cubren:
 
 - SUPER_ADMIN con visibilidad global y CRUD de empresas y usuarios.
 - Usuarios de las 5 empresas aislados entre sí.
@@ -167,3 +169,16 @@ npm run build
 
 Despliegue: push a la rama conectada en Vercel. El proyecto usa 12 funciones serverless, dentro
 del límite del plan Hobby.
+
+## 11. Preview vs Production
+
+En este proyecto, Preview y Production **comparten el mismo store de Vercel KV** (comprobado en
+la configuración de Vercel). Para que las pruebas en Preview no contaminen los datos reales:
+
+- `lib/db.js` separa las claves por entorno. Production usa las claves de siempre, sin prefijo;
+  Preview usa `preview:`.
+- La app muestra un aviso "Entorno de pruebas" fuera de Production.
+- Los scripts exigen `--env=...`.
+
+Los detalles, cómo copiar datos reales a Preview y cómo separar físicamente los stores en Vercel
+están en [`docs/preview-production.md`](docs/preview-production.md).

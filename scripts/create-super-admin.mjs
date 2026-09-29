@@ -7,19 +7,22 @@
 //
 // Uso:
 //   vercel env pull .env.local
-//   node --env-file=.env.local scripts/create-super-admin.mjs admin@empresa.com "Nombre Apellido"
+//   node --env-file=.env.local scripts/create-super-admin.mjs admin@empresa.com "Nombre Apellido" --env=production --confirm-production
 
 import readline from 'node:readline/promises';
+import { seleccionarEntorno, argumentosPosicionales } from './_target.mjs';
 import { stdin, stdout } from 'node:process';
 import { ensureSchema } from '../lib/migrations.js';
 import { listUsuarios, saveUsuarios, crearUsuario, PASSWORD_MIN } from '../lib/usuarios.js';
 import { hashPassword } from '../lib/password.js';
 
-const [email, nombre = 'Administrador global'] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const [email, nombre = 'Administrador global'] = argumentosPosicionales(argv);
 if (!email) {
-  console.error('Uso: create-super-admin.mjs <email> ["Nombre"]');
+  console.error('Uso: create-super-admin.mjs <email> ["Nombre"] --env=<entorno> [--confirm-production]');
   process.exit(1);
 }
+seleccionarEntorno(argv);
 
 let password = process.env.SUPERADMIN_PASSWORD;
 if (!password) {

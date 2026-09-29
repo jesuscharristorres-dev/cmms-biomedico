@@ -5,7 +5,7 @@
 
 import { kv } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
-import { empresaFilter, scopeArray, findOwned, resolveEmpresaForWrite, applyScopedPatch } from '../lib/tenancy.js';
+import { empresaFilter, scopeArray, findOwned, resolveEmpresaForWrite, applyScopedPatch, idOcupadoPorOtraEmpresa } from '../lib/tenancy.js';
 import { HttpError, withErrors, methodNotAllowed } from '../lib/http.js';
 
 const KV_KEY = 'cmms:personal';
@@ -30,10 +30,12 @@ export default withErrors('api/personal', 'No se pudo acceder a la base de datos
     }
     const nuevo = { ...record, empresa: await resolveEmpresaForWrite(ctx, record.empresa) };
     const personal = (await kv.get(KV_KEY)) || [];
+    if (idOcupadoPorOtraEmpresa(ctx, personal, nuevo.id)) {
+      throw new HttpError(409, 'El identificador del registro ya está en uso. Intenta de nuevo.');
+    }
     const existente = personal.find(p => p.id === nuevo.id);
     if (existente) {
-      // Idempotencia ante reintentos de red — pero sin revelar registros de otra empresa.
-      if (existente.empresa !== nuevo.empresa && !ctx.isSuperAdmin) throw new HttpError(409);
+      // Idempotencia ante reintentos de red (solo registros propios llegan aquí).
       return res.status(200).json({ record: existente, personal: scopeArray(ctx, personal) });
     }
     const actualizados = [...personal, nuevo];
