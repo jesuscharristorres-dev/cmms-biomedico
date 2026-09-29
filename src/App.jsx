@@ -367,7 +367,7 @@ function newEquipo(empresaKey) {
     clasificacionRiesgo: 'IIB', inventario: '',
     fechaInstalacion: '',
     fotografiaUrl: '', ubicacion: '', estado: 'Operativo', actaEntregaUrl: '', hojaVidaUrl: '',
-    periodicidadMantenimiento: 'Anual', periodicidadCalibracion: 'Anual',
+    periodicidadMantenimiento: 'Anual', periodicidadCalibracion: 'ANUAL',
     aplicaCalibracion: true, aplicaPreventivo: true,
     fechaUltimaCalibracion: '', certificadoUrl: '', observaciones: '',
     preventivos: [], correctivos: [], calibraciones: [], instalaciones: [], documentos: [], bajas: [],
@@ -2333,7 +2333,15 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
                   <SelectInput dense t={t} disabled={readOnly} value={equipo.periodicidadMantenimiento} options={PERIODICIDADES}
                     onChange={v => onUpdate({ ...equipo, periodicidadMantenimiento: v, aplicaPreventivo: v !== 'N/A' })} />
                 </Field>
-                <Field dense label="Periodicidad de calibración"><TextInput dense t={t} value="Anual" disabled onChange={() => {}} /></Field>
+                <Field dense label="Periodicidad de calibración">
+                  <select value={equipo.periodicidadCalibracion || ''} disabled={readOnly}
+                    onChange={e => onUpdate({ ...equipo, periodicidadCalibracion: e.target.value, aplicaCalibracion: e.target.value !== 'N/A' })}
+                    className={`rounded-md border px-2 py-1 text-2xs ${t.input} ${readOnly ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                    <option value="" disabled>Seleccionar período</option>
+                    <option value="ANUAL">ANUAL</option>
+                    <option value="N/A">N/A</option>
+                  </select>
+                </Field>
 
                 <div>
                   <Field dense label="Hoja de vida (URL)">
@@ -4283,7 +4291,9 @@ function MainApp({ onLogout, readOnly }) {
           r['PERIODICIDAD DE MANTENIMIENTO'] || 'Anual',
 
         periodicidadCalibracion:
-          r['PERIODICIDAD DE CALIBRACION'] || 'Anual',
+          r['PERIODICIDAD DE CALIBRACION'] || 'ANUAL',
+        aplicaCalibracion:
+          (r['PERIODICIDAD DE CALIBRACION'] || 'ANUAL') !== 'N/A',
 
         ubicacion: r['UBICACIÓN'] || '',
 
