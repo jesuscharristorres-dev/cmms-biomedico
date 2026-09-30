@@ -218,6 +218,33 @@ function setCompanies(empresas) {
   if (!Array.isArray(empresas) || empresas.length === 0) return;
   COMPANIES.splice(0, COMPANIES.length, ...empresas.map(empresaToCompany));
 }
+
+// Clave de comparación de sedes: sin tildes, sin mayúsculas y sin espacios repetidos, para
+// que "BOGOTA SUR", "Bogotá  Sur" y "Bogotá Sur" se reconozcan como la misma sede.
+function normSede(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+}
+
+// Sedes EFECTIVAS de cada empresa = sedes configuradas (Administración → Empresas) + sedes
+// que realmente tienen sus equipos (p. ej. las cargadas con el cronograma en Excel). Así una
+// sede en uso nunca desaparece de la hoja de vida, los filtros ni los dashboards aunque la
+// configuración de la empresa esté incompleta. `sedesConfig` conserva la lista configurada.
+function registrarSedesEnUso(equipos) {
+  COMPANIES.forEach(c => {
+    const config = c.sedesConfig || c.sedes;
+    c.sedesConfig = config;
+    const vistas = new Set(config.map(normSede));
+    const extra = [];
+    (equipos || []).forEach(e => {
+      if (e.empresa !== c.key || !e.sede) return;
+      const k = normSede(e.sede);
+      if (vistas.has(k)) return;
+      vistas.add(k);
+      extra.push(e.sede);
+    });
+    c.sedes = [...config, ...extra.sort((a, b) => a.localeCompare(b))];
+  });
+}
 // Para una clave que no coincide con ninguna empresa (registros heredados sin empresa válida,
 // que solo ve el SUPER_ADMIN hasta asignarlos en Administración → Empresas) se devuelve una
 // empresa "placeholder" neutra en vez de undefined, para que ninguna vista se caiga.
@@ -2313,6 +2340,14 @@ function CalibracionesTab({ equipo, onUpdate, readOnly, t, accent, c }) {
   );
 }
 
+// Opciones del selector de sede de la hoja de vida: siempre incluye la sede ACTUAL del equipo
+// (aunque no esté en la lista de la empresa) — sin esto el <select> mostraría otra sede que
+// no es la del equipo, y cualquier clic podía cambiarla sin querer.
+function opcionesSede(sedes, actual) {
+  if (!actual || sedes.some(s => normSede(s) === normSede(actual))) return sedes;
+  return [actual, ...sedes];
+}
+
 function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
   const [tab, setTab] = useState('Información General');
   const c = calibStatus(equipo);
@@ -2395,7 +2430,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
 
               <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
                 <Field dense label="Empresa"><SelectInput dense t={t} disabled={readOnly} value={equipo.empresa} options={COMPANIES.map(c => c.key)} onChange={v => onUpdate({ ...equipo, empresa: v, sede: companyOf(v).sedes[0] })} /></Field>
-                <Field dense label="Sede"><SelectInput dense upper t={t} disabled={readOnly} value={equipo.sede} options={companyOf(equipo.empresa).sedes} onChange={v => patch('sede', v)} /></Field>
+                <Field dense label="Sede"><SelectInput dense upper t={t} disabled={readOnly} value={equipo.sede} options={opcionesSede(companyOf(equipo.empresa).sedes, equipo.sede)} onChange={v => patch('sede', v)} /></Field>
                 <Field dense label="Equipo"><TextInput dense t={t} disabled={readOnly} value={equipo.equipo} onChange={v => patch('equipo', v)} /></Field>
                 <Field dense label="Marca"><TextInput dense t={t} disabled={readOnly} value={equipo.marca} onChange={v => patch('marca', v)} /></Field>
                 <Field dense label="Modelo"><TextInput dense t={t} disabled={readOnly} value={equipo.modelo} onChange={v => patch('modelo', v)} /></Field>
@@ -4147,6 +4182,10 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
     setLimpiezaPlantillas(actualizado);
   };
 
+  // Sedes efectivas por empresa (configuradas + en uso por los equipos): se recalculan en el
+  // mismo render en que cambian los equipos, antes de que los hijos lean COMPANIES.
+  useMemo(() => registrarSedesEnUso(equipos), [equipos]);
+
   const theme = themeOf(activeCompany);
   const accent = theme.solid;
   const accentBg = theme.bg;
@@ -4394,10 +4433,18 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
         errores.push(`fila ${fila}: EMPRESA "${empresaTexto}" no reconocida, se asignó a ${empresaKey}`);
       }
 
+      // Sede: si coincide (sin importar tildes/mayúsculas) con una sede conocida de la empresa,
+      // se usa esa escritura; si no, se CONSERVA la del Excel — antes caía a la primera sede de
+      // la empresa y podía mover equipos de sede sin avisar.
       const co = companyOf(empresaKey);
-      const sedeVal =
-        co.sedes.find(s => s.toUpperCase() === (r.SEDE || '').toString().trim().toUpperCase())
-        || co.sedes[0];
+      const sedeTexto = (r.SEDE ?? '').toString().replace(/\s+/g, ' ').trim();
+      const sedeConocida = sedeTexto ? co.sedes.find(s => normSede(s) === normSede(sedeTexto)) : null;
+      const sedeVal = sedeConocida || sedeTexto || co.sedes[0];
+      if (sedeTexto && !sedeConocida) {
+        errores.push(`fila ${fila}: SEDE "${sedeTexto}" no está en la configuración de ${empresaKey}; se conservó tal cual (agrégala en Administración → Empresas si es correcta)`);
+      } else if (!sedeTexto) {
+        errores.push(`fila ${fila}: sin SEDE, se asignó ${sedeVal}`);
+      }
 
       const fechaTexto = (r['FECHA DE ULTIMA CALIBRACION'] ?? '').toString().trim();
       const fechaUltimaCalibracion = parseExcelDate(r['FECHA DE ULTIMA CALIBRACION']);

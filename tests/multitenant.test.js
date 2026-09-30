@@ -119,6 +119,19 @@ describe('Arquitectura multiempresa', () => {
       const del = await call(admin, { method: 'DELETE', query: { resource: 'usuarios', id: c.body.usuario.id }, cookie: superCookie });
       assert.equal(del.status, 200);
     });
+    test('no permite quitar de una empresa una sede que todavía tiene equipos (409)', async () => {
+      // MEIDE tiene equipos en "La Dorada" (datos heredados de helpers.js).
+      const antes = (await call(admin, { query: { resource: 'empresas' }, cookie: superCookie })).body.empresas.find(e => e.id === 'MEIDE');
+      const r = await call(admin, { method: 'PATCH', query: { resource: 'empresas', id: 'MEIDE' }, cookie: superCookie, body: { sedes: ['Manizales Belén'] } });
+      assert.equal(r.status, 409);
+      assert.match(r.body.error, /La Dorada \(2 equipos\)/);
+      const despues = (await call(admin, { query: { resource: 'empresas' }, cookie: superCookie })).body.empresas.find(e => e.id === 'MEIDE');
+      assert.deepEqual(despues.sedes, antes.sedes, 'la configuración no cambió');
+      // Agregar sedes, o quitar una sin equipos, sí se permite; tildes/mayúsculas no importan.
+      const ok = await call(admin, { method: 'PATCH', query: { resource: 'empresas', id: 'MEIDE' }, cookie: superCookie, body: { sedes: ['LA DORADA', 'Armenia Berlín', 'Sede Nueva'] } });
+      assert.equal(ok.status, 200);
+      await call(admin, { method: 'PATCH', query: { resource: 'empresas', id: 'MEIDE' }, cookie: superCookie, body: { sedes: antes.sedes } });
+    });
     test('no puede desactivarse ni eliminarse a sí mismo', async () => {
       const me = (await call(login, { cookie: superCookie })).body.user;
       const off = await call(admin, { method: 'PATCH', query: { resource: 'usuarios', id: me.id }, cookie: superCookie, body: { estado: 'inactivo' } });
