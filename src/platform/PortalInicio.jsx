@@ -40,6 +40,9 @@ function EstadoBadge({ estado, compacto }) {
 // tiene pantallas; si no, su pantalla informativa (siempre existe, nunca un 404).
 function accionModulo(modulo, { permitido, canOpen }) {
   if (!permitido) return { tipo: 'sin_acceso', label: 'Sin acceso' };
+  if (modulo.demo && modulo.entrada && canOpen(modulo.entrada)) {
+    return { tipo: 'ingresar', label: 'Ingresar al módulo (demo)', destino: modulo.entrada };
+  }
   if (modulo.estado === 'ACTIVO' && modulo.entrada && canOpen(modulo.entrada)) {
     return { tipo: 'ingresar', label: 'Ingresar al módulo', destino: modulo.entrada };
   }
