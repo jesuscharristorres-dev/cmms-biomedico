@@ -6,7 +6,7 @@ import {
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
   IdCard, Save, SprayCan, ClipboardList, Paperclip, MoreVertical, Pencil, Filter, Zap, ExternalLink,
-  GraduationCap, RefreshCw, Users, UserPlus, Power, UserCog, Link2, House, LayoutGrid
+  GraduationCap, RefreshCw, Users, UserPlus, Power, UserCog, Link2, House, LayoutGrid, Layers
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -20,8 +20,9 @@ import { readSheet } from 'read-excel-file/browser';
 import writeXlsxFile from 'write-excel-file/browser';
 import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts, aplicaCalibracionEfectiva } from './services/alertLogic';
 import { preventivoDelMes } from './services/preventivoSchedule';
-import { MODULOS, moduloPorKey, moduloDeMenu, menuDeModulo, modulosPermitidos } from './platform/modulos';
+import { MODULOS, ESTADOS_MODULO, moduloPorKey, moduloDeMenu, menuDeModulo, modulosPermitidos } from './platform/modulos';
 import { PlatformHeader, PortalInicio, ModuloInfoPage } from './platform/PortalInicio';
+import { LANDING_AREAS, LANDING_OTRAS_AREAS, LANDING_ECOSISTEMA } from './platform/landing';
 // Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
 import logoIngenieriaClinica from './assets/logo-ingenieria-clinica.png';
@@ -2826,9 +2827,21 @@ const LANDING_STYLES = `
   .landing-chip:hover { transform: translateY(-3px); box-shadow: 0 16px 32px -16px rgba(15,58,90,0.3); border-color: rgba(59,159,214,0.5); }
   .landing-dotgrid-dark { background-image: radial-gradient(#ffffff16 1px, transparent 1px); background-size: 30px 30px; }
   .landing-dotgrid-light { background-image: radial-gradient(#17417a1a 1px, transparent 1px); background-size: 26px 26px; }
+  /* Aparición al hacer scroll (la clase is-visible la pone useLandingInView). */
+  .landing-inview { opacity: 0; transform: translateY(18px); transition: opacity .7s cubic-bezier(0.16,1,0.3,1), transform .7s cubic-bezier(0.16,1,0.3,1); }
+  .landing-inview.is-visible { opacity: 1; transform: none; }
+  .landing-inview.landing-glass-light.is-visible:hover { transform: translateY(-4px); transition-delay: 0ms !important; }
+  /* Líneas del ecosistema: flujo continuo desde el núcleo hacia cada área. */
+  @keyframes landing-dash { to { stroke-dashoffset: -20; } }
+  .landing-flow { stroke-dasharray: 5 7; animation: landing-dash 1.4s linear infinite; }
+  /* Las anclas no quedan tapadas por el encabezado fijo. */
+  .landing-anchor { scroll-margin-top: 64px; }
+  html:has(.landing-anchor) { scroll-behavior: smooth; }
   @media (prefers-reduced-motion: reduce) {
-    .landing-reveal, .landing-glow, .landing-ring, .landing-float { animation: none; }
-    .landing-btn, .landing-link::after, .landing-glass-light { transition: none; }
+    .landing-reveal, .landing-glow, .landing-ring, .landing-float, .landing-flow { animation: none; }
+    .landing-btn, .landing-link::after, .landing-glass-light, .landing-inview { transition: none; }
+    .landing-inview { opacity: 1; transform: none; }
+    html:has(.landing-anchor) { scroll-behavior: auto; }
   }
 `;
 
@@ -3076,15 +3089,7 @@ function NucleoDigital() {
   );
 }
 
-const LANDING_BENEFICIOS = [
-  { icon: ListTree, titulo: 'Inventario siempre actualizado', texto: 'Conoce el estado, la ubicación y el responsable de cada equipo biomédico.' },
-  { icon: ClipboardList, titulo: 'Hoja de vida completa', texto: 'Historial, documentos y trazabilidad de cada equipo en un solo lugar.' },
-  { icon: CalendarClock, titulo: 'Mantenimiento preventivo', texto: 'Programa mantenimientos y evita fallas inesperadas con alertas automáticas.' },
-  { icon: Wrench, titulo: 'Mantenimiento correctivo', texto: 'Registro de fallas, diagnóstico, repuestos y tiempos de respuesta.' },
-  { icon: ShieldCheck, titulo: 'Calibraciones al día', texto: 'Control de vigencia y certificados de calibración de todo el inventario.' },
-  { icon: ShieldAlert, titulo: 'Tecnovigilancia y reportes', texto: 'Reportes técnicos, indicadores y exportables en PDF y Excel.' },
-];
-
+// Flujo de información del módulo Biomédica (funcionalidades reales en operación).
 const LANDING_FLUJO = [
   { icon: ListTree, label: 'Inventario' },
   { icon: ClipboardList, label: 'Hoja de Vida' },
@@ -3092,18 +3097,6 @@ const LANDING_FLUJO = [
   { icon: ShieldCheck, label: 'Calibración' },
   { icon: FileText, label: 'Documentación' },
   { icon: BellRing, label: 'Alertas' },
-  { icon: FileBarChart, label: 'Reportes' },
-];
-
-const LANDING_MODULOS = [
-  { icon: LayoutDashboard, label: 'Dashboard' },
-  { icon: ListTree, label: 'Inventario de equipos' },
-  { icon: CalendarClock, label: 'Planes y programas' },
-  { icon: Wrench, label: 'Mantenimiento correctivo' },
-  { icon: ShieldCheck, label: 'Calibraciones' },
-  { icon: IdCard, label: 'Personal técnico' },
-  { icon: SprayCan, label: 'Limpieza y desinfección' },
-  { icon: ShieldAlert, label: 'Tecnovigilancia' },
   { icon: FileBarChart, label: 'Reportes' },
 ];
 
@@ -3129,137 +3122,394 @@ const LANDING_TEMAS_ESPECIALIDAD = [
   'linear-gradient(160deg, #0F172A 0%, #3B9FD6 50%, #3F9142 100%)',
 ];
 
+const LANDING_PASOS = [
+  { numero: '01', icon: Share2, titulo: 'Centraliza', texto: 'Todos los procesos y áreas pueden gestionarse desde una misma plataforma.' },
+  { numero: '02', icon: FolderOpen, titulo: 'Organiza', texto: 'Cada área puede contar con sus propios módulos, procesos, usuarios y permisos.' },
+  { numero: '03', icon: Activity, titulo: 'Controla', texto: 'Obtén trazabilidad, indicadores y seguimiento de las actividades de la organización.' },
+];
+
+const LANDING_EVOLUCION = [
+  { titulo: 'Biomédica', estado: 'En operación', color: '#16A34A', texto: 'Solución especializada: inventario, mantenimientos, calibraciones, hojas de vida y reportes de equipos biomédicos.' },
+  { titulo: 'Multiárea', estado: 'En desarrollo', color: '#D97706', texto: 'Gestión Humana, SST y Calidad se incorporan sobre el mismo núcleo de usuarios, empresas y permisos.' },
+  { titulo: 'Plataforma corporativa', estado: 'Visión', color: '#64748B', texto: 'Todas las áreas conectadas, con información e indicadores centralizados para la toma de decisiones.' },
+];
+
+const LANDING_BENEFICIOS = [
+  { icon: LayoutGrid, titulo: 'Centralización', texto: 'Un solo punto de acceso para múltiples procesos.' },
+  { icon: Activity, titulo: 'Trazabilidad', texto: 'Seguimiento de actividades, responsables y estados.' },
+  { icon: Database, titulo: 'Información', texto: 'Información organizada y disponible para cada área.' },
+  { icon: ShieldCheck, titulo: 'Seguridad', texto: 'Control de usuarios, roles y permisos.' },
+  { icon: Layers, titulo: 'Escalabilidad', texto: 'Agregar nuevas áreas sin construir sistemas independientes.' },
+  { icon: FileBarChart, titulo: 'Indicadores', texto: 'Información preparada para análisis y toma de decisiones.' },
+];
+
+const LANDING_GERENCIA = [
+  { icon: Lock, texto: 'Una autenticación' },
+  { icon: Settings, texto: 'Una administración' },
+  { icon: Cpu, texto: 'Una arquitectura' },
+  { icon: LayoutGrid, texto: 'Múltiples módulos' },
+  { icon: Building2, texto: 'Múltiples áreas' },
+  { icon: Database, texto: 'Información centralizada' },
+];
+
+// Colores de los estados sobre fondo oscuro (el verde/ámbar/gris de ESTADOS_MODULO se
+// aclaran para mantener el contraste sobre las bandas oscuras de la página).
+const LANDING_ESTADO_OSCURO = { ACTIVO: '#4ADE80', EN_DESARROLLO: '#FBBF24', PROXIMAMENTE: '#CBD5E1' };
+
+function LandingEstado({ estado, oscuro }) {
+  const e = ESTADOS_MODULO[estado] || ESTADOS_MODULO.PROXIMAMENTE;
+  const color = oscuro ? LANDING_ESTADO_OSCURO[estado] || '#CBD5E1' : e.color;
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-3xs font-bold uppercase tracking-wide whitespace-nowrap"
+      style={{ color, background: color + (oscuro ? '1F' : '14'), border: `1px solid ${color}${oscuro ? '55' : '40'}` }}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+      {e.label}
+    </span>
+  );
+}
+
+function LandingEncabezado({ etiqueta, titulo, texto, oscuro }) {
+  return (
+    <div className="landing-inview text-center max-w-3xl mx-auto">
+      <span className="inline-flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full"
+        style={oscuro ? { background: 'rgba(255,255,255,0.08)', color: '#7dd3fc', border: '1px solid rgba(255,255,255,0.14)' } : { background: '#DCEEFA', color: '#1D6FA5' }}>
+        {etiqueta}
+      </span>
+      <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: oscuro ? '#FFFFFF' : '#0F172A' }}>{titulo}</h2>
+      {texto && <p className="mt-3 text-sm sm:text-base leading-relaxed" style={{ color: oscuro ? 'rgba(255,255,255,0.72)' : '#5B6B7C' }}>{texto}</p>}
+    </div>
+  );
+}
+
+// Ecosistema de la plataforma: un núcleo común y las áreas conectadas a él. En escritorio
+// es un diagrama radial (líneas SVG animadas desde el núcleo); en móvil/tablet, el núcleo
+// arriba y las áreas en grilla debajo.
+const ECOSISTEMA_POSICIONES = [
+  { x: 15, y: 20 }, { x: 85, y: 20 }, { x: 88, y: 74 }, { x: 12, y: 74 }, { x: 50, y: 90 },
+];
+const ECOSISTEMA_CENTRO = { x: 50, y: 44 };
+
+function EcosistemaNodo({ rama }) {
+  const Icon = rama.icon;
+  return (
+    <div className="landing-glass-light rounded-2xl p-4 w-full" style={{ borderColor: rama.color + '40' }}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: rama.color + '1A', color: rama.color }}>
+            <Icon size={16} />
+          </span>
+          <span className="text-sm font-bold truncate" style={{ color: '#0F172A' }}>{rama.nombre}</span>
+        </div>
+        <span className="h-2 w-2 rounded-full shrink-0" style={{ background: ESTADOS_MODULO[rama.estado]?.color }} title={ESTADOS_MODULO[rama.estado]?.label} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {rama.procesos.map(p => (
+          <span key={p} className="text-3xs font-medium px-2 py-1 rounded-md" style={{ background: '#F1F6FA', color: '#475569' }}>{p}</span>
+        ))}
+        {rama.mas && <span className="text-3xs font-medium px-2 py-1 rounded-md" style={{ background: '#F1F6FA', color: '#475569' }}>…</span>}
+      </div>
+    </div>
+  );
+}
+
+function EcosistemaNucleo() {
+  return (
+    <div className="relative flex flex-col items-center text-center">
+      <div className="relative flex h-28 w-28 items-center justify-center" aria-hidden="true">
+        <span className="landing-ring absolute inset-0 rounded-full border-2" style={{ borderColor: 'rgba(59,159,214,0.45)' }} />
+        <span className="landing-ring absolute inset-0 rounded-full border-2" style={{ borderColor: 'rgba(63,145,66,0.35)', animationDelay: '1.2s' }} />
+        <div className="relative flex h-20 w-20 items-center justify-center rounded-full" style={{ background: 'linear-gradient(135deg, #3B9FD6 0%, #1f6f5c 55%, #3F9142 100%)', boxShadow: '0 0 40px -6px rgba(59,159,214,0.7)' }}>
+          <Layers size={32} className="text-white" />
+        </div>
+      </div>
+      <div className="mt-3 rounded-xl px-4 py-2.5 border" style={{ background: '#F5FAFD', borderColor: 'rgba(59,159,214,0.25)' }}>
+        <div className="text-sm font-bold uppercase tracking-wide" style={{ color: '#0F172A' }}>Plataforma integral</div>
+        <div className="mt-1 text-2xs max-w-[15rem]" style={{ color: '#5B6B7C' }}>Núcleo común: usuarios · empresas · roles · permisos · seguridad</div>
+      </div>
+    </div>
+  );
+}
+
+function EcosistemaPlataforma() {
+  return (
+    <>
+      {/* Escritorio: diagrama radial */}
+      <div className="landing-inview relative hidden lg:block mt-12" style={{ height: 600 }}>
+        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          {ECOSISTEMA_POSICIONES.map((p, i) => (
+            <line key={i} x1={ECOSISTEMA_CENTRO.x} y1={ECOSISTEMA_CENTRO.y} x2={p.x} y2={p.y}
+              className="landing-flow" stroke={LANDING_ECOSISTEMA[i].color} strokeOpacity="0.55" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+          ))}
+        </svg>
+        <div className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: `${ECOSISTEMA_CENTRO.x}%`, top: `${ECOSISTEMA_CENTRO.y}%` }}>
+          <EcosistemaNucleo />
+        </div>
+        {LANDING_ECOSISTEMA.map((rama, i) => (
+          <div key={rama.key} className="absolute -translate-x-1/2 -translate-y-1/2 w-60"
+            style={{ left: `${ECOSISTEMA_POSICIONES[i].x}%`, top: `${ECOSISTEMA_POSICIONES[i].y}%` }}>
+            <EcosistemaNodo rama={rama} />
+          </div>
+        ))}
+      </div>
+      {/* Móvil / tablet: núcleo arriba, áreas en grilla */}
+      <div className="landing-inview lg:hidden mt-10">
+        <EcosistemaNucleo />
+        <div className="mx-auto my-5" style={{ width: 1, height: 28, borderLeft: '1.5px dashed rgba(59,159,214,0.5)' }} aria-hidden="true" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {LANDING_ECOSISTEMA.map(rama => <EcosistemaNodo key={rama.key} rama={rama} />)}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Revela las secciones al entrar en pantalla (una sola vez). Sin IntersectionObserver
+// (navegadores muy viejos) o con movimiento reducido, todo queda visible de inmediato.
+function useLandingInView() {
+  useEffect(() => {
+    const elementos = Array.from(document.querySelectorAll('.landing-inview'));
+    const reducido = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reducido || typeof IntersectionObserver === 'undefined') {
+      elementos.forEach(el => el.classList.add('is-visible'));
+      return undefined;
+    }
+    const observador = new IntersectionObserver((entradas) => {
+      entradas.forEach((entrada) => {
+        if (entrada.isIntersecting) {
+          entrada.target.classList.add('is-visible');
+          observador.unobserve(entrada.target);
+        }
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+    elementos.forEach(el => observador.observe(el));
+    return () => observador.disconnect();
+  }, []);
+}
+
 function LandingPage({ onIniciarSesion, onReportarFalla }) {
+  useLandingInView();
+  const principales = LANDING_AREAS;
   return (
     <div className="min-h-dvh" style={{ fontFamily: "'IBM Plex Sans', sans-serif", background: '#EAF4FB' }}>
       <style>{LANDING_STYLES}</style>
 
-      <header className="sticky top-0 z-30 backdrop-blur border-b" style={{ background: 'rgba(234,244,251,0.85)', borderColor: 'rgba(59,159,214,0.15)' }}>
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <a href="#inicio" className="flex items-center gap-2.5">
-            <img src={logoIngenieriaClinica} alt="" width={28} height={28} style={{ objectFit: 'contain' }} />
-            <span className="text-sm font-semibold" style={{ color: '#0F172A' }}>Ingeniería Clínica</span>
+      <header className="sticky top-0 z-30 backdrop-blur border-b" style={{ background: 'rgba(234,244,251,0.88)', borderColor: 'rgba(59,159,214,0.15)' }}>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+          <a href="#inicio" className="flex items-center gap-2.5 min-w-0">
+            <img src={logoIngenieriaClinica} alt="" width={30} height={30} className="shrink-0" style={{ objectFit: 'contain' }} />
+            <span className="min-w-0 leading-tight">
+              <span className="block text-sm font-bold truncate" style={{ color: '#0F172A' }}>Plataforma Integral</span>
+              <span className="block text-3xs font-semibold uppercase tracking-widest truncate" style={{ color: '#1D6FA5' }}>de Gestión</span>
+            </span>
           </a>
-          <nav className="hidden md:flex items-center gap-8" aria-label="Secciones">
-            <a href="#inicio" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Inicio</a>
-            <a href="#beneficios" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Beneficios</a>
-            <a href="#especialidades" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Especialidades</a>
+          <nav className="hidden lg:flex items-center gap-7" aria-label="Secciones">
             <a href="#modulos" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Módulos</a>
+            <a href="#como-funciona" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Cómo funciona</a>
+            <a href="#ecosistema" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Plataforma</a>
+            <a href="#evolucion" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Evolución</a>
+            <a href="#beneficios" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Beneficios</a>
           </nav>
-          <button type="button" onClick={onIniciarSesion} className="landing-btn landing-btn-primary rounded-lg px-4 py-2 text-xs font-semibold text-white">
-            Ingresar
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button type="button" onClick={onReportarFalla} aria-label="Reportar una falla de equipo" className="landing-btn inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold border" style={{ borderColor: 'rgba(59,159,214,0.35)', color: '#1D6FA5', background: 'rgba(255,255,255,0.6)' }}>
+              <Wrench size={13} /> <span className="hidden sm:inline">Reportar falla</span>
+            </button>
+            <button type="button" onClick={onIniciarSesion} className="landing-btn landing-btn-primary rounded-lg px-4 py-2 text-xs font-semibold text-white">
+              Ingresar
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* HÉROE — banda oscura de marca con red neuronal animada + el equipo
-          biomédico en 3D (graphic motion HyperFrames) como pieza central. */}
-      <section id="inicio" className="relative overflow-hidden" style={{ background: 'linear-gradient(160deg, #081a2e 0%, #0d3455 55%, #0f4a44 100%)' }}>
+      {/* 1. HÉROE — la visión de plataforma en el primer vistazo: título, propuesta y, a la
+          derecha, las áreas de la organización con su estado real. */}
+      <section id="inicio" className="landing-anchor relative overflow-hidden" style={{ background: 'linear-gradient(160deg, #081a2e 0%, #0d3455 55%, #0f4a44 100%)' }}>
         <div className="absolute inset-0 landing-dotgrid-dark opacity-30 pointer-events-none" aria-hidden="true" />
         <div className="absolute -top-32 left-1/4 w-96 h-96 rounded-full pointer-events-none" style={{ background: '#3B9FD6', opacity: 0.25, filter: 'blur(110px)' }} aria-hidden="true" />
         <div className="absolute -bottom-40 right-0 w-[28rem] h-[28rem] rounded-full pointer-events-none" style={{ background: '#3F9142', opacity: 0.2, filter: 'blur(110px)' }} aria-hidden="true" />
         <RedNeuronalFondo tema="oscuro" densidad="alta" />
 
-        <div className="relative z-10 max-w-6xl mx-auto px-6 pt-16 pb-20 lg:pt-20 lg:pb-24 grid lg:grid-cols-2 gap-12 items-center">
-          <div className="landing-reveal">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="landing-glass-dark rounded-xl p-2 flex items-center justify-center shrink-0">
-                <img src={logoIngenieriaClinica} alt="" width={40} height={40} style={{ objectFit: 'contain' }} />
-              </div>
-              <span className="text-lg font-semibold tracking-tight text-white">Ingeniería Clínica</span>
-            </div>
-            <span className="inline-flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full border" style={{ borderColor: 'rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.06)', color: '#7dd3fc' }}>
-              <Zap size={12} /> La tecnología que impulsa la salud
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 pt-14 pb-16 lg:pt-20 lg:pb-24 grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-12 items-center">
+          <div className="landing-reveal min-w-0">
+            <span className="inline-flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.18em] px-3 py-1 rounded-full border" style={{ borderColor: 'rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.06)', color: '#7dd3fc' }}>
+              <Layers size={12} /> Plataforma Integral de Gestión
             </span>
-            <h1 className="mt-4 text-3xl sm:text-4xl lg:text-[2.85rem] font-bold leading-[1.12] tracking-tight text-white">
-              Gestiona, protege y da vida a tus{' '}
+            <h1 className="mt-5 text-3xl sm:text-4xl lg:text-[2.9rem] font-bold leading-[1.1] tracking-tight text-white">
+              Una sola plataforma.{' '}
               <span style={{ background: 'linear-gradient(90deg, #7dd3fc 0%, #6ee7b7 50%, #7dd3fc 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
-                equipos biomédicos
+                Todas las áreas de tu organización.
               </span>
             </h1>
-            <p className="mt-4 max-w-lg text-sm sm:text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.72)' }}>
-              La plataforma CMMS que te permite tener el control total de tu inventario, la documentación y el mantenimiento de tus equipos médicos.
+            <p className="mt-5 max-w-xl text-sm sm:text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>
+              Una solución diseñada para centralizar procesos, información, documentos, actividades e indicadores de las diferentes áreas de la empresa.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <button type="button" onClick={onIniciarSesion} className="landing-btn landing-btn-primary rounded-lg px-6 py-3 text-sm font-semibold text-white inline-flex items-center gap-2">
-                Ingresar al sistema <ChevronRight size={16} />
-              </button>
-              <button type="button" onClick={onReportarFalla} className="landing-btn landing-btn-outline-dark rounded-lg px-6 py-3 text-sm font-semibold inline-flex items-center gap-2">
-                <Wrench size={15} /> Reportar una falla
+              <a href="#modulos" className="landing-btn landing-btn-primary rounded-lg px-6 py-3 text-sm font-semibold text-white inline-flex items-center gap-2">
+                <LayoutGrid size={16} /> Explorar módulos
+              </a>
+              <button type="button" onClick={onIniciarSesion} className="landing-btn landing-btn-outline-dark rounded-lg px-6 py-3 text-sm font-semibold inline-flex items-center gap-2">
+                Ingresar a la plataforma <ChevronRight size={16} />
               </button>
             </div>
           </div>
 
-          {/* Panel de vidrio con el graphic motion 3D del equipo biomédico —
-              chips satélite anotados, calco del diagrama técnico de la
-              referencia, con datos reales del sistema (nunca inventados). */}
-          <div className="landing-reveal relative" style={{ animationDelay: '.12s' }}>
-            <div className="landing-glow absolute rounded-full pointer-events-none" style={{ inset: -30, background: 'radial-gradient(circle, rgba(59,159,214,0.3) 0%, rgba(34,211,238,0.14) 55%, transparent 75%)', filter: 'blur(6px)' }} aria-hidden="true" />
-            <div className="landing-glass-dark relative rounded-2xl p-3 overflow-hidden">
-              <video
-                className="w-full h-auto rounded-xl block"
-                autoPlay
-                loop
-                muted
-                playsInline
-                preload="metadata"
-                aria-hidden="true"
-              >
-                {/* mp4 (H.264) primero — es el códec más ampliamente soportado (Safari/iOS no
-                    reproduce WebM en absoluto); webm queda como respaldo para navegadores que
-                    no puedan decodificar H.264. */}
-                <source src="/media/hero-equipo-biomedico.mp4" type="video/mp4" />
-                <source src="/media/hero-equipo-biomedico.webm" type="video/webm" />
-              </video>
-            </div>
-            <div className="landing-float landing-glass-dark hidden sm:flex absolute -left-6 top-6 items-center gap-2 rounded-xl px-3 py-2" style={{ animationDelay: '.3s' }}>
-              <BellRing size={14} style={{ color: '#7dd3fc' }} />
-              <span className="text-2xs font-medium text-white">Alertas en tiempo real</span>
-            </div>
-            <div className="landing-float landing-glass-dark hidden sm:flex absolute -right-6 bottom-8 items-center gap-2 rounded-xl px-3 py-2" style={{ animationDelay: '.9s' }}>
-              <ShieldCheck size={14} style={{ color: '#6ee7b7' }} />
-              <span className="text-2xs font-medium text-white">Calibración vigente</span>
+          <div className="landing-reveal relative min-w-0" style={{ animationDelay: '.12s' }}>
+            <div className="landing-glow absolute rounded-full pointer-events-none" style={{ inset: -30, background: 'radial-gradient(circle, rgba(59,159,214,0.28) 0%, rgba(34,211,238,0.12) 55%, transparent 75%)', filter: 'blur(6px)' }} aria-hidden="true" />
+            <div className="landing-glass-dark relative rounded-2xl p-4 sm:p-6" style={{ background: 'rgba(8,26,46,0.78)' }}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-2xs font-semibold uppercase tracking-widest" style={{ color: '#7dd3fc' }}>Áreas de la organización</span>
+                <span className="text-3xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Un núcleo · muchas áreas</span>
+              </div>
+              <div className="mt-4 space-y-2.5">
+                {principales.map(a => {
+                  const Icon = a.icon;
+                  return (
+                    <div key={a.key} className="flex items-center gap-3 rounded-xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: a.color + '33', color: '#FFFFFF' }}>
+                        <Icon size={17} />
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-semibold text-white leading-snug">{a.titulo}</span>
+                        <span className="block text-3xs truncate" style={{ color: 'rgba(255,255,255,0.55)' }}>{a.caracteristicas.slice(0, 3).join(' · ')}</span>
+                      </span>
+                      <LandingEstado estado={a.estado} oscuro />
+                    </div>
+                  );
+                })}
+              </div>
+              <a href="#mas-modulos" className="mt-4 flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-semibold text-white transition hover:bg-white/10" style={{ border: '1px dashed rgba(255,255,255,0.22)' }}>
+                <span className="inline-flex items-center gap-2"><Plus size={14} /> {LANDING_OTRAS_AREAS.length} áreas más en la hoja de ruta</span>
+                <ChevronRight size={15} />
+              </a>
             </div>
           </div>
         </div>
       </section>
 
-      {/* BENEFICIOS — núcleo digital + 6 tarjetas de vidrio sobre fondo claro con
-          profundidad (degradado + manchas de color + red neuronal tenue), en vez
-          de un color plano. */}
-      <section id="beneficios" className="relative overflow-hidden py-20" style={{ background: 'linear-gradient(160deg, #EAF4FB 0%, #DCEEFA 45%, #E3F0FA 100%)' }}>
+      {/* 2. MÓDULOS DE LA ORGANIZACIÓN — sección principal: 4 áreas con su estado real. */}
+      <section id="modulos" className="landing-anchor relative overflow-hidden py-20" style={{ background: 'linear-gradient(160deg, #EAF4FB 0%, #DCEEFA 45%, #E3F0FA 100%)' }}>
         <RedNeuronalFondo tema="claro" densidad="baja" />
         <div className="absolute inset-0 landing-dotgrid-light opacity-50 pointer-events-none" aria-hidden="true" />
-        <div className="absolute -top-16 -right-16 w-80 h-80 rounded-full pointer-events-none" style={{ background: '#3B9FD6', opacity: 0.14, filter: 'blur(100px)' }} aria-hidden="true" />
-        <div className="absolute -bottom-24 -left-16 w-72 h-72 rounded-full pointer-events-none" style={{ background: '#3F9142', opacity: 0.12, filter: 'blur(100px)' }} aria-hidden="true" />
-        <div className="relative max-w-6xl mx-auto px-6">
-          <div className="text-center">
-            <span className="inline-flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full" style={{ background: '#DCEEFA', color: '#1D6FA5' }}>
-              Beneficios
-            </span>
-            <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Todo bajo control</h2>
-            <p className="mt-2 text-sm max-w-xl mx-auto" style={{ color: '#5B6B7C' }}>
-              Un ecosistema digital donde equipos, información y decisiones están conectados.
-            </p>
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
+          <LandingEncabezado etiqueta="Módulos de la organización" titulo="Una plataforma que puede crecer con tu organización"
+            texto="Comenzamos con la gestión biomédica y evolucionamos hacia una plataforma capaz de integrar diferentes áreas y procesos empresariales." />
+          <div className="landing-inview mt-6 flex flex-wrap justify-center gap-2">
+            {['ACTIVO', 'EN_DESARROLLO', 'PROXIMAMENTE'].map(e => <LandingEstado key={e} estado={e} />)}
           </div>
 
-          <NucleoDigital />
-          <div className="mx-auto mb-10" style={{ width: 1, height: 28, borderLeft: '1px dashed rgba(59,159,214,0.4)' }} aria-hidden="true" />
+          <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-5">
+            {principales.map((a, i) => {
+              const Icon = a.icon;
+              const activo = a.estado === 'ACTIVO';
+              return (
+                <article key={a.key} className="landing-inview landing-glass-light rounded-2xl overflow-hidden flex flex-col" style={{ transitionDelay: `${i * 70}ms` }}>
+                  <div className="h-1.5" style={{ background: a.color }} />
+                  <div className="p-6 flex flex-col flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${a.color} 0%, ${a.color}CC 100%)`, boxShadow: `0 12px 24px -10px ${a.color}99` }}>
+                        <Icon size={26} className="text-white" />
+                      </div>
+                      <LandingEstado estado={a.estado} />
+                    </div>
+                    <h3 className="mt-5 text-xl font-bold tracking-tight" style={{ color: '#0F172A' }}>{a.titulo}</h3>
+                    <div className="text-3xs font-bold uppercase tracking-widest mt-1" style={{ color: a.color }}>{a.etiqueta}</div>
+                    <p className="mt-3 text-sm leading-relaxed" style={{ color: '#5B6B7C' }}>{a.descripcion}</p>
+                    <ul className="mt-5 flex flex-wrap gap-2">
+                      {a.caracteristicas.map(c => (
+                        <li key={c} className="inline-flex items-center gap-1.5 text-2xs font-medium px-2.5 py-1.5 rounded-lg"
+                          style={activo ? { background: a.color + '14', color: '#0F172A', border: `1px solid ${a.color}33` } : { background: '#F7FAFC', color: '#64748B', border: '1px dashed #CBD5E1' }}>
+                          {activo ? <CheckCircle2 size={12} style={{ color: a.color }} /> : <CalendarClock size={12} />} {c}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-auto pt-6 flex flex-wrap gap-2">
+                      {activo ? (
+                        <>
+                          <a href="#biomedica" className="landing-btn rounded-lg px-5 py-2.5 text-xs font-semibold text-white inline-flex items-center gap-2" style={{ background: a.color, boxShadow: `0 12px 24px -12px ${a.color}` }}>
+                            Conocer módulo <ChevronRight size={14} />
+                          </a>
+                          <button type="button" onClick={onIniciarSesion} className="landing-btn rounded-lg px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-2 border" style={{ borderColor: a.color + '55', color: a.color, background: '#FFFFFF' }}>
+                            Ingresar
+                          </button>
+                        </>
+                      ) : (
+                        <span className="rounded-lg px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-2 border cursor-default select-none" aria-disabled="true"
+                          style={{ borderColor: '#CBD5E1', color: '#64748B', background: '#F8FAFC' }}>
+                          <CalendarClock size={14} /> Próximamente
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {LANDING_BENEFICIOS.map(({ icon: Icon, titulo, texto }, i) => (
-              <div key={titulo} className="landing-glass-light landing-reveal rounded-2xl p-5" style={{ animationDelay: `${i * 0.06}s` }}>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: 'linear-gradient(135deg, #3F9142 0%, #3B9FD6 100%)', boxShadow: '0 10px 20px -8px rgba(59,159,214,0.4)' }}>
-                  <Icon size={18} className="text-white" />
-                </div>
-                <h3 className="text-sm font-semibold" style={{ color: '#0F172A' }}>{titulo}</h3>
-                <p className="text-xs mt-1.5 leading-relaxed" style={{ color: '#5B6B7C' }}>{texto}</p>
+          {/* 3. Y MUCHO MÁS… */}
+          <div id="mas-modulos" className="landing-anchor mt-16">
+            <div className="landing-inview text-center">
+              <h3 className="text-xl sm:text-2xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Y mucho más...</h3>
+              <p className="mt-2 text-sm" style={{ color: '#5B6B7C' }}>Áreas que pueden incorporarse sobre la misma plataforma.</p>
+            </div>
+            <div className="mt-8 grid grid-cols-1 min-[440px]:grid-cols-2 lg:grid-cols-4 gap-4">
+              {LANDING_OTRAS_AREAS.map((a, i) => {
+                const Icon = a.icon;
+                return (
+                  <div key={a.key} className="landing-inview landing-glass-light rounded-2xl p-5" style={{ transitionDelay: `${(i % 4) * 60}ms` }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: a.color + '1A', color: a.color }}>
+                        <Icon size={19} />
+                      </span>
+                      <LandingEstado estado={a.estado} />
+                    </div>
+                    <h4 className="mt-4 text-sm font-bold" style={{ color: '#0F172A' }}>{a.titulo}</h4>
+                    <p className="mt-1.5 text-xs leading-relaxed" style={{ color: '#5B6B7C' }}>{a.descripcion}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* MÓDULO ACTIVO: BIOMÉDICA — lo que hoy ya funciona, con el material real del proyecto
+          (video del equipo, flujo de información y especialidades cubiertas). */}
+      <section id="biomedica" className="landing-anchor relative overflow-hidden py-20" style={{ background: 'linear-gradient(180deg, #FFFFFF 0%, #F3F9FC 55%, #EAF4FB 100%)' }}>
+        <RedNeuronalFondo tema="claro" densidad="baja" />
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+            <div className="landing-inview min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full" style={{ background: '#DCEEFA', color: '#1D6FA5' }}>
+                  Primer módulo
+                </span>
+                <LandingEstado estado="ACTIVO" />
               </div>
-            ))}
+              <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Biomédica: el módulo que ya está en operación</h2>
+              <p className="mt-3 text-sm sm:text-base leading-relaxed" style={{ color: '#5B6B7C' }}>
+                Inventario, hojas de vida, mantenimientos preventivos y correctivos, calibraciones, tecnovigilancia y reportes de falla
+                de los equipos biomédicos de cada empresa y sede.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button type="button" onClick={onIniciarSesion} className="landing-btn landing-btn-primary rounded-lg px-5 py-2.5 text-sm font-semibold text-white inline-flex items-center gap-2">
+                  Ingresar al módulo <ChevronRight size={15} />
+                </button>
+                <button type="button" onClick={onReportarFalla} className="landing-btn rounded-lg px-5 py-2.5 text-sm font-semibold inline-flex items-center gap-2 border" style={{ borderColor: 'rgba(59,159,214,0.4)', color: '#1D6FA5', background: '#FFFFFF' }}>
+                  <Wrench size={15} /> Reportar una falla
+                </button>
+              </div>
+            </div>
+            <div className="landing-inview relative min-w-0">
+              <div className="landing-glass-dark relative rounded-2xl p-3 overflow-hidden" style={{ background: 'linear-gradient(160deg, #081a2e 0%, #0d3455 100%)' }}>
+                <video className="w-full h-auto rounded-xl block" autoPlay loop muted playsInline preload="metadata" aria-hidden="true">
+                  {/* mp4 (H.264) primero: Safari/iOS no reproduce WebM. */}
+                  <source src="/media/hero-equipo-biomedico.mp4" type="video/mp4" />
+                  <source src="/media/hero-equipo-biomedico.webm" type="video/webm" />
+                </video>
+              </div>
+            </div>
           </div>
 
-          {/* Flujo — "Así fluye la información de cada equipo": cadena de 7 chips. */}
-          <div className="landing-glass-light mt-10 rounded-2xl px-6 py-6">
+          <div className="landing-inview landing-glass-light mt-10 rounded-2xl px-4 sm:px-6 py-6">
             <div className="text-center text-2xs font-semibold uppercase tracking-wide mb-5" style={{ color: '#5B6B7C' }}>
               Así fluye la información de cada equipo
             </div>
@@ -3279,40 +3529,16 @@ function LandingPage({ onIniciarSesion, onReportarFalla }) {
               ))}
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* ESPECIALIDADES — fotos reales de equipos, agrupadas por área clínica. */}
-      <section id="especialidades" className="relative overflow-hidden py-20" style={{ background: 'linear-gradient(180deg, #E3F0FA 0%, #DCEEFA 50%, #EAF4FB 100%)' }}>
-        <RedNeuronalFondo tema="claro" densidad="media" />
-        <div className="absolute -left-24 top-1/3 w-80 h-80 rounded-full pointer-events-none" style={{ background: '#3B9FD6', opacity: 0.14, filter: 'blur(100px)' }} aria-hidden="true" />
-        <div className="absolute -right-16 bottom-0 w-72 h-72 rounded-full pointer-events-none" style={{ background: '#3F9142', opacity: 0.12, filter: 'blur(100px)' }} aria-hidden="true" />
-        <div className="relative max-w-6xl mx-auto px-6">
-          <div className="text-center">
-            <span className="inline-flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full" style={{ background: '#DCEEFA', color: '#1D6FA5' }}>
-              Especialidades
-            </span>
-            <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Un solo sistema para múltiples especialidades</h2>
-          </div>
-
-          <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="mt-10 grid grid-cols-1 min-[440px]:grid-cols-2 lg:grid-cols-4 gap-4">
             {LANDING_ESPECIALIDADES.map(({ nombre, texto, imagen }, i) => (
-              <div key={nombre} className="landing-reveal group relative flex h-72 flex-col overflow-hidden rounded-2xl transition-transform duration-300 hover:-translate-y-1.5" style={{ boxShadow: '0 12px 28px -18px rgba(15,58,90,0.35)', animationDelay: `${i * 0.06}s` }}>
-                <img
-                  src={imagen}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                  style={{ transform: 'scale(1)' }}
-                />
+              <div key={nombre} className="landing-inview group relative flex h-56 flex-col overflow-hidden rounded-2xl" style={{ boxShadow: '0 12px 28px -18px rgba(15,58,90,0.35)', transitionDelay: `${(i % 4) * 60}ms` }}>
+                <img src={imagen} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
                 <div className="absolute inset-0 opacity-40" style={{ background: LANDING_TEMAS_ESPECIALIDAD[i % LANDING_TEMAS_ESPECIALIDAD.length], mixBlendMode: 'multiply' }} aria-hidden="true" />
-                <div className="absolute inset-0 transition-opacity duration-200" style={{ background: 'linear-gradient(0deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.08) 55%, transparent 100%)' }} aria-hidden="true" />
-                <div className="relative mt-auto p-5">
-                  <h3 className="text-base font-semibold text-white">{nombre}</h3>
-                  <p className="mt-1 max-h-0 overflow-hidden text-xs leading-relaxed text-white/85 opacity-0 transition-all duration-300 group-hover:mt-1.5 group-hover:max-h-16 group-hover:opacity-100">
-                    {texto}
-                  </p>
+                <div className="absolute inset-0" style={{ background: 'linear-gradient(0deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.08) 55%, transparent 100%)' }} aria-hidden="true" />
+                <div className="relative mt-auto p-4">
+                  <h3 className="text-sm font-semibold text-white">{nombre}</h3>
+                  <p className="mt-1 max-h-0 overflow-hidden text-xs leading-relaxed text-white/85 opacity-0 transition-all duration-300 group-hover:max-h-16 group-hover:opacity-100">{texto}</p>
                 </div>
               </div>
             ))}
@@ -3320,94 +3546,155 @@ function LandingPage({ onIniciarSesion, onReportarFalla }) {
         </div>
       </section>
 
-      {/* MÓDULOS — chips de vidrio sobre fondo claro con la misma profundidad
-          (degradado + manchas + red neuronal tenue) que el resto de secciones
-          claras, en vez de blanco plano. */}
-      <section id="modulos" className="relative overflow-hidden py-20" style={{ background: 'linear-gradient(160deg, #FFFFFF 0%, #F3F9FC 55%, #EAF4FB 100%)' }}>
+      {/* 4. ¿CÓMO FUNCIONA? */}
+      <section id="como-funciona" className="landing-anchor relative overflow-hidden py-20" style={{ background: 'linear-gradient(135deg, #0F172A 0%, #0d3455 55%, #0f4a44 100%)' }}>
+        <div className="absolute inset-0 landing-dotgrid-dark opacity-30 pointer-events-none" aria-hidden="true" />
+        <RedNeuronalFondo tema="oscuro" densidad="media" />
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6">
+          <LandingEncabezado oscuro etiqueta="¿Cómo funciona?" titulo="Tres pasos hacia una organización conectada" />
+          <ol className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-5">
+            {LANDING_PASOS.map(({ numero, icon: Icon, titulo, texto }, i) => (
+              <li key={numero} className="landing-inview landing-glass-dark rounded-2xl p-6 relative" style={{ transitionDelay: `${i * 90}ms` }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-4xl font-bold tracking-tight" style={{ background: 'linear-gradient(90deg, #7dd3fc 0%, #6ee7b7 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>{numero}</span>
+                  <span className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: 'rgba(125,211,252,0.12)', color: '#7dd3fc' }}>
+                    <Icon size={20} />
+                  </span>
+                </div>
+                <h3 className="mt-4 text-lg font-bold text-white">{titulo}</h3>
+                <p className="mt-2 text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.72)' }}>{texto}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* 5. REPRESENTACIÓN VISUAL — un núcleo + muchas áreas. */}
+      <section id="ecosistema" className="landing-anchor relative overflow-hidden py-20" style={{ background: 'linear-gradient(160deg, #F3F9FC 0%, #E3F0FA 55%, #EAF4FB 100%)' }}>
+        <div className="absolute inset-0 landing-dotgrid-light opacity-50 pointer-events-none" aria-hidden="true" />
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
+          <LandingEncabezado etiqueta="La plataforma" titulo="Una plataforma para conectar, gestionar y controlar los procesos de toda la organización."
+            texto="Centraliza las operaciones de tus diferentes áreas en un solo lugar, con usuarios, permisos, trazabilidad e información organizada." />
+          <EcosistemaPlataforma />
+        </div>
+      </section>
+
+      {/* 6. DE UNA SOLUCIÓN A UNA PLATAFORMA — storytelling para gerencia. */}
+      <section id="evolucion" className="landing-anchor relative overflow-hidden py-20" style={{ background: '#FFFFFF' }}>
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
+          <LandingEncabezado etiqueta="De una solución a una plataforma" titulo="De la gestión biomédica a la gestión empresarial"
+            texto="La plataforma nace como una solución especializada para la gestión biomédica. Su arquitectura permite evolucionar progresivamente hacia una solución transversal para diferentes áreas de la organización." />
+          <ol className="mt-12 flex flex-col lg:flex-row items-stretch gap-3 lg:gap-0">
+            {LANDING_EVOLUCION.map((paso, i) => (
+              <React.Fragment key={paso.titulo}>
+                {i > 0 && (
+                  <li aria-hidden="true" className="flex items-center justify-center lg:px-3" style={{ color: '#94A3B8' }}>
+                    <ChevronRight size={26} className="hidden lg:block" />
+                    <ChevronRight size={24} className="lg:hidden rotate-90" />
+                  </li>
+                )}
+                <li className="landing-inview flex-1 rounded-2xl p-6 border relative overflow-hidden" style={{ borderColor: paso.color + '40', background: `linear-gradient(160deg, ${paso.color}0D 0%, #FFFFFF 70%)`, transitionDelay: `${i * 120}ms` }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-3xs font-bold uppercase tracking-widest" style={{ color: paso.color }}>Etapa {i + 1}</span>
+                    <span className="text-3xs font-bold uppercase tracking-wide px-2 py-1 rounded-full" style={{ color: paso.color, background: paso.color + '14' }}>{paso.estado}</span>
+                  </div>
+                  <h3 className="mt-3 text-lg font-bold" style={{ color: '#0F172A' }}>{paso.titulo}</h3>
+                  <p className="mt-2 text-sm leading-relaxed" style={{ color: '#5B6B7C' }}>{paso.texto}</p>
+                </li>
+              </React.Fragment>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* 7. BENEFICIOS PARA LA ORGANIZACIÓN */}
+      <section id="beneficios" className="landing-anchor relative overflow-hidden py-20" style={{ background: 'linear-gradient(160deg, #EAF4FB 0%, #DCEEFA 45%, #E3F0FA 100%)' }}>
         <RedNeuronalFondo tema="claro" densidad="baja" />
-        <div className="absolute -top-20 right-1/4 w-72 h-72 rounded-full pointer-events-none" style={{ background: '#3B9FD6', opacity: 0.1, filter: 'blur(100px)' }} aria-hidden="true" />
-        <div className="relative max-w-6xl mx-auto px-6">
-          <div className="text-center">
-            <span className="inline-flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full" style={{ background: '#DCEEFA', color: '#1D6FA5' }}>
-              Módulos
-            </span>
-            <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Todo integrado, nada disperso</h2>
-          </div>
-          <div className="mt-10 flex flex-wrap justify-center gap-3">
-            {LANDING_MODULOS.map(({ icon: Icon, label }) => (
-              <span key={label} className="landing-chip inline-flex items-center gap-2 text-xs font-medium px-4 py-2.5 rounded-full border" style={{ borderColor: '#DCE7F0', color: '#334155', background: '#F7FBFD' }}>
-                <Icon size={14} style={{ color: '#3B9FD6' }} /> {label}
-              </span>
+        <div className="absolute inset-0 landing-dotgrid-light opacity-50 pointer-events-none" aria-hidden="true" />
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
+          <LandingEncabezado etiqueta="Beneficios" titulo="Beneficios para la organización" />
+          <NucleoDigital />
+          <div className="mx-auto mb-10" style={{ width: 1, height: 28, borderLeft: '1px dashed rgba(59,159,214,0.4)' }} aria-hidden="true" />
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {LANDING_BENEFICIOS.map(({ icon: Icon, titulo, texto }, i) => (
+              <div key={titulo} className="landing-inview landing-glass-light rounded-2xl p-5" style={{ transitionDelay: `${(i % 3) * 70}ms` }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: 'linear-gradient(135deg, #3F9142 0%, #3B9FD6 100%)', boxShadow: '0 10px 20px -8px rgba(59,159,214,0.4)' }}>
+                  <Icon size={18} className="text-white" />
+                </div>
+                <h3 className="text-sm font-semibold" style={{ color: '#0F172A' }}>{titulo}</h3>
+                <p className="text-xs mt-1.5 leading-relaxed" style={{ color: '#5B6B7C' }}>{texto}</p>
+              </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* SECCIÓN DE VALOR — banda oscura con red neuronal, mismo lenguaje del héroe. */}
-      <section className="relative overflow-hidden text-center py-20" style={{ background: 'linear-gradient(135deg, #0F172A 0%, #0d3455 55%, #0f4a44 100%)' }}>
+      {/* 8. PARA GERENCIA — una sola plataforma para toda la organización. */}
+      <section id="gerencia" className="landing-anchor relative overflow-hidden py-20" style={{ background: 'linear-gradient(135deg, #0F172A 0%, #0d3455 55%, #0f4a44 100%)' }}>
         <div className="absolute inset-0 landing-dotgrid-dark opacity-30 pointer-events-none" aria-hidden="true" />
         <div className="absolute -left-20 top-0 w-72 h-72 rounded-full pointer-events-none" style={{ background: '#3B9FD6', opacity: 0.25, filter: 'blur(90px)' }} aria-hidden="true" />
         <div className="absolute -right-16 bottom-0 w-64 h-64 rounded-full pointer-events-none" style={{ background: '#3F9142', opacity: 0.25, filter: 'blur(90px)' }} aria-hidden="true" />
         <RedNeuronalFondo tema="oscuro" densidad="alta" />
-        <div className="landing-reveal relative z-10 max-w-2xl mx-auto px-6">
-          {/* Marca animada — el mismo graphic motion 3D del logo, enmarcado en vidrio
-              con glow para que se integre con el fondo de la sección en vez de flotar
-              como un recuadro suelto. */}
-          <div className="relative mx-auto mb-8" style={{ width: 168, height: 168 }}>
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-10 items-center">
+          <div className="landing-inview relative mx-auto" style={{ width: 168, height: 168 }}>
             <div className="landing-glow absolute rounded-full pointer-events-none" style={{ inset: -20, background: 'radial-gradient(circle, rgba(59,159,214,0.35) 0%, rgba(167,139,250,0.18) 55%, transparent 75%)', filter: 'blur(6px)' }} aria-hidden="true" />
             <div className="landing-glass-dark relative w-full h-full rounded-full p-2 overflow-hidden">
-              <video
-                className="w-full h-full rounded-full block"
-                style={{ objectFit: 'cover' }}
-                autoPlay
-                loop
-                muted
-                playsInline
-                preload="metadata"
-                aria-hidden="true"
-              >
+              <video className="w-full h-full rounded-full block" style={{ objectFit: 'cover' }} autoPlay loop muted playsInline preload="metadata" aria-hidden="true">
                 <source src="/media/logo-reveal-loop.mp4" type="video/mp4" />
                 <source src="/media/logo-reveal-loop.webm" type="video/webm" />
               </video>
             </div>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Más control. Menos riesgos. Mejores decisiones.</h2>
-          <p className="mt-4 text-sm sm:text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.72)' }}>
-            Centraliza la información de tus equipos biomédicos, automatiza el seguimiento del mantenimiento y mantén toda la documentación disponible cuando la necesites.
-          </p>
+          <div className="landing-inview min-w-0">
+            <span className="inline-flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide px-3 py-1 rounded-full" style={{ background: 'rgba(255,255,255,0.08)', color: '#7dd3fc', border: '1px solid rgba(255,255,255,0.14)' }}>
+              Para gerencia
+            </span>
+            <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight text-white">Una sola plataforma para toda la organización</h2>
+            <p className="mt-3 text-sm sm:text-base leading-relaxed max-w-3xl" style={{ color: 'rgba(255,255,255,0.75)' }}>
+              En lugar de desarrollar herramientas independientes para cada área, la organización puede construir progresivamente un ecosistema digital sobre una misma plataforma.
+            </p>
+            <div className="mt-7 grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {LANDING_GERENCIA.map(({ icon: Icon, texto }) => (
+                <div key={texto} className="landing-glass-dark rounded-xl px-4 py-3 flex items-center gap-3">
+                  <Icon size={17} style={{ color: '#6ee7b7' }} className="shrink-0" />
+                  <span className="text-xs sm:text-sm font-semibold text-white">{texto}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* CTA FINAL — banda oscura de vidrio con glow, igual lenguaje del héroe. */}
+      {/* 9. LLAMADO A LA ACCIÓN */}
       <section className="relative overflow-hidden" style={{ background: 'linear-gradient(160deg, #0d3455 0%, #1f6f5c 55%, #3F9142 100%)' }}>
         <div className="absolute inset-0 landing-dotgrid-dark opacity-30 pointer-events-none" aria-hidden="true" />
         <div className="absolute -top-20 -left-12 w-72 h-72 rounded-full pointer-events-none" style={{ background: '#7DD3FC', opacity: 0.22, filter: 'blur(100px)' }} aria-hidden="true" />
-        <div className="relative max-w-6xl mx-auto px-6 py-20 text-center">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">¿Listo para ingresar a la plataforma?</h2>
-          <p className="mt-3 text-sm max-w-lg mx-auto" style={{ color: 'rgba(255,255,255,0.78)' }}>
-            Accede con tu usuario administrador o repórtanos una falla si eres coordinador de sede.
+        <div className="landing-inview relative max-w-6xl mx-auto px-4 sm:px-6 py-20 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Comienza con el módulo que tu organización necesita</h2>
+          <p className="mt-3 text-sm sm:text-base max-w-xl mx-auto" style={{ color: 'rgba(255,255,255,0.8)' }}>
+            Explora las capacidades de la plataforma y descubre cómo puede evolucionar junto con tu organización.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <button type="button" onClick={onIniciarSesion} className="landing-btn rounded-lg px-6 py-3 text-sm font-semibold inline-flex items-center gap-2" style={{ background: '#FFFFFF', color: '#0F172A' }}>
-              Ingresar al sistema <ChevronRight size={16} />
+              Ingresar a la plataforma <ChevronRight size={16} />
             </button>
-            <button type="button" onClick={onReportarFalla} className="landing-btn landing-btn-outline-dark rounded-lg px-6 py-3 text-sm font-semibold inline-flex items-center gap-2">
-              <Wrench size={15} /> Reportar una falla
-            </button>
+            <a href="#modulos" className="landing-btn landing-btn-outline-dark rounded-lg px-6 py-3 text-sm font-semibold inline-flex items-center gap-2">
+              <LayoutGrid size={15} /> Explorar módulos
+            </a>
           </div>
         </div>
       </section>
 
       <footer className="border-t" style={{ borderColor: '#DCE7F0', background: '#FFFFFF' }}>
-        <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <img src={logoIngenieriaClinica} alt="" width={18} height={18} style={{ objectFit: 'contain' }} />
-            <span className="text-2xs" style={{ color: '#8A97A6' }}>Ingeniería Clínica · Plataforma de gestión de equipos biomédicos</span>
+            <span className="text-2xs" style={{ color: '#8A97A6' }}>Plataforma Integral de Gestión · Primer módulo: Biomédica</span>
           </div>
-          <div className="flex items-center gap-5">
+          <div className="flex flex-wrap items-center justify-center gap-5">
             <button type="button" onClick={onReportarFalla} className="landing-link text-2xs font-medium" style={{ color: '#5B6B7C' }}>Reportar una falla</button>
             <button type="button" onClick={onIniciarSesion} className="landing-link text-2xs font-medium" style={{ color: '#5B6B7C' }}>Iniciar sesión</button>
-            <span className="text-2xs" style={{ color: '#B4BCC6' }}>Versión 2.0</span>
+            <span className="text-2xs" style={{ color: '#B4BCC6' }}>Versión 3.0</span>
           </div>
         </div>
       </footer>
@@ -3545,10 +3832,10 @@ function LoginScreen({ notice, onLogin, onReportarFalla, onBack }) {
             <h1 className="text-5xl font-extrabold tracking-tight" style={{ color: '#173B6C' }}>BIENVENIDO</h1>
             <div className="w-12 h-1 rounded-full mt-3 mb-4" style={{ background: 'linear-gradient(90deg, #173B6C 0%, #3CAA55 100%)' }} />
             <p className="text-lg leading-snug">
-              <span className="font-bold" style={{ color: '#173B6C' }}>Sistema Integral para la Gestión</span><br />
-              <span className="font-bold" style={{ color: '#3CAA55' }}>de Equipos Biomédicos</span>
+              <span className="font-bold" style={{ color: '#173B6C' }}>Plataforma Integral</span><br />
+              <span className="font-bold" style={{ color: '#3CAA55' }}>de Gestión</span>
             </p>
-            <p className="text-sm text-slate-500 mt-3 max-w-sm">Controla, gestiona y optimiza el ciclo de vida de tus equipos biomédicos de forma inteligente y eficiente.</p>
+            <p className="text-sm text-slate-500 mt-3 max-w-sm">Conecta, gestiona y controla los procesos de las diferentes áreas de tu organización en un solo lugar.</p>
           </div>
 
           {/* LOGO — elemento principal de la pantalla, con halo y constelación decorativa.
@@ -3582,7 +3869,7 @@ function LoginScreen({ notice, onLogin, onReportarFalla, onBack }) {
               <img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={96} height={96} style={{ objectFit: 'contain' }} />
               <img src={logoMacromed} alt="Macromed Coop." width={96} height={96} style={{ objectFit: 'contain' }} />
             </div>
-            <div className="text-xl font-bold tracking-wide text-center" style={{ color: '#173B6C' }}>CMMS BIOMÉDICA</div>
+            <div className="text-xl font-bold tracking-wide text-center" style={{ color: '#173B6C' }}>PLATAFORMA INTEGRAL</div>
             <p className="text-xs text-slate-400 mt-1 mb-7 text-center">Inicie sesión para continuar.</p>
 
             <form onSubmit={submit} className="space-y-4">
