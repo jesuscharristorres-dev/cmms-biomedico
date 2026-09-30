@@ -121,7 +121,8 @@
         sede: sedeDe(empresa), estado: 'Operativo', preventivos: [], correctivos: [], calibraciones: [], documentos: [],
         observaciones: `DATO PRIVADO DE ${empresa}`,
       } } });
-      check('preparacion', `Usuario ${n} crea (o ya tenía) su equipo de prueba`, ce.status === 200 && ids(ce.body.equipos).includes(EQ[n]), st(ce));
+      // POST solo devuelve los equipos agregados (vacío si ya existía); la lectura se verifica abajo con GET.
+      check('preparacion', `Usuario ${n} crea (o ya tenía) su equipo de prueba`, ce.status === 200 && Array.isArray(ce.body.creados) && ce.body.creados.every(e => e.empresa === empresa), st(ce));
       const cp = await http('POST', '/api/personal', { as, body: { record: {
         id: PER[n], nombreCompleto: `PRUEBA Persona Empresa ${n}`, tipoDocumento: 'CC', numeroDocumento: `PRUEBA-${n}`, cargo: 'PRUEBA', estado: 'Activo',
       } } });

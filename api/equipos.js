@@ -11,7 +11,10 @@
 //   PATCH  → solo si el equipo es de una empresa accesible (anti-IDOR); solo el SUPER_ADMIN
 //            puede moverlo a otra empresa.
 //   DELETE → idem PATCH.
-// Las respuestas SIEMPRE devuelven la lista recortada a lo que el usuario puede ver.
+// GET devuelve la lista recortada a lo que el usuario puede ver. Las ESCRITURAS devuelven solo
+// lo afectado (no la colección): antes cada PATCH —que la hoja de vida envía en cada tecla—
+// respondía el inventario completo (~4 MB medidos en Production), principal fuente de
+// Fast Origin Transfer. El frontend no usaba esa colección salvo para su caché local.
 
 import { kv } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
@@ -55,7 +58,8 @@ export default withErrors('api/equipos', 'No se pudo acceder a la base de datos 
     const aAgregar = normalizados.filter(e => !existentes.has(e.id));
     const actualizados = [...equipos, ...aAgregar];
     await kv.set(KV_KEY, actualizados);
-    return res.status(200).json({ equipos: scopeArray(ctx, actualizados) });
+    // Solo los equipos realmente agregados (todos de una empresa accesible: resolveEmpresaForWrite).
+    return res.status(200).json({ ok: true, creados: aAgregar });
   }
 
   if (req.method === 'PATCH') {
@@ -67,7 +71,7 @@ export default withErrors('api/equipos', 'No se pudo acceder a la base de datos 
     const actualizados = [...equipos];
     actualizados[idx] = actualizado;
     await kv.set(KV_KEY, actualizados);
-    return res.status(200).json({ equipo: actualizado, equipos: scopeArray(ctx, actualizados) });
+    return res.status(200).json({ equipo: actualizado });
   }
 
   if (req.method === 'DELETE') {
@@ -78,7 +82,7 @@ export default withErrors('api/equipos', 'No se pudo acceder a la base de datos 
     // Se elimina por posición (el registro ya verificado), nunca "todos los que tengan ese id".
     const actualizados = equipos.filter((_, i) => i !== idx);
     await kv.set(KV_KEY, actualizados);
-    return res.status(200).json({ equipos: scopeArray(ctx, actualizados) });
+    return res.status(200).json({ ok: true, id });
   }
 
   return methodNotAllowed(res, ['GET', 'POST', 'PATCH', 'DELETE']);

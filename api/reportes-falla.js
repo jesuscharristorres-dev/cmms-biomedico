@@ -113,7 +113,8 @@ export default withErrors('api/reportes-falla', 'No se pudo acceder a la base de
     const actualizados = [...reportes];
     actualizados[idx] = actualizado;
     await kv.set(KV_KEY, actualizados);
-    return res.status(200).json({ reporte: actualizado, reportes: scopeArray(ctx, actualizados) });
+    // Solo el reporte actualizado: el frontend no usa la colección (ver api/equipos.js).
+    return res.status(200).json({ reporte: actualizado });
   }
 
   if (req.method === 'DELETE') {
@@ -123,12 +124,12 @@ export default withErrors('api/reportes-falla', 'No se pudo acceder a la base de
       const idx = findOwned(ctx, reportes, id);
       const actualizados = reportes.filter((_, i) => i !== idx);
       await kv.set(KV_KEY, actualizados);
-      return res.status(200).json({ reportes: scopeArray(ctx, actualizados) });
+      return res.status(200).json({ ok: true, id });
     }
     const empresa = empresaFilter(ctx, req.query); // null solo para SUPER_ADMIN sin filtro
     const actualizados = empresa ? reportes.filter(r => r.empresa !== empresa) : [];
     await kv.set(KV_KEY, actualizados);
-    return res.status(200).json({ reportes: scopeArray(ctx, actualizados) });
+    return res.status(200).json({ ok: true, eliminados: reportes.length - actualizados.length });
   }
 
   return methodNotAllowed(res, ['GET', 'POST', 'PATCH', 'DELETE']);

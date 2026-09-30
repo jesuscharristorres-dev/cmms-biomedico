@@ -859,6 +859,21 @@ function cacheGet(key, fallback) {
   } catch { /* sin caché aún */ }
   return fallback;
 }
+// Actualiza incrementalmente una caché de colección (arreglo de registros con `id`). Las
+// escrituras de equipos/reportes/personal ya NO reciben la colección completa del servidor
+// (reducción de Fast Origin Transfer): aplican aquí el cambio puntual sobre la copia local.
+// Si todavía no hay caché, no se hace nada (la próxima lectura la crea).
+function cacheMutar(key, fn) {
+  const actual = cacheGet(key, null);
+  if (!Array.isArray(actual)) return;
+  cacheSet(key, fn(actual));
+}
+const cacheReemplazar = (key, registro) => registro && cacheMutar(key, list => list.map(r => r.id === registro.id ? registro : r));
+const cacheAgregar = (key, registros) => cacheMutar(key, list => {
+  const ids = new Set(registros.map(r => r.id));
+  return [...list.filter(r => !ids.has(r.id)), ...registros];
+});
+const cacheQuitar = (key, id) => cacheMutar(key, list => list.filter(r => r.id !== id));
 
 // Fuente de verdad COMPARTIDA del inventario de equipos (con sus preventivos, correctivos,
 // calibraciones y bajas anidados): api/equipos.js (Vercel KV). localStorage queda como
@@ -881,9 +896,13 @@ async function loadEquipos() {
               method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipos: locales }),
             });
             if (migRes.ok) {
-              const { equipos: migrados } = await migRes.json();
-              cacheSet(EQUIPOS_KEY, migrados);
-              return migrados;
+              // El POST ya no devuelve la colección: se vuelve a leer una sola vez.
+              const relectura = await apiFetch('/api/equipos');
+              if (relectura.ok) {
+                const { equipos: migrados } = await relectura.json();
+                cacheSet(EQUIPOS_KEY, migrados);
+                return migrados;
+              }
             }
           } catch (err) { console.error('No se pudo migrar el inventario local al servidor compartido', err); }
         }
@@ -897,33 +916,34 @@ async function loadEquipos() {
   }
   return cacheGet(EQUIPOS_KEY, []);
 }
+// Las escrituras reciben solo lo afectado (no el inventario completo) y actualizan la caché
+// local de forma incremental. Ningún llamador usa el valor devuelto (solo .catch / .then()).
 async function crearEquipo(equipo) {
   const res = await apiFetch('/api/equipos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipo }) });
   if (!res.ok) throw new Error('No se pudo guardar el equipo en la base de datos compartida.');
-  const { equipos } = await res.json();
-  cacheSet(EQUIPOS_KEY, equipos);
-  return equipos;
+  const { creados = [] } = await res.json();
+  cacheAgregar(EQUIPOS_KEY, creados);
+  return creados;
 }
 async function crearEquipos(nuevos) {
   const res = await apiFetch('/api/equipos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ equipos: nuevos }) });
   if (!res.ok) throw new Error('No se pudo importar los equipos a la base de datos compartida.');
-  const { equipos } = await res.json();
-  cacheSet(EQUIPOS_KEY, equipos);
-  return equipos;
+  const { creados = [] } = await res.json();
+  cacheAgregar(EQUIPOS_KEY, creados);
+  return creados;
 }
 async function actualizarEquipo(id, patch) {
   const res = await apiFetch('/api/equipos', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }) });
   if (!res.ok) throw new Error('No se pudo actualizar el equipo en la base de datos compartida.');
-  const { equipos } = await res.json();
-  cacheSet(EQUIPOS_KEY, equipos);
-  return equipos;
+  const { equipo } = await res.json();
+  cacheReemplazar(EQUIPOS_KEY, equipo);
+  return equipo;
 }
 async function eliminarEquipo(id) {
   const res = await apiFetch('/api/equipos', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
   if (!res.ok) throw new Error('No se pudo eliminar el equipo en la base de datos compartida.');
-  const { equipos } = await res.json();
-  cacheSet(EQUIPOS_KEY, equipos);
-  return equipos;
+  cacheQuitar(EQUIPOS_KEY, id);
+  return id;
 }
 
 /* ---------------------------------------------------------------- */
@@ -972,27 +992,27 @@ async function actualizarReporteFalla(id, patch) {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }),
   });
   if (!res.ok) throw new Error('No se pudo actualizar el reporte en la base de datos compartida.');
-  const { reportes } = await res.json();
-  cacheSet(REPORTES_KEY, reportes);
-  return reportes;
+  const { reporte } = await res.json();
+  cacheReemplazar(REPORTES_KEY, reporte);
+  return reporte;
 }
 // Elimina UN reporte de falla por id (p. ej. uno duplicado o registrado por error) — a
 // diferencia de vaciarReportesFalla(), no toca el resto del histórico.
 async function eliminarReporteFalla(id) {
   const res = await apiFetch(`/api/reportes-falla?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('No se pudo eliminar el reporte de falla.');
-  const { reportes } = await res.json();
-  cacheSet(REPORTES_KEY, reportes);
-  return reportes;
+  cacheQuitar(REPORTES_KEY, id);
+  return id;
 }
 // Vacía TODO el histórico de reportes de falla en el servidor — pensado para limpiar datos
 // de prueba, no para uso rutinario. Mismo principio de caché que crear/actualizar.
 async function vaciarReportesFalla() {
   const res = await apiFetch('/api/reportes-falla', { method: 'DELETE' });
   if (!res.ok) throw new Error('No se pudo vaciar el histórico de reportes de falla.');
-  const { reportes } = await res.json();
-  cacheSet(REPORTES_KEY, reportes);
-  return reportes;
+  // Mismo estado que muestra la interfaz tras vaciar (el servidor solo borra lo que el
+  // usuario puede ver; la caché local solo contiene eso).
+  cacheSet(REPORTES_KEY, []);
+  return [];
 }
 
 // Documentación institucional por empresa (Planes y programas) — no transversal:
@@ -1210,9 +1230,14 @@ async function loadPersonal() {
         try { locales = JSON.parse(localStorage.getItem(PERSONAL_KEY) || '[]'); } catch { /* nada que migrar */ }
         if (locales.length > 0) {
           try {
-            let migrados = personal;
-            for (const record of locales) migrados = await crearPersonal(record);
-            return migrados;
+            for (const record of locales) await crearPersonal(record);
+            // POST ya no devuelve la colección: se vuelve a leer una sola vez tras migrar.
+            const relectura = await apiFetch('/api/personal');
+            if (relectura.ok) {
+              const { personal: migrados } = await relectura.json();
+              cacheSet(PERSONAL_KEY, migrados);
+              return migrados;
+            }
           } catch (err) { console.error('No se pudo migrar el personal local al servidor compartido', err); }
         }
       }
@@ -1228,16 +1253,16 @@ async function loadPersonal() {
 async function crearPersonal(record) {
   const res = await apiFetch('/api/personal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ record }) });
   if (!res.ok) throw new Error('No se pudo guardar el registro en la base de datos compartida.');
-  const { personal } = await res.json();
-  cacheSet(PERSONAL_KEY, personal);
-  return personal;
+  const { record: guardado } = await res.json();
+  if (guardado) cacheAgregar(PERSONAL_KEY, [guardado]);
+  return guardado;
 }
 async function actualizarPersonal(id, patch) {
   const res = await apiFetch('/api/personal', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }) });
   if (!res.ok) throw new Error('No se pudo actualizar el registro en la base de datos compartida.');
-  const { personal } = await res.json();
-  cacheSet(PERSONAL_KEY, personal);
-  return personal;
+  const { record } = await res.json();
+  cacheReemplazar(PERSONAL_KEY, record);
+  return record;
 }
 const TIPOS_DOCUMENTO_PERSONAL = ['CC', 'CE', 'TI', 'Pasaporte'];
 const ESTADOS_PERSONAL = ['Activo', 'Inactivo'];

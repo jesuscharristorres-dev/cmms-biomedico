@@ -36,11 +36,11 @@ export default withErrors('api/personal', 'No se pudo acceder a la base de datos
     const existente = personal.find(p => p.id === nuevo.id);
     if (existente) {
       // Idempotencia ante reintentos de red (solo registros propios llegan aquí).
-      return res.status(200).json({ record: existente, personal: scopeArray(ctx, personal) });
+      return res.status(200).json({ record: existente });
     }
     const actualizados = [...personal, nuevo];
     await kv.set(KV_KEY, actualizados);
-    return res.status(200).json({ record: nuevo, personal: scopeArray(ctx, actualizados) });
+    return res.status(200).json({ record: nuevo });
   }
 
   if (req.method === 'PATCH') {
@@ -52,7 +52,7 @@ export default withErrors('api/personal', 'No se pudo acceder a la base de datos
     const actualizados = [...personal];
     actualizados[idx] = actualizado;
     await kv.set(KV_KEY, actualizados);
-    return res.status(200).json({ record: actualizado, personal: scopeArray(ctx, actualizados) });
+    return res.status(200).json({ record: actualizado });
   }
 
   return methodNotAllowed(res, ['GET', 'POST', 'PATCH']);

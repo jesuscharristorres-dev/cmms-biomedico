@@ -279,7 +279,8 @@ describe('Separación de entornos (Preview / Production) sobre un mismo KV', () 
       assert.ok(s, 'Preview crea su propio SUPER_ADMIN desde AUTH_USER/AUTH_PASSWORD_HASH');
       const w = await call(equipos, { method: 'POST', cookie: s, body: { equipo: { id: 'eq_preview', empresa: A } } });
       assert.equal(w.status, 200);
-      assert.ok(!w.body.equipos.some(e => e.id === 'eq_real'), 'Preview no ve los datos de Production');
+      const vistos = (await call(equipos, { cookie: s })).body.equipos;
+      assert.ok(!vistos.some(e => e.id === 'eq_real'), 'Preview no ve los datos de Production');
       await call(admin, { method: 'POST', query: { resource: 'usuarios' }, cookie: s, body: { nombre: 'Test', email: 'test@preview.co', password: PASS, role: 'EMPRESA', empresa_id: A } });
 
       // Production intacto: mismas claves de siempre, sin usuarios/empresas/migraciones de Preview.

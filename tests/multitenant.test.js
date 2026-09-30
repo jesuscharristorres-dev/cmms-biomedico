@@ -189,7 +189,8 @@ describe('Arquitectura multiempresa', () => {
     test('crea registros para su empresa (la empresa la decide el servidor)', async () => {
       const r = await call(equipos, { method: 'POST', cookie: cookies.MACROMED, body: { equipo: { id: 'eq_nuevo_m', equipo: 'Nuevo', sede: 'Bogotá' } } });
       assert.equal(r.status, 200);
-      assert.ok(r.body.equipos.every(e => e.empresa === 'MACROMED'));
+      assert.deepEqual(r.body.creados.map(e => [e.id, e.empresa]), [['eq_nuevo_m', 'MACROMED']]);
+      assert.equal(r.body.equipos, undefined, 'POST no devuelve la colección completa');
       assert.equal((await store.get('cmms:equipos')).find(e => e.id === 'eq_nuevo_m').empresa, 'MACROMED');
     });
     test('no puede crear registros en otra empresa manipulando el body → 403', async () => {
