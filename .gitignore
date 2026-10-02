@@ -25,3 +25,7 @@ dist-ssr
 
 .vercel
 .env*
+
+# Respaldos de Redis y credenciales locales: nunca al repositorio
+respaldos/
+*.respaldo.json
