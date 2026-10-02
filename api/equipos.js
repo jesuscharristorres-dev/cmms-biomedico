@@ -16,33 +16,65 @@
 // respondía el inventario completo (~4 MB medidos en Production), principal fuente de
 // Fast Origin Transfer. El frontend no usaba esa colección salvo para su caché local.
 //
-// TRÁFICO CON REDIS (lib/coleccion.js): el inventario se cachea en memoria por instancia y se
-// valida con la clave pequeña 'cmms:equipos:version'. El GET responde 304 (sin leer los
-// ~2,4 MB) si el navegador ya tiene esa versión, y las escrituras guardan con un SET
-// condicional que nunca pisa el cambio de otro usuario (si hubo uno, relee y reintenta).
+// DATOS: a través de lib/datos (Redis hoy; Supabase con DATA_BACKEND=supabase). El GET
+// responde 304 si el navegador ya tiene la misma versión, y las escrituras nunca pisan el
+// cambio de otro usuario (si lo hubo, se relee y se reintenta).
+//
+// Modos del GET (para cargar por demanda; el frontend actual usa el primero):
+//   GET /api/equipos                          → inventario completo visible (con historial)
+//   GET /api/equipos?vista=resumen&desde=0&cantidad=100 → columnas del listado, paginado
+//   GET /api/equipos?id=<id>                  → hoja de vida completa de UN equipo
 
 import { requireAuth } from '../lib/auth.js';
-import { empresaFilter, scopeArray, findOwned, resolveEmpresaForWrite, applyScopedPatch, idOcupadoPorOtraEmpresa } from '../lib/tenancy.js';
+import { empresaFilter, scopeArray, canAccessEmpresa, resolveEmpresaForWrite, applyScopedPatch } from '../lib/tenancy.js';
 import { HttpError, withErrors, methodNotAllowed } from '../lib/http.js';
-import { mutar, responderConEtag } from '../lib/coleccion.js';
+import { datos } from '../lib/datos/index.js';
+import { responderVersionado } from '../lib/etag.js';
 
-export const KV_KEY = 'cmms:equipos';
-const vacio = () => [];
 const MAX_POR_LOTE = 5000;
+const MAX_PAGINA = 500;
 
 function idValido(id) {
   return typeof id === 'string' && id.length > 0 && id.length <= 100;
 }
 
 export default withErrors('api/equipos', 'No se pudo acceder a la base de datos compartida de equipos.', async (req, res) => {
+  const repo = datos.equipos;
+
   if (req.method === 'GET') {
     const ctx = await requireAuth(req);
     const filtro = empresaFilter(ctx, req.query);
-    return responderConEtag(req, res, KV_KEY, vacio, [ctx.userId, ctx.role, ctx.empresaId, filtro],
-      equipos => ({ equipos: scopeArray(ctx, equipos, filtro) }));
+    const empresa = ctx.isSuperAdmin ? filtro : ctx.empresaId;
+    const acceso = r => canAccessEmpresa(ctx, r.empresa);
+    if (req.query?.id) {
+      return responderVersionado(req, res, {
+        nombre: 'equipos:id', marca: repo.marca, alcance: [ctx.userId, ctx.role, ctx.empresaId, req.query.id],
+        construir: async () => {
+          const equipo = await repo.obtener(String(req.query.id), { acceso });
+          if (!equipo) throw new HttpError(404);
+          return { equipo };
+        },
+      });
+    }
+    if (req.query?.vista === 'resumen') {
+      const desde = Math.max(0, Number.parseInt(req.query.desde, 10) || 0);
+      const cantidad = Math.min(MAX_PAGINA, Math.max(1, Number.parseInt(req.query.cantidad, 10) || 100));
+      return responderVersionado(req, res, {
+        nombre: 'equipos:resumen', marca: repo.marca, alcance: [ctx.userId, ctx.role, ctx.empresaId, filtro, desde, cantidad],
+        construir: async () => {
+          const { items, total } = await repo.listarResumen({ empresa, desde, cantidad });
+          return { equipos: items, total, desde, cantidad };
+        },
+      });
+    }
+    return responderVersionado(req, res, {
+      nombre: 'equipos', marca: repo.marca, alcance: [ctx.userId, ctx.role, ctx.empresaId, filtro],
+      construir: async () => ({ equipos: scopeArray(ctx, await repo.listar({ empresa }), filtro) }),
+    });
   }
 
   const ctx = await requireAuth(req, { write: true });
+  const acceso = r => canAccessEmpresa(ctx, r.empresa);
 
   if (req.method === 'POST') {
     const { equipo, equipos: nuevos } = req.body || {};
@@ -56,43 +88,31 @@ export default withErrors('api/equipos', 'No se pudo acceder a la base de datos 
     for (const e of porAgregar) {
       normalizados.push({ ...e, empresa: await resolveEmpresaForWrite(ctx, e.empresa) });
     }
-    const respuesta = await mutar(KV_KEY, vacio, equipos => {
-      if (normalizados.some(e => idOcupadoPorOtraEmpresa(ctx, equipos, e.id))) {
+    const { creados } = await repo.crear(normalizados, existentes => {
+      if ([...existentes.values()].some(r => !acceso(r))) {
         throw new HttpError(409, 'El identificador del equipo ya está en uso. Intenta de nuevo.');
       }
-      const existentes = new Set(equipos.map(e => e.id));
-      const aAgregar = normalizados.filter(e => !existentes.has(e.id));
-      // Solo los equipos realmente agregados (todos de una empresa accesible: resolveEmpresaForWrite).
-      const r = { ok: true, creados: aAgregar };
-      return aAgregar.length ? { nuevo: [...equipos, ...aAgregar], respuesta: r } : { respuesta: r };
     });
-    return res.status(200).json(respuesta);
+    // Solo los equipos realmente agregados (todos de una empresa accesible: resolveEmpresaForWrite).
+    return res.status(200).json({ ok: true, creados });
   }
 
   if (req.method === 'PATCH') {
     const { id, patch } = req.body || {};
     if (!idValido(id) || !patch) throw new HttpError(400, 'Falta id o patch para actualizar el equipo.');
-    const respuesta = await mutar(KV_KEY, vacio, async equipos => {
-      const idx = findOwned(ctx, equipos, id);
-      const actualizado = await applyScopedPatch(ctx, equipos[idx], patch);
-      // Si el cambio no modifica nada, no se reescribe el inventario completo en Redis.
-      if (JSON.stringify(actualizado) === JSON.stringify(equipos[idx])) return { respuesta: { equipo: actualizado } };
-      const actualizados = [...equipos];
-      actualizados[idx] = actualizado;
-      return { nuevo: actualizados, respuesta: { equipo: actualizado } };
-    });
-    return res.status(200).json(respuesta);
+    const equipo = await repo.actualizar(id, async actual => {
+      const actualizado = await applyScopedPatch(ctx, actual, patch);
+      // Si el cambio no modifica nada, no se escribe nada.
+      return JSON.stringify(actualizado) === JSON.stringify(actual) ? null : actualizado;
+    }, { acceso });
+    return res.status(200).json({ equipo });
   }
 
   if (req.method === 'DELETE') {
     const { id } = req.body || {};
     if (!idValido(id)) throw new HttpError(400, 'Falta id del equipo a eliminar.');
-    const respuesta = await mutar(KV_KEY, vacio, equipos => {
-      const idx = findOwned(ctx, equipos, id);
-      // Se elimina por posición (el registro ya verificado), nunca "todos los que tengan ese id".
-      return { nuevo: equipos.filter((_, i) => i !== idx), respuesta: { ok: true, id } };
-    });
-    return res.status(200).json(respuesta);
+    await repo.eliminar(id, { acceso });
+    return res.status(200).json({ ok: true, id });
   }
 
   return methodNotAllowed(res, ['GET', 'POST', 'PATCH', 'DELETE']);

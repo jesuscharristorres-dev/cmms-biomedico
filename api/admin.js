@@ -18,7 +18,7 @@
 //
 // Toda la autorización se decide aquí (requireSuperAdmin / requireAuth), no en la UI.
 
-import { kv } from '../lib/db.js';
+import { datos } from '../lib/datos/index.js';
 import { requireAuth, requireSuperAdmin, destroyUserSessions } from '../lib/auth.js';
 import { listEmpresas, crearEmpresa, actualizarEmpresa } from '../lib/empresas.js';
 import { listUsuarios, crearUsuario, actualizarUsuario, eliminarUsuario, usuarioPublico } from '../lib/usuarios.js';
@@ -97,15 +97,12 @@ async function sinEmpresa(req, res) {
     const def = COLECCIONES_ARRAY.find(c => c.coleccion === coleccion);
     if (!def || typeof id !== 'string' || !id) throw new HttpError(400, 'Falta la colección o el id.');
     const destino = await resolveEmpresaForWrite(ctx, empresa);
-    const list = (await kv.get(def.key)) || [];
-    const idx = list.findIndex(r => r && r.id === id);
-    if (idx === -1) throw new HttpError(404);
     const ids = new Set((await listEmpresas()).map(e => e.id));
-    if (ids.has(list[idx].empresa)) throw new HttpError(409, 'El registro ya tiene una empresa válida asignada.');
-    const actualizados = [...list];
-    // Se conserva el valor original para que la asignación sea auditable y reversible.
-    actualizados[idx] = { ...list[idx], empresa: destino, empresa_anterior: list[idx].empresa ?? null };
-    await kv.set(def.key, actualizados);
+    await datos[def.coleccion].actualizar(id, actual => {
+      if (ids.has(actual.empresa)) throw new HttpError(409, 'El registro ya tiene una empresa válida asignada.');
+      // Se conserva el valor original para que la asignación sea auditable y reversible.
+      return { ...actual, empresa: destino, empresa_anterior: actual.empresa ?? null };
+    });
     return res.status(200).json({ informe: await auditarSinEmpresa() });
   }
   return methodNotAllowed(res, ['GET', 'PATCH']);

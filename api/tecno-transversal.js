@@ -11,12 +11,11 @@
 //   PATCH → con empresaKey: solo sobre una empresa accesible. Sin empresaKey (documento
 //           global compartido): solo SUPER_ADMIN, porque afecta a todas las empresas.
 
-import { kv } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 import { empresaFilter, assertKeyedWrite } from '../lib/tenancy.js';
 import { HttpError, withErrors, methodNotAllowed } from '../lib/http.js';
-
-const KV_KEY = 'cmms:tecnoTransversal';
+import { datos } from '../lib/datos/index.js';
+import { responderVersionado } from '../lib/etag.js';
 
 function scopeTransversal(ctx, data, filtro) {
   const empresa = ctx.isSuperAdmin ? filtro : ctx.empresaId;
@@ -36,29 +35,23 @@ function scopeTransversal(ctx, data, filtro) {
 export default withErrors('api/tecno-transversal', 'No se pudo acceder a la base de datos compartida de tecnovigilancia.', async (req, res) => {
   if (req.method === 'GET') {
     const ctx = await requireAuth(req);
-    const data = scopeTransversal(ctx, (await kv.get(KV_KEY)) || {}, empresaFilter(ctx, req.query));
-    return res.status(200).json({ data });
+    const filtro = empresaFilter(ctx, req.query);
+    return responderVersionado(req, res, {
+      nombre: 'tecnoTransversal', marca: datos.tecnoTransversal.marca, alcance: [ctx.userId, ctx.role, ctx.empresaId, filtro],
+      construir: async () => ({ data: scopeTransversal(ctx, (await datos.tecnoTransversal.leer()) || {}, filtro) }),
+    });
   }
 
   if (req.method === 'PATCH') {
     const ctx = await requireAuth(req, { write: true });
     const { docKey, empresaKey, valor } = req.body || {};
     if (typeof docKey !== 'string' || !docKey || docKey.length > 80) throw new HttpError(400, 'Falta docKey.');
-    const data = (await kv.get(KV_KEY)) || {};
-    let actualizado;
-    if (empresaKey) {
-      await assertKeyedWrite(ctx, empresaKey);
-      const actual = data[docKey];
-      // Si el documento tenía un valor plano (global/heredado, compartido por todas las
-      // empresas), se conserva bajo `_default` al pasar al formato por empresa — escribir la
-      // URL de UNA empresa nunca debe borrar la que ven las demás.
-      const docObj = (actual && typeof actual === 'object') ? actual : (actual ? { _default: actual } : {});
-      actualizado = { ...data, [docKey]: { ...docObj, [empresaKey]: valor } };
-    } else {
-      if (!ctx.isSuperAdmin) throw new HttpError(403);
-      actualizado = { ...data, [docKey]: valor };
-    }
-    await kv.set(KV_KEY, actualizado);
+    if (empresaKey) await assertKeyedWrite(ctx, empresaKey);
+    else if (!ctx.isSuperAdmin) throw new HttpError(403);
+    // Con empresa: si el documento tenía un valor plano (global/heredado, compartido por todas
+    // las empresas), se conserva bajo `_default` — escribir la URL de UNA empresa nunca debe
+    // borrar la que ven las demás (ver lib/datos/*.js → tecnoTransversal.fijar).
+    const { datos: actualizado } = await datos.tecnoTransversal.fijar(docKey, empresaKey || null, valor);
     return res.status(200).json({ data: scopeTransversal(ctx, actualizado, null) });
   }
 

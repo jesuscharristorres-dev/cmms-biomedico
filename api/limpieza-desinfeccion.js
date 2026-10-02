@@ -10,12 +10,12 @@
 // empresa del usuario (SUPER_ADMIN: cualquiera existente). La validación estricta de tipos,
 // tamaños y esquema http(s) del enlace se conserva.
 
-import { kv } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 import { empresaFilter, scopeKeyed, assertKeyedWrite } from '../lib/tenancy.js';
-import { HttpError } from '../lib/http.js';
+import { HttpError, esLimiteBaseDatos, MENSAJE_LIMITE_BASE_DATOS } from '../lib/http.js';
+import { datos } from '../lib/datos/index.js';
+import { responderVersionado } from '../lib/etag.js';
 
-const KV_KEY = 'cmms:limpiezaDesinfeccion';
 const MAX_KEY_LEN = 80;
 const MAX_URL_LEN = 2048;
 const ANIO_MIN = 2000;
@@ -29,8 +29,11 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const ctx = await requireAuth(req);
-      const data = scopeKeyed(ctx, (await kv.get(KV_KEY)) || {}, empresaFilter(ctx, req.query));
-      return res.status(200).json({ data });
+      const filtro = empresaFilter(ctx, req.query);
+      return await responderVersionado(req, res, {
+        nombre: 'limpiezaDesinfeccion', marca: datos.limpiezaDesinfeccion.marca, alcance: [ctx.userId, ctx.role, ctx.empresaId, filtro],
+        construir: async () => ({ data: scopeKeyed(ctx, (await datos.limpiezaDesinfeccion.leer()) || {}, filtro) }),
+      });
     }
 
     if (req.method === 'PATCH') {
@@ -53,29 +56,19 @@ export default async function handler(req, res) {
       }
       await assertKeyedWrite(ctx, empresaKey);
 
-      const data = (await kv.get(KV_KEY)) || {};
-      const emp = data[empresaKey] || {};
-      const sedeObj = emp[sede] || {};
-      const anioObj = { ...(sedeObj[anioNum] || {}) };
-      if (limpio) {
-        // La fecha de actualización se calcula en el servidor — no se confía en el reloj del cliente.
-        anioObj[mesNum] = { url: limpio, updatedAt: new Date().toISOString() };
-      } else {
-        delete anioObj[mesNum];
-      }
-      const actualizado = {
-        ...data,
-        [empresaKey]: { ...emp, [sede]: { ...sedeObj, [anioNum]: anioObj } },
-      };
-      await kv.set(KV_KEY, actualizado);
+      // La fecha de actualización se calcula en el servidor — no se confía en el reloj del cliente.
+      const valor = limpio ? { url: limpio, updatedAt: new Date().toISOString() } : null;
+      const { datos: actualizado } = await datos.limpiezaDesinfeccion.fijarMes(empresaKey, sede, anioNum, mesNum, valor);
       return res.status(200).json({ data: scopeKeyed(ctx, actualizado) });
     }
 
     res.setHeader('Allow', ['GET', 'PATCH']);
     return res.status(405).json({ error: 'Método no permitido.' });
   } catch (err) {
+    res.setHeader('Cache-Control', 'no-store');
     if (err instanceof HttpError) return res.status(err.status).json({ error: err.message, ...(err.details ? { details: err.details } : {}) });
     console.error('[api/limpieza-desinfeccion] Error:', err);
+    if (esLimiteBaseDatos(err)) return res.status(503).json({ error: MENSAJE_LIMITE_BASE_DATOS });
     return res.status(500).json({ error: 'No se pudo acceder a la base de datos compartida de limpieza y desinfección.' });
   }
 }

@@ -16,12 +16,11 @@
 // en https://tu-dominio.vercel.app/api/send-email
 
 import { Resend } from 'resend';
-import { kv } from '../lib/db.js';
+import { datos } from '../lib/datos/index.js';
 import { requireSuperAdmin } from '../lib/auth.js';
 import { HttpError } from '../lib/http.js';
 
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'CMMS Biomédico <onboarding@resend.dev>';
-const ALERT_EMAILS_KEY = 'cmms:alertEmails';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -60,7 +59,7 @@ export default async function handler(req, res) {
   // contra la lista real de correos de alerta configurados en KV. Cualquier dirección que
   // no esté en esa lista se descarta.
   const solicitados = (Array.isArray(to) ? to : [to]).filter(Boolean);
-  const permitidos = new Set((await kv.get(ALERT_EMAILS_KEY)) || []);
+  const permitidos = new Set(await datos.alertEmails.leer());
   const recipients = solicitados.filter((addr) => permitidos.has(addr));
 
   if (recipients.length === 0) {

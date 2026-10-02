@@ -24,9 +24,10 @@
 import { requireAuth } from '../lib/auth.js';
 import { empresaFilter, scopeKeyed, assertKeyedWrite } from '../lib/tenancy.js';
 import { HttpError, esLimiteBaseDatos, MENSAJE_LIMITE_BASE_DATOS } from '../lib/http.js';
-import { mutar, responderConEtag, leer } from '../lib/coleccion.js';
+import { datos, backend } from '../lib/datos/index.js';
+import { responderVersionado } from '../lib/etag.js';
+import { PREFIJO_URL } from '../lib/datos/archivos.js';
 
-const KV_KEY = 'cmms:limpiezaPlantillas';
 const MAX_KEY_LEN = 80;
 const MAX_NOMBRE_LEN = 200;
 // 3 MB de archivo real caben en ~4.1 MB en base64 (factor ~1.37) — con margen bajo el límite
@@ -46,8 +47,9 @@ function esTextoValido(v, maxLen) {
   return typeof v === 'string' && v.trim().length > 0 && v.trim().length <= maxLen;
 }
 
-const vacio = () => ({});
-const blobConfigurado = () => !!process.env.BLOB_READ_WRITE_TOKEN;
+// Con DATA_BACKEND=supabase el archivo va a Supabase Storage (lo hace el repositorio al
+// guardar); con Redis, a Vercel Blob si está configurado; si no, en base64 como siempre.
+const blobConfigurado = () => backend() === 'redis' && !!process.env.BLOB_READ_WRITE_TOKEN;
 
 // La ruta interna del archivo en Blob no se expone: el cliente recibe la URL de descarga
 // autenticada de esta misma API. No muta `data` (es la caché compartida).
@@ -85,9 +87,13 @@ async function borrarDeBlob(pathname) {
 
 async function descargar(req, res, ctx) {
   const empresaKey = String(req.query.archivo || '');
-  const { data } = await leer(KV_KEY, vacio);
-  const visible = scopeKeyed(ctx, data, null)[empresaKey];
+  const visible = scopeKeyed(ctx, (await datos.limpiezaPlantillas.leer()) || {}, null)[empresaKey];
   if (!visible) throw new HttpError(404);
+  // Archivo ya movido a Supabase Storage: la descarga la sirve /api/archivos.
+  if (typeof visible.archivoDatos === 'string' && visible.archivoDatos.startsWith(PREFIJO_URL)) {
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.status(302).setHeader('Location', `${visible.archivoDatos}${req.query.descargar ? '&descargar=1' : ''}`).end();
+  }
   if (visible.archivoDatos) {
     const buffer = Buffer.from(visible.archivoDatos.slice(visible.archivoDatos.indexOf(',') + 1), 'base64');
     res.setHeader('Content-Type', visible.tipo || 'application/octet-stream');
@@ -109,10 +115,12 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const ctx = await requireAuth(req);
-      if (req.query?.archivo) return descargar(req, res, ctx);
+      if (req.query?.archivo) return await descargar(req, res, ctx);
       const filtro = empresaFilter(ctx, req.query);
-      return responderConEtag(req, res, KV_KEY, vacio, [ctx.userId, ctx.role, ctx.empresaId, filtro],
-        data => ({ data: paraCliente(scopeKeyed(ctx, data, filtro)) }));
+      return await responderVersionado(req, res, {
+        nombre: 'limpiezaPlantillas', marca: datos.limpiezaPlantillas.marca, alcance: [ctx.userId, ctx.role, ctx.empresaId, filtro],
+        construir: async () => ({ data: paraCliente(scopeKeyed(ctx, (await datos.limpiezaPlantillas.leer()) || {}, filtro)) }),
+      });
     }
 
     // Cargar, reemplazar y eliminar: sin sesión con permiso de escritura, la petición se
@@ -143,19 +151,15 @@ export default async function handler(req, res) {
       } else {
         registro = { nombre: nombre.trim(), tipo, tamano: archivoDatos.length, archivoDatos, updatedAt: new Date().toISOString() };
       }
-      let anterior = null;
-      let actualizado;
+      let resultado;
       try {
-        actualizado = await mutar(KV_KEY, vacio, data => {
-          anterior = data[empresaKey]?.blobPathname || null;
-          const nuevo = { ...data, [empresaKey]: registro };
-          return { nuevo, respuesta: nuevo };
-        });
+        resultado = await datos.limpiezaPlantillas.fijar(empresaKey, registro);
       } catch (err) {
         await borrarDeBlob(registro.blobPathname); // no dejar el archivo nuevo huérfano
         throw err;
       }
-      if (anterior && anterior !== registro.blobPathname) await borrarDeBlob(anterior);
+      const { datos: actualizado, anterior } = resultado;
+      if (anterior?.blobPathname && anterior.blobPathname !== registro.blobPathname) await borrarDeBlob(anterior.blobPathname);
       return res.status(200).json({ data: paraCliente(scopeKeyed(ctx, actualizado)) });
     }
 
@@ -165,14 +169,8 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Falta empresaKey.' });
       }
       await assertKeyedWrite(ctx, empresaKey);
-      let anterior = null;
-      const actualizado = await mutar(KV_KEY, vacio, data => {
-        anterior = data[empresaKey]?.blobPathname || null;
-        const nuevo = { ...data };
-        delete nuevo[empresaKey];
-        return { nuevo, respuesta: nuevo };
-      });
-      if (anterior) await borrarDeBlob(anterior);
+      const { datos: actualizado, anterior } = await datos.limpiezaPlantillas.quitar(empresaKey);
+      if (anterior?.blobPathname) await borrarDeBlob(anterior.blobPathname);
       return res.status(200).json({ data: paraCliente(scopeKeyed(ctx, actualizado)) });
     }
 

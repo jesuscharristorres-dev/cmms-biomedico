@@ -17,15 +17,14 @@
 //   DELETE (sin id)  → vaciar el histórico: SUPER_ADMIN vacía todo (o ?empresa=); un usuario
 //                      de empresa solo puede vaciar los de SU empresa.
 
-import { kv } from '../lib/db.js';
-import { leer } from '../lib/coleccion.js';
+import { datos } from '../lib/datos/index.js';
+import { responderVersionado } from '../lib/etag.js';
+import { bloquearEscrituraSiMantenimiento } from '../lib/mantenimiento.js';
 import { requireAuth, allowRate, getClientIp } from '../lib/auth.js';
 import { listEmpresas, getEmpresa, empresaPublica } from '../lib/empresas.js';
-import { empresaFilter, scopeArray, findOwned, applyScopedPatch } from '../lib/tenancy.js';
+import { empresaFilter, scopeArray, canAccessEmpresa, applyScopedPatch } from '../lib/tenancy.js';
 import { HttpError, withErrors, methodNotAllowed } from '../lib/http.js';
 
-const KV_KEY = 'cmms:reportesFalla';
-const EQUIPOS_KEY = 'cmms:equipos';
 const PRIORIDADES = ['Baja', 'Media', 'Alta', 'Crítica'];
 const MAX_REPORTES_POR_HORA = 30;
 
@@ -43,14 +42,23 @@ function texto(v, max) {
 const MAX_CATALOGO_POR_HORA = 120;
 const CACHE_CATALOGO = 'public, max-age=0, s-maxage=300, stale-while-revalidate=3600';
 
+async function listarIdentificacion() {
+  const todos = [];
+  for (let desde = 0; ; desde += 1000) {
+    const { items, total } = await datos.equipos.listarResumen({ desde, cantidad: 1000 });
+    todos.push(...items);
+    if (!items.length || todos.length >= total) return todos;
+  }
+}
+
 async function catalogoPublico(req, res) {
   if (!(await allowRate(`catalogo:${getClientIp(req)}`, MAX_CATALOGO_POR_HORA, 60 * 60))) {
     throw new HttpError(429, 'Demasiadas consultas desde esta conexión. Intenta más tarde.');
   }
   const empresas = (await listEmpresas()).filter(e => e.estado === 'activo');
   const activas = new Set(empresas.map(e => e.id));
-  const { data } = await leer(EQUIPOS_KEY, () => []);
-  const equipos = data
+  // Solo las columnas de identificación (en Supabase, sin historial ni `datos`).
+  const equipos = (await listarIdentificacion())
     .filter(e => e && activas.has(e.empresa))
     .map(e => ({
       id: e.id, empresa: e.empresa, sede: e.sede,
@@ -73,9 +81,8 @@ async function construirReportePublico(body) {
   const sede = texto(r.sede, 80);
   if (empresa && !empresa.sedes.includes(sede)) errores.sede = 'La sede no pertenece a la empresa.';
 
-  // Validación con la caché del inventario: no descarga los ~2,4 MB si no cambiaron.
-  const { data: equipos } = await leer(EQUIPOS_KEY, () => []);
-  const equipo = equipos.find(e => e && e.id === r.equipoId);
+  // Validación con la caché del inventario (Redis) o con una consulta de UN equipo (Supabase).
+  const equipo = typeof r.equipoId === 'string' && r.equipoId ? await datos.equipos.obtener(r.equipoId) : null;
   if (!equipo || !empresa || equipo.empresa !== empresa.id || equipo.sede !== sede) {
     errores.equipoId = 'El equipo no pertenece a la empresa y sede seleccionadas.';
   }
@@ -98,55 +105,50 @@ async function construirReportePublico(body) {
 }
 
 export default withErrors('api/reportes-falla', 'No se pudo acceder a la base de datos compartida de reportes.', async (req, res) => {
+  const repo = datos.reportesFalla;
   if (req.method === 'GET') {
     if (req.query?.catalogo) return catalogoPublico(req, res);
     const ctx = await requireAuth(req);
-    const reportes = scopeArray(ctx, (await kv.get(KV_KEY)) || [], empresaFilter(ctx, req.query));
-    return res.status(200).json({ reportes });
+    const filtro = empresaFilter(ctx, req.query);
+    return responderVersionado(req, res, {
+      nombre: 'reportesFalla', marca: repo.marca, alcance: [ctx.userId, ctx.role, ctx.empresaId, filtro],
+      construir: async () => ({ reportes: scopeArray(ctx, await repo.listar({ empresa: ctx.isSuperAdmin ? filtro : ctx.empresaId }), filtro) }),
+    });
   }
 
   if (req.method === 'POST') {
+    bloquearEscrituraSiMantenimiento(req);
     // Endpoint anónimo: límite por IP para que no se pueda inundar de reportes a ninguna empresa.
     if (!(await allowRate(`reporte-falla:${getClientIp(req)}`, MAX_REPORTES_POR_HORA, 60 * 60))) {
       throw new HttpError(429, 'Se enviaron demasiados reportes desde esta conexión. Intenta más tarde.');
     }
     const reporte = await construirReportePublico(req.body?.reporte);
-    const reportes = (await kv.get(KV_KEY)) || [];
     // Idempotencia: si por un reintento de red llega el mismo id dos veces, no se duplica.
     // La respuesta pública solo devuelve el propio reporte, nunca el listado.
-    if (reportes.some(r => r.id === reporte.id)) return res.status(200).json({ reporte });
-    await kv.set(KV_KEY, [...reportes, reporte]);
+    await repo.crear([reporte]);
     return res.status(200).json({ reporte });
   }
 
   const ctx = await requireAuth(req, { write: true });
+  const acceso = r => canAccessEmpresa(ctx, r.empresa);
 
   if (req.method === 'PATCH') {
     const { id, patch } = req.body || {};
     if (typeof id !== 'string' || !id || !patch) throw new HttpError(400, 'Falta id o patch para actualizar el reporte.');
-    const reportes = (await kv.get(KV_KEY)) || [];
-    const idx = findOwned(ctx, reportes, id);
-    const actualizado = await applyScopedPatch(ctx, reportes[idx], patch);
-    const actualizados = [...reportes];
-    actualizados[idx] = actualizado;
-    await kv.set(KV_KEY, actualizados);
+    const reporte = await repo.actualizar(id, actual => applyScopedPatch(ctx, actual, patch), { acceso });
     // Solo el reporte actualizado: el frontend no usa la colección (ver api/equipos.js).
-    return res.status(200).json({ reporte: actualizado });
+    return res.status(200).json({ reporte });
   }
 
   if (req.method === 'DELETE') {
     const { id } = req.query || {};
-    const reportes = (await kv.get(KV_KEY)) || [];
     if (id) {
-      const idx = findOwned(ctx, reportes, id);
-      const actualizados = reportes.filter((_, i) => i !== idx);
-      await kv.set(KV_KEY, actualizados);
+      await repo.eliminar(id, { acceso });
       return res.status(200).json({ ok: true, id });
     }
     const empresa = empresaFilter(ctx, req.query); // null solo para SUPER_ADMIN sin filtro
-    const actualizados = empresa ? reportes.filter(r => r.empresa !== empresa) : [];
-    await kv.set(KV_KEY, actualizados);
-    return res.status(200).json({ ok: true, eliminados: reportes.length - actualizados.length });
+    const eliminados = await repo.eliminarPorEmpresa(empresa);
+    return res.status(200).json({ ok: true, eliminados });
   }
 
   return methodNotAllowed(res, ['GET', 'POST', 'PATCH', 'DELETE']);

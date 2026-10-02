@@ -15,9 +15,8 @@ import { requireAuth, requireSuperAdmin } from '../lib/auth.js';
 import { buildCapacitacionesSnapshot } from '../lib/capacitaciones.js';
 import { scopeArray } from '../lib/tenancy.js';
 import { HttpError, withErrors, methodNotAllowed } from '../lib/http.js';
-import { mutar, responderConEtag } from '../lib/coleccion.js';
-
-const KV_KEY = 'cmms:capacitaciones';
+import { datos } from '../lib/datos/index.js';
+import { responderVersionado } from '../lib/etag.js';
 
 function scopeSnapshot(ctx, data) {
   if (!data || ctx.isSuperAdmin) return data;
@@ -28,8 +27,10 @@ export default withErrors('api/capacitaciones', 'No se pudo sincronizar las capa
   if (req.method === 'GET') {
     const ctx = await requireAuth(req);
     // Caché por versión + ETag (lib/coleccion.js): 304 sin leer la colección si no cambió.
-    return responderConEtag(req, res, KV_KEY, () => null, [ctx.userId, ctx.role, ctx.empresaId],
-      data => ({ data: scopeSnapshot(ctx, data) }));
+    return responderVersionado(req, res, {
+      nombre: 'capacitaciones', marca: datos.capacitaciones.marca, alcance: [ctx.userId, ctx.role, ctx.empresaId],
+      construir: async () => ({ data: scopeSnapshot(ctx, await datos.capacitaciones.leer()) }),
+    });
   }
 
   if (req.method !== 'POST') return methodNotAllowed(res, ['GET', 'POST']);
@@ -40,8 +41,7 @@ export default withErrors('api/capacitaciones', 'No se pudo sincronizar las capa
     throw new HttpError(500, 'No hay formularios de capacitaciones configurados. Falta la variable de entorno CAPACITACIONES_SHEETS en Vercel.');
   }
   const data = { ...snapshot, updatedAt: new Date().toISOString() };
-  // Una sincronización reemplaza el snapshot completo; la escritura condicional solo asegura
-  // que la versión se incremente junto con el valor (para invalidar las cachés y ETags).
-  await mutar(KV_KEY, () => null, () => ({ nuevo: data }));
+  // Una sincronización reemplaza el snapshot completo (y sube la versión: cachés y ETags).
+  await datos.capacitaciones.reemplazar(data);
   return res.status(200).json({ data });
 });
