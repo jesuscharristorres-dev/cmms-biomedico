@@ -4061,6 +4061,16 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
 /* APP PRINCIPAL                                                     */
 /* ---------------------------------------------------------------- */
 
+// Estado de carga de una sección cuyos datos se piden al entrar (carga diferida).
+function SeccionCargando({ t, texto }) {
+  return (
+    <div className={`rounded-xl border p-10 text-center ${t.panel} ${t.border}`} role="status" aria-live="polite">
+      <RefreshCw size={22} className={`mx-auto mb-3 animate-spin ${t.muted}`} />
+      <p className={`text-sm ${t.muted}`}>{texto}</p>
+    </div>
+  );
+}
+
 function MainApp({ user, entorno, onLogout, readOnly }) {
   const [equipos, setEquipos] = useState([]);
   const [dark, setDark] = useState(false);
@@ -4098,7 +4108,11 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
   const [limpiezaPlantillas, setLimpiezaPlantillas] = useState({});
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  useEffect(() => { loadEquipos().then(setEquipos); }, [dataVersion]);
+  // Antes de recargar el inventario se envían las ediciones agrupadas que estén en espera,
+  // para que la recarga no traiga del servidor un estado anterior a esas ediciones.
+  useEffect(() => {
+    enviarEdicionesPendientes().catch(() => {}).then(() => loadEquipos()).then(setEquipos);
+  }, [dataVersion]);
   useEffect(() => { loadReportes().then(setReportesFalla); }, [dataVersion]);
   // Notificación en vivo: si otra pestaña del mismo navegador refresca la caché local, esta la recoge de inmediato.
   useEffect(() => {
@@ -4149,7 +4163,19 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
     });
   };
 
-  useEffect(() => { loadCapacitaciones().then(setCapacitaciones); }, []);
+  // CARGA DIFERIDA: capacitaciones (~330 KB en Redis) solo se piden cuando el usuario entra
+  // a esa sección, no al abrir la aplicación. Se cargan una vez por sesión de la app.
+  const [capCargadas, setCapCargadas] = useState(false);
+  useEffect(() => {
+    if (menu !== 'capacitaciones' || capCargadas) return undefined;
+    let vigente = true;
+    loadCapacitaciones().then(data => {
+      if (!vigente) return;
+      setCapacitaciones(data);
+      setCapCargadas(true);
+    });
+    return () => { vigente = false; };
+  }, [menu, capCargadas]);
   // A diferencia de updateEquipo/updatePlanPrograma, esto no es una edición optimista de un
   // campo puntual: es un refresh completo que solo tiene sentido esperar a que el servidor
   // termine (puede tardar unos segundos, consulta ~20 hojas de Google en vivo), así que el
@@ -4246,7 +4272,19 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
     });
   };
 
-  useEffect(() => { loadLimpiezaPlantillas().then(setLimpiezaPlantillas); }, []);
+  // CARGA DIFERIDA: las plantillas guardan archivos completos en base64 (~300 KB en Redis);
+  // solo se piden al entrar a "Formatos de limpieza y desinfección".
+  const [plantillasCargadas, setPlantillasCargadas] = useState(false);
+  useEffect(() => {
+    if (menu !== 'limpieza' || plantillasCargadas) return undefined;
+    let vigente = true;
+    loadLimpiezaPlantillas().then(data => {
+      if (!vigente) return;
+      setLimpiezaPlantillas(data);
+      setPlantillasCargadas(true);
+    });
+    return () => { vigente = false; };
+  }, [menu, plantillasCargadas]);
   // A diferencia de los demás updateX de arriba, estas dos NO actualizan el estado de forma
   // optimista: cargar/reemplazar/eliminar un archivo real depende de una respuesta del
   // servidor (éxito o error de validación/permisos) que la tarjeta necesita mostrarle al
@@ -4712,13 +4750,15 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
         )}
         {menu === 'fallas' && !readOnly && <ReportesFallaPage reportes={reportesFalla} equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} onEliminarReporte={eliminarReporte} onVaciarHistorial={vaciarHistorialFallas} readOnly={readOnly} />}
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
-        {menu === 'capacitaciones' && (
+        {menu === 'capacitaciones' && !capCargadas && <SeccionCargando t={t} texto="Cargando capacitaciones…" />}
+        {menu === 'capacitaciones' && capCargadas && (
           <CapacitacionesPage capacitaciones={capacitaciones} activeCompany={activeCompany} onChangeEmpresa={setActiveCompany} t={t} accent={accent}
             onActualizar={actualizarCapacitaciones} sincronizando={capSincronizando} syncStatus={capSyncStatus} readOnly={readOnly || !isSuper} />
         )}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
-        {menu === 'limpieza' && (
+        {menu === 'limpieza' && !plantillasCargadas && <SeccionCargando t={t} texto="Cargando formatos de limpieza y desinfección…" />}
+        {menu === 'limpieza' && plantillasCargadas && (
           <LimpiezaDesinfeccionPage data={limpiezaDesinfeccion} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateLimpiezaDesinfeccion}
             plantillas={limpiezaPlantillas} onUploadPlantilla={subirLimpiezaPlantilla} onDeletePlantilla={eliminarLimpiezaPlantilla} readOnly={readOnly} />
         )}
@@ -4728,7 +4768,7 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
         </div>
       </div>
 
-      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => setDrawerId(null)} onUpdate={updateEquipo} t={t} readOnly={readOnly} />}
+      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => { enviarEdicionEquipo(drawerEquipo.id); setDrawerId(null); }} onUpdate={updateEquipo} t={t} readOnly={readOnly} />}
       {obsEquipo && <ObsModal equipo={obsEquipo} onClose={() => setObsModalId(null)} onSave={(v) => updateEquipo({ ...obsEquipo, observaciones: v })} t={t} accent={accent} readOnly={readOnly} />}
       </div>
     </div>
