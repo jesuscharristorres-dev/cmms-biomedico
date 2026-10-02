@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import {
-  Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X,
+  Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X, Menu,
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, AlertTriangle, Lock,
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
   IdCard, Save, SprayCan, ClipboardList, Paperclip, MoreVertical, Pencil, Filter, Zap, ExternalLink,
-  GraduationCap, RefreshCw, Users, UserPlus, Power, UserCog, Link2, House, LayoutGrid
+  GraduationCap, RefreshCw, Users, UserPlus, Power, UserCog, Link2
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -20,8 +20,6 @@ import { readSheet } from 'read-excel-file/browser';
 import writeXlsxFile from 'write-excel-file/browser';
 import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts, aplicaCalibracionEfectiva } from './services/alertLogic';
 import { preventivoDelMes } from './services/preventivoSchedule';
-import { MODULOS, moduloPorKey, moduloDeMenu, menuDeModulo, modulosPermitidos } from './platform/modulos';
-import { PlatformHeader, PortalInicio, ModuloInfoPage } from './platform/PortalInicio';
 // Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
 import logoIngenieriaClinica from './assets/logo-ingenieria-clinica.png';
@@ -390,15 +388,7 @@ const PERIODICIDADES = ['Mensual', 'Bimestral', 'Trimestral', 'Cuatrimestral', '
 // `superOnly`: solo para SUPER_ADMIN (vista global de empresas, configuración y el grupo
 // Administración). Ocultarlo del menú NO es la medida de seguridad: la API responde 403 igual.
 // `group`: encabezado de sección en el sidebar.
-const BIOMEDICA_MENU_KEYS = new Set(['dashboard', 'alertas', 'fallas', 'planes', 'capacitaciones', 'tecnovigilancia', 'personal', 'limpieza', 'empresas', 'inventario', 'configuracion']);
-// PLATAFORMA: el menú se organiza por módulo (`modulo` = clave en src/platform/modulos.js).
-// 'inicio' es el portal corporativo (pantalla de entrada tras el login) y 'modulos' el
-// catálogo completo. Las entradas del grupo Biomédica son exactamente las pantallas que ya
-// existían (mismas claves), solo agrupadas; las áreas nuevas abren su pantalla informativa
-// (`modulo_<clave>`) hasta que tengan pantallas propias.
 const MENU = [
-  { key: 'inicio', label: 'Inicio', icon: House },
-  { key: 'modulos', label: 'Módulos', icon: LayoutGrid },
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'alertas', label: 'Alertas', icon: BellRing, guestHidden: true },
   { key: 'fallas', label: 'Reportes de falla', icon: AlertTriangle, guestHidden: true },
@@ -419,19 +409,9 @@ const MENU = [
   // componente ReportesPage y las funciones que solo él usaba (generarInformeMensualPDF,
   // InformeF140Modal, generarF140PDF, computeInformeF140/Mensual, etc.).
   { key: 'configuracion', label: 'Configuración', icon: Settings, guestHidden: true, superOnly: true },
-  ...MODULOS.filter(m => m.key !== 'biomedica' && !m.soloSuperAdmin && (m.principal || m.menuLateral))
-    .map(m => ({ key: menuDeModulo(m.key), label: m.menuLabel || m.nombre, icon: m.icon, group: 'Áreas', modulo: m.key })),
-  { key: 'admin_empresas', label: 'Empresas', icon: Building2, superOnly: true, group: 'Administración', modulo: 'administracion' },
-  { key: 'admin_usuarios', label: 'Usuarios', icon: Users, superOnly: true, group: 'Administración', modulo: 'administracion' },
-].map(m => (BIOMEDICA_MENU_KEYS.has(m.key) ? { ...m, group: 'Biomédica', modulo: 'biomedica' } : m));
-// Vistas de Biomédica que existen pero no tienen entrada propia en el menú (ver arriba):
-// se abren desde el portal con los mismos permisos que antes (nunca para solo lectura).
-const MENU_OCULTAS = {
-  mantenimientos: { key: 'mantenimientos', label: 'Mantenimientos', guestHidden: true, group: 'Biomédica', modulo: 'biomedica' },
-  calibraciones: { key: 'calibraciones', label: 'Calibraciones', guestHidden: true, group: 'Biomédica', modulo: 'biomedica' },
-  correctivos: { key: 'correctivos', label: 'Correctivos', guestHidden: true, group: 'Biomédica', modulo: 'biomedica' },
-};
-const menuDef = (key) => MENU.find(m => m.key === key) || MENU_OCULTAS[key] || null;
+  { key: 'admin_empresas', label: 'Empresas', icon: Building2, superOnly: true, group: 'Administración' },
+  { key: 'admin_usuarios', label: 'Usuarios', icon: Users, superOnly: true, group: 'Administración' },
+];
 // Semáforo semántico compartido — mantenimientos y calibraciones usan el mismo
 // significado de color (verde=bien, ámbar=próximo, rojo=vencido, gris=sin dato),
 // antes duplicado como dos mapas hex idénticos con llaves distintas.
@@ -4008,8 +3988,7 @@ function AmbientBackground({ theme, dark }) {
 function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dark, setDark, onLogout, readOnly, onCloseMobile }) {
   const user = useContext(AuthUserContext);
   const isSuper = user?.role === 'SUPER_ADMIN';
-  const permitidos = modulosPermitidos(user);
-  const items = MENU.filter(m => !(readOnly && m.guestHidden) && !(m.superOnly && !isSuper) && !(m.modulo && !permitidos.has(m.modulo)));
+  const items = MENU.filter(m => !(readOnly && m.guestHidden) && !(m.superOnly && !isSuper));
   return (
     <>
       <div className="h-1" style={{ background: accentBg }} />
@@ -4017,8 +3996,8 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
         <div className="flex items-center gap-2.5 min-w-0">
           <img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={36} height={36} className="shrink-0" style={{ objectFit: 'contain' }} />
           <div className="min-w-0">
-            <div className="text-3xs uppercase tracking-widest truncate" style={{ color: accent }}>Plataforma Integral</div>
-            <div className="text-sm font-bold mt-0.5 truncate">de Gestión</div>
+            <div className="text-3xs uppercase tracking-widest truncate" style={{ color: accent }}>CMMS Biomédico</div>
+            <div className="text-sm font-bold mt-0.5 truncate">Gestión de equipos</div>
           </div>
         </div>
         {onCloseMobile && (
@@ -4085,9 +4064,7 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
 function MainApp({ user, entorno, onLogout, readOnly }) {
   const [equipos, setEquipos] = useState([]);
   const [dark, setDark] = useState(false);
-  // Pantalla de entrada: el portal corporativo de la plataforma (antes el dashboard biomédico,
-  // que sigue existiendo dentro del módulo Biomédica).
-  const [menu, setMenu] = useState('inicio');
+  const [menu, setMenu] = useState('dashboard');
   // MULTIEMPRESA: el SUPER_ADMIN empieza en "Todas" y puede filtrar por cualquier empresa.
   // Un usuario de empresa queda fijo en SU empresa (la que asignó el servidor) y no puede
   // cambiarla — y aunque lo intentara desde DevTools, la API solo le devuelve sus datos.
@@ -4288,63 +4265,6 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
   // Sedes efectivas por empresa (configuradas + en uso por los equipos): se recalculan en el
   // mismo render en que cambian los equipos, antes de que los hijos lean COMPANIES.
   useMemo(() => registrarSedesEnUso(equipos), [equipos]);
-
-  // PLATAFORMA — qué puede abrir este usuario. Replica exactamente las reglas con las que se
-  // renderiza cada pantalla más abajo (solo lectura, SUPER_ADMIN, módulo habilitado) para que
-  // el portal nunca ofrezca un botón hacia algo que después no se mostraría. La seguridad
-  // real sigue en la API.
-  const permitidos = useMemo(() => modulosPermitidos(user), [user]);
-  const puedeAbrir = (key) => {
-    const mod = moduloDeMenu(key);
-    if (mod) return !!moduloPorKey(mod);
-    const def = menuDef(key);
-    if (!def) return false;
-    if (readOnly && def.guestHidden) return false;
-    if (def.superOnly && !isSuper) return false;
-    if (def.modulo && !permitidos.has(def.modulo)) return false;
-    return true;
-  };
-  const navegar = (key) => { if (puedeAbrir(key)) setMenu(key); };
-
-  // Conteo de usuarios para el resumen corporativo: solo el SUPER_ADMIN puede listarlos (la
-  // API responde 403 a cualquier otro rol), así que para el resto no se consulta.
-  const [usuariosTotal, setUsuariosTotal] = useState(null);
-  useEffect(() => {
-    if (!isSuper) return;
-    adminApi('usuarios').then(d => setUsuariosTotal(Array.isArray(d.usuarios) ? d.usuarios.length : null)).catch(() => setUsuariosTotal(null));
-  }, [isSuper, dataVersion]);
-
-  // Datos reales del portal (solo se calculan mientras el portal está en pantalla).
-  const enPortal = menu === 'inicio';
-  const equiposEmpresa = useMemo(
-    () => (activeCompany === 'TODAS' ? equipos : equipos.filter(e => e.empresa === activeCompany)),
-    [equipos, activeCompany]);
-  const alertasPortal = useMemo(() => (enPortal ? buildAlerts(equiposEmpresa) : []), [enPortal, equiposEmpresa]);
-  const fallasAbiertas = reportesFalla.filter(r => r.estado !== 'Finalizado' && (activeCompany === 'TODAS' || r.empresa === activeCompany)).length;
-  const areasActivas = MODULOS.filter(m => m.estado === 'ACTIVO' && permitidos.has(m.key)).length;
-  const resumenCorporativo = [
-    { label: 'Áreas activas', value: areasActivas, sub: `De ${MODULOS.length} áreas de la plataforma`, color: '#16A34A', onClick: () => setMenu('modulos') },
-    { label: 'Usuarios', value: isSuper && usuariosTotal !== null ? usuariosTotal : '--', sub: isSuper ? 'Registrados en la plataforma' : 'Visible solo para administración', color: '#6366F1', onClick: puedeAbrir('admin_usuarios') ? () => setMenu('admin_usuarios') : undefined },
-    { label: 'Empresas', value: isSuper ? COMPANIES.length : 1, sub: isSuper ? 'Registradas en la plataforma' : 'Tu empresa', color: '#0EA5E9', onClick: puedeAbrir('admin_empresas') ? () => setMenu('admin_empresas') : undefined },
-    { label: 'Procesos gestionados', value: '--', proximamente: true },
-    { label: 'Tareas pendientes', value: '--', proximamente: true },
-    { label: 'Documentos por vencer', value: '--', proximamente: true },
-    { label: 'Mantenimientos pendientes', value: alertasPortal.filter(a => a.tipo === 'Preventivo').length, sub: 'Preventivos vencidos o próximos · Biomédica', color: '#EA580C', onClick: puedeAbrir('alertas') ? () => setMenu('alertas') : undefined },
-    { label: 'Capacitaciones pendientes', value: '--', proximamente: true },
-  ];
-  const biomedicaStats = [
-    { label: 'Equipos', value: equiposEmpresa.length },
-    { label: 'Alertas', value: alertasPortal.length, color: '#EA580C' },
-    { label: 'Fallas abiertas', value: fallasAbiertas, color: '#EF4444' },
-  ];
-  const empresaLabel = activeCompany === 'TODAS' ? 'Todas las empresas' : (companyOf(activeCompany)?.nombre || activeCompany);
-  const moduloInfo = moduloPorKey(moduloDeMenu(menu));
-  const menuActual = menuDef(menu);
-  const seccion = menu === 'inicio' ? ['Inicio']
-    : menu === 'modulos' ? ['Módulos']
-    : moduloInfo ? ['Áreas', moduloInfo.menuLabel || moduloInfo.nombre]
-    : menuActual?.group ? [menuActual.group, menuActual.label] : [menuActual?.label || ''];
-  const mostrarEmpresas = !menu.startsWith('admin_') && menu !== 'modulos' && !moduloInfo;
 
   const theme = themeOf(activeCompany);
   const accent = theme.solid;
@@ -4693,7 +4613,7 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
 
   /* ---------------------------------------------------------------- */
   return (
-    <div className={`flex flex-col h-dvh overflow-hidden font-sans ${t.bg} ${t.text}`} style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
+    <div className={`flex flex-col min-h-dvh font-sans ${t.bg} ${t.text}`} style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
       {entorno && entorno !== 'production' && (
         // Preview/development usan su propio espacio de datos (ver lib/db.js): se avisa para
         // que nadie confunda una URL de pruebas con el sistema real.
@@ -4706,13 +4626,15 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
           <Lock size={12} /> Usuario de solo lectura — no se pueden guardar cambios
         </div>
       )}
-      {/* ENCABEZADO DE LA PLATAFORMA — todas las pantallas; en <lg además abre el menú lateral */}
-      <PlatformHeader t={t} dark={dark} user={user} rolLabel={ROLE_LABELS[user.role] || user.role} empresaLabel={empresaLabel}
-        seccion={seccion} logo={logoIngenieriaClinica}
-        notificaciones={puedeAbrir('fallas') ? nuevosReportes : null}
-        onNotificaciones={puedeAbrir('fallas') ? () => setMenu('fallas') : undefined}
-        modulosHabilitados={MODULOS.filter(m => permitidos.has(m.key)).length}
-        onLogout={onLogout} onOpenMenu={() => setMobileNavOpen(true)} onInicio={() => setMenu('inicio')} />
+      {/* BARRA SUPERIOR MÓVIL — solo <lg, abre el sidebar como drawer */}
+      <div className={`lg:hidden shrink-0 flex items-center justify-between px-2 border-b ${t.panel} ${t.border}`} style={{ minHeight: 52 }}>
+        <button onClick={() => setMobileNavOpen(true)} aria-label="Abrir menú"
+          className={`flex items-center justify-center w-11 h-11 rounded-md ${t.muted}`}>
+          <Menu size={20} />
+        </button>
+        <div className="text-sm font-bold">Gestión de equipos</div>
+        <div className="w-11 h-11" aria-hidden="true" />
+      </div>
 
       <div className="flex flex-1 min-h-0 relative">
       {/* BACKDROP — solo mientras el drawer móvil está abierto */}
@@ -4743,14 +4665,14 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
         <div className="absolute inset-0 overflow-y-auto p-6">
         {/* Empresa pills — solo SUPER_ADMIN puede cambiar de empresa; un usuario de empresa
             ve únicamente la suya, fija. */}
-        {!mostrarEmpresas ? null : !isSuper ? (
+        {!isSuper ? (
           <div className="flex gap-2 flex-wrap mb-5">
             <span className="px-3 min-h-11 flex items-center gap-1.5 rounded-full text-2xs font-mono border text-white font-semibold"
               style={{ background: companyOf(activeCompany)?.gradient, borderColor: companyOf(activeCompany)?.color }}>
               <Building2 size={12} /> {companyOf(activeCompany)?.nombre || activeCompany}
             </span>
           </div>
-        ) : (
+        ) : !menu.startsWith('admin_') && (
         <div className="flex gap-2 flex-wrap mb-5">
           <button onClick={() => changeCompany('TODAS')}
             className={`px-3 min-h-11 flex items-center rounded-full text-2xs font-mono border transition ${t.border}`}
@@ -4767,13 +4689,6 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
         </div>
         )}
 
-        {(menu === 'inicio' || menu === 'modulos') && (
-          <PortalInicio vista={menu === 'modulos' ? 'catalogo' : 'inicio'} t={t} dark={dark} user={user} empresaLabel={empresaLabel}
-            permitidos={permitidos} canOpen={puedeAbrir} onNavigate={navegar} resumen={resumenCorporativo} biomedicaStats={biomedicaStats} />
-        )}
-        {moduloInfo && (
-          <ModuloInfoPage key={moduloInfo.key} modulo={moduloInfo} t={t} permitido={permitidos.has(moduloInfo.key)} canOpen={puedeAbrir} onNavigate={navegar} />
-        )}
         {menu === 'dashboard' && <Dashboard equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} accent={accent} theme={theme} t={t} readOnly={readOnly} onGoAlerts={readOnly ? undefined : () => setMenu('alertas')} onGoFallas={readOnly ? undefined : () => setMenu('fallas')} onGoInventario={() => setMenu('inventario')} />}
         {menu === 'alertas' && !readOnly && <AlertasPage equipos={equipos} activeCompany={activeCompany} onChangeEmpresa={changeCompany} t={t} onOpen={setDrawerId} />}
         {menu === 'empresas' && isSuper && <EmpresasPage equipos={equipos} t={t} onSelect={(k) => { changeCompany(k); setMenu('inventario'); }} />}
