@@ -223,6 +223,15 @@ describe('Colecciones medianas y sesiones', () => {
     assert.equal(sin.status, 401);
   });
 
+  test('plantillas: errores dentro del GET (404, base de datos) se responden, no escapan', async () => {
+    const r = await call(plantillas, { method: 'GET', cookie, query: { archivo: 'NO-EXISTE' } });
+    assert.equal(r.status, 404);
+    setKvForTests(new Proxy(store, { get: (t, p) => (p === 'get' ? async () => { throw new Error('ERR max daily request limit exceeded'); } : t[p]) }));
+    const caida = await call(plantillas, { method: 'GET', cookie });
+    assert.equal(caida.status, 503); // límite de Upstash → mensaje claro, no un fallo sin manejar
+    assert.equal(caida.headers['cache-control'], 'no-store');
+  });
+
   test('plantilla guardada en Blob: el cliente recibe una URL autenticada, nunca la ruta interna', async () => {
     store.store.set('cmms:limpiezaPlantillas', { MEIDE: { nombre: 'F.pdf', tipo: 'application/pdf', tamano: 10, blobPathname: 'limpieza-plantillas/MEIDE/F-abc.pdf', updatedAt: 'x' } });
     const g = await call(plantillas, { method: 'GET', cookie });

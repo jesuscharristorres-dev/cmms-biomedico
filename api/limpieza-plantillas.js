@@ -115,6 +115,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const ctx = await requireAuth(req);
+      // `return await`: dentro del try, para que sus errores (404, límite de Redis…) los maneje el catch.
       if (req.query?.archivo) return await descargar(req, res, ctx);
       const filtro = empresaFilter(ctx, req.query);
       return await responderVersionado(req, res, {
