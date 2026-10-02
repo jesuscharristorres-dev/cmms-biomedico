@@ -23,8 +23,6 @@ import { preventivoDelMes } from './services/preventivoSchedule';
 import { MODULOS, ESTADOS_MODULO, moduloPorKey, moduloDeMenu, menuDeModulo, modulosPermitidos } from './platform/modulos';
 import { PlatformHeader, PortalInicio, ModuloInfoPage } from './platform/PortalInicio';
 import { LANDING_AREAS, LANDING_OTRAS_AREAS, LANDING_ECOSISTEMA } from './platform/landing';
-// Módulo Gestión Humana (demo): se carga solo cuando alguien entra al módulo.
-const GestionHumana = React.lazy(() => import('./rrhh/GestionHumana'));
 // Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
 import logoIngenieriaClinica from './assets/logo-ingenieria-clinica.png';
@@ -4631,7 +4629,6 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
   const menuActual = menuDef(menu);
   const seccion = menu === 'inicio' ? ['Inicio']
     : menu === 'modulos' ? ['Módulos']
-    : moduloInfo?.key === 'rrhh' ? ['Gestión Humana']
     : moduloInfo ? ['Áreas', moduloInfo.menuLabel || moduloInfo.nombre]
     : menuActual?.group ? [menuActual.group, menuActual.label] : [menuActual?.label || ''];
   const mostrarEmpresas = !menu.startsWith('admin_') && menu !== 'modulos' && !moduloInfo;
@@ -5061,13 +5058,7 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
           <PortalInicio vista={menu === 'modulos' ? 'catalogo' : 'inicio'} t={t} dark={dark} user={user} empresaLabel={empresaLabel}
             permitidos={permitidos} canOpen={puedeAbrir} onNavigate={navegar} resumen={resumenCorporativo} biomedicaStats={biomedicaStats} />
         )}
-        {moduloInfo?.key === 'rrhh' && permitidos.has('rrhh') && (
-          <React.Suspense fallback={<div className={`py-24 text-center text-sm ${t.muted}`}>Cargando Gestión Humana…</div>}>
-            <GestionHumana t={t} user={user} readOnly={readOnly} empresaLabel={empresaLabel}
-              onIrCapacitaciones={puedeAbrir('capacitaciones') ? () => setMenu('capacitaciones') : undefined} />
-          </React.Suspense>
-        )}
-        {moduloInfo && !(moduloInfo.key === 'rrhh' && permitidos.has('rrhh')) && (
+        {moduloInfo && (
           <ModuloInfoPage key={moduloInfo.key} modulo={moduloInfo} t={t} permitido={permitidos.has(moduloInfo.key)} canOpen={puedeAbrir} onNavigate={navegar} />
         )}
         {menu === 'dashboard' && <Dashboard equipos={equipos} reportesFalla={reportesFalla} activeCompany={activeCompany} accent={accent} theme={theme} t={t} readOnly={readOnly} onGoAlerts={readOnly ? undefined : () => setMenu('alertas')} onGoFallas={readOnly ? undefined : () => setMenu('fallas')} onGoInventario={() => setMenu('inventario')} />}

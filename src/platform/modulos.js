@@ -62,20 +62,16 @@ export const MODULOS = [
     estado: 'EN_DESARROLLO',
     principal: true,
     area: 'Personas',
-    // Módulo en DEMOSTRACIÓN (src/rrhh): expediente digital con datos ficticios, listo para
-    // conectarse a la base de datos. Abre la demo en lugar de la pantalla informativa.
-    demo: true,
-    entrada: 'modulo_rrhh',
     funciones: [
-      { label: 'Colaboradores', menu: 'modulo_rrhh' },
-      { label: 'Hojas de vida', menu: 'modulo_rrhh' },
-      { label: 'Contratos', menu: 'modulo_rrhh' },
-      // Las capacitaciones que ya existen son las del área biomédica.
+      { label: 'Colaboradores' },
+      // Las hojas de vida y capacitaciones del personal ya existen (hoy dentro de Biomédica).
+      { label: 'Hojas de vida', menu: 'personal' },
+      { label: 'Contratos' },
       { label: 'Capacitaciones', menu: 'capacitaciones' },
       { label: 'Inducciones' },
-      { label: 'Documentos', menu: 'modulo_rrhh' },
+      { label: 'Documentos' },
       { label: 'Evaluaciones' },
-      { label: 'Vencimientos', menu: 'modulo_rrhh' },
+      { label: 'Vencimientos' },
     ],
   },
   {
