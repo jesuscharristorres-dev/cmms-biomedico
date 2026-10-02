@@ -51,5 +51,11 @@
         }
       ]
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/salud",
+      "schedule": "23 12 * * *"
+    }
   ]
 }
