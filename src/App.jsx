@@ -934,22 +934,47 @@ async function crearEquipos(nuevos) {
 }
 async function actualizarEquipo(id, patch, { keepalive = false } = {}) {
   const res = await apiFetch('/api/equipos', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }), keepalive });
-  if (!res.ok) throw new Error('No se pudo actualizar el equipo en la base de datos compartida.');
+  if (!res.ok) {
+    const err = new Error('No se pudo actualizar el equipo en la base de datos compartida.');
+    err.status = res.status;
+    throw err;
+  }
   const { equipo } = await res.json();
   cacheReemplazar(EQUIPOS_KEY, equipo);
   return equipo;
 }
 // AGRUPACIÓN DE EDICIONES DE UN EQUIPO
-// Cada PATCH de un equipo obliga al servidor a leer y reescribir el inventario COMPLETO en
-// Redis (~2,4 MB, una sola clave 'cmms:equipos'), y la hoja de vida guardaba en cada tecla:
-// escribir "Philips" eran 8 PATCH = ~38 MB de tráfico con Redis. Ahora los cambios de un
-// mismo equipo se agrupan y se envía UN solo PATCH (con el estado final del equipo) cuando
-// pasan EDICION_EQUIPO_MS sin nuevos cambios. La pantalla se actualiza al instante igual
-// que antes (actualización optimista); lo único que se retrasa es el envío al servidor.
-// Lo pendiente se envía de inmediato al cerrar sesión, al ocultar/cerrar la pestaña
-// (fetch keepalive) o al eliminar el equipo (en ese caso se descarta).
+// Cada PATCH de un equipo obliga al servidor a reescribir el inventario COMPLETO en Redis
+// (~2,4 MB, una sola clave 'cmms:equipos'), y la hoja de vida guardaba en cada tecla:
+// escribir "Philips" eran 8 PATCH. Ahora los cambios de un mismo equipo se agrupan y se envía
+// UN solo PATCH cuando pasan EDICION_EQUIPO_MS sin nuevos cambios. La pantalla se actualiza
+// al instante igual que antes (actualización optimista); solo se retrasa el envío.
+// Lo pendiente se envía de inmediato: al cerrar la hoja de vida o salir de ella (el foco deja
+// el panel), al cerrar sesión, al ocultar/cerrar la pestaña (fetch keepalive) y antes de
+// recargar el inventario. Al eliminar el equipo se descarta.
+// - Solo viajan los campos que cambiaron (el servidor los combina con el registro actual).
+// - Los envíos de un mismo equipo van en orden (nunca uno viejo pisa uno nuevo).
+// - Si falla por red o error temporal del servidor, se reintenta con espera creciente; solo
+//   si todos los intentos fallan se revierte la pantalla y se avisa al usuario.
 const EDICION_EQUIPO_MS = 1500;
+const REINTENTOS_EDICION_MS = [1000, 3000, 8000];
+const KEEPALIVE_MAX_BYTES = 60 * 1024; // límite de los navegadores para fetch keepalive: 64 KB
 const edicionesEquipo = new Map(); // id → { record, original, timer, esperas: [{ resolve, reject }] }
+const enviosEquipo = new Map(); // id → promesa del último envío (para encadenar en orden)
+
+// Campos de primer nivel que cambiaron entre `original` y `record`. null si se quitó alguno
+// (un PATCH parcial no puede expresar "borrar campo": entonces se envía el registro completo).
+function camposCambiados(original, record) {
+  if (!original) return null;
+  if (Object.keys(original).some(k => !(k in record))) return null;
+  const cambios = {};
+  for (const [k, v] of Object.entries(record)) {
+    if (JSON.stringify(v) !== JSON.stringify(original[k])) cambios[k] = v;
+  }
+  return cambios;
+}
+const esperar = (ms) => new Promise(r => setTimeout(r, ms));
+const errorTemporal = (err) => !err.status || err.status === 409 || err.status === 429 || err.status >= 500;
 
 function programarActualizacionEquipo(record, original) {
   return new Promise((resolve, reject) => {
@@ -961,22 +986,40 @@ function programarActualizacionEquipo(record, original) {
     edicionesEquipo.set(record.id, p);
   });
 }
-async function enviarEdicionEquipo(id, opciones) {
+function enviarEdicionEquipo(id, opciones = {}) {
   const p = edicionesEquipo.get(id);
-  if (!p) return;
+  if (!p) return enviosEquipo.get(id) || Promise.resolve();
   edicionesEquipo.delete(id);
   clearTimeout(p.timer);
-  try {
-    const equipo = await actualizarEquipo(id, p.record, opciones);
-    p.esperas.forEach(w => w.resolve(equipo));
-  } catch (err) {
-    // `original`: el estado previo a la PRIMERA edición agrupada, para revertir todo el grupo.
-    err.original = p.original;
-    p.esperas.forEach(w => w.reject(err));
-  }
+  const patch = camposCambiados(p.original, p.record) || p.record;
+  const anterior = enviosEquipo.get(id) || Promise.resolve();
+  const envio = anterior.catch(() => {}).then(async () => {
+    if (Object.keys(patch).length === 0) { p.esperas.forEach(w => w.resolve(p.record)); return; }
+    // keepalive solo si el cuerpo cabe; si no, se envía normal (best-effort al cerrar la pestaña).
+    const keepalive = !!opciones.keepalive && JSON.stringify({ id, patch }).length < KEEPALIVE_MAX_BYTES;
+    for (let intento = 0; ; intento++) {
+      try {
+        const equipo = await actualizarEquipo(id, patch, { keepalive });
+        p.esperas.forEach(w => w.resolve(equipo));
+        return;
+      } catch (err) {
+        if (intento >= REINTENTOS_EDICION_MS.length || !errorTemporal(err)) {
+          // `original`: el estado previo a la PRIMERA edición agrupada, para revertir todo el grupo.
+          err.original = p.original;
+          p.esperas.forEach(w => w.reject(err));
+          return;
+        }
+        await esperar(REINTENTOS_EDICION_MS[intento]);
+      }
+    }
+  });
+  enviosEquipo.set(id, envio);
+  envio.finally(() => { if (enviosEquipo.get(id) === envio) enviosEquipo.delete(id); });
+  return envio;
 }
 function enviarEdicionesPendientes(opciones) {
-  return Promise.all([...edicionesEquipo.keys()].map(id => enviarEdicionEquipo(id, opciones)));
+  const ids = new Set([...edicionesEquipo.keys(), ...enviosEquipo.keys()]);
+  return Promise.all([...ids].map(id => enviarEdicionEquipo(id, opciones)));
 }
 function descartarEdicionEquipo(id) {
   const p = edicionesEquipo.get(id);
@@ -1569,12 +1612,33 @@ function PdfLink({ url, label = 'Ver PDF', title, t, emptyLabel = 'Sin documento
 
 // Carga + vista previa de una imagen de firma (PNG). El valor se guarda como Data URI,
 // así se imprime directamente en el reporte sin depender de almacenamiento externo.
+// La firma viaja DENTRO del equipo (cmms:equipos), así que antes de guardarla se reduce a un
+// tamaño suficiente para imprimir (máx. FIRMA_MAX_ANCHO × FIRMA_MAX_ALTO): una foto o un
+// escaneo de varios cientos de KB queda en pocos KB. Mismo formato (PNG en Data URI).
+const FIRMA_MAX_ANCHO = 480;
+const FIRMA_MAX_ALTO = 200;
+function reducirFirma(dataUri) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const escala = Math.min(1, FIRMA_MAX_ANCHO / img.width, FIRMA_MAX_ALTO / img.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.width * escala));
+      canvas.height = Math.max(1, Math.round(img.height * escala));
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const reducida = canvas.toDataURL('image/png');
+      resolve(reducida.length < dataUri.length ? reducida : dataUri);
+    };
+    img.onerror = () => resolve(dataUri);
+    img.src = dataUri;
+  });
+}
 function FirmaInput({ value, onChange, readOnly, alt, t }) {
   const handleFile = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => onChange(ev.target.result);
+    reader.onload = async (ev) => onChange(await reducirFirma(ev.target.result));
     reader.readAsDataURL(file);
   };
   return (
@@ -1780,16 +1844,19 @@ function dataUriAUrlTemporal(dataUri) {
   for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
   return URL.createObjectURL(new Blob([bytes], { type: mime }));
 }
+// Plantillas guardadas en Vercel Blob: llegan con `archivoUrl` (descarga autenticada por la
+// API, solo al abrirla) en vez del archivo en base64.
 function verPlantillaLimpieza(plantilla) {
+  if (plantilla?.archivoUrl) { window.open(plantilla.archivoUrl, '_blank', 'noopener,noreferrer'); return; }
   if (!plantilla?.archivoDatos) return;
   const url = dataUriAUrlTemporal(plantilla.archivoDatos);
   window.open(url, '_blank', 'noopener,noreferrer');
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 function descargarPlantillaLimpieza(plantilla) {
-  if (!plantilla?.archivoDatos) return;
+  if (!plantilla?.archivoDatos && !plantilla?.archivoUrl) return;
   const a = document.createElement('a');
-  a.href = plantilla.archivoDatos;
+  a.href = plantilla.archivoUrl ? `${plantilla.archivoUrl}&descargar=1` : plantilla.archivoDatos;
   a.download = plantilla.nombre || 'plantilla';
   document.body.appendChild(a);
   a.click();
@@ -2443,7 +2510,10 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className={`animate-drawer-in relative w-full sm:w-1/2 sm:min-w-[640px] max-w-full h-full overflow-hidden ${t.panel} border-l ${t.border}`}>
+      {/* Si el foco sale de la hoja de vida (p. ej. a la barra lateral u otra ventana), lo
+          pendiente de este equipo se envía de una vez, sin esperar la pausa de agrupación. */}
+      <div onBlur={e => { if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget)) enviarEdicionEquipo(equipo.id); }}
+        className={`animate-drawer-in relative w-full sm:w-1/2 sm:min-w-[640px] max-w-full h-full overflow-hidden ${t.panel} border-l ${t.border}`}>
         {/* Marca de agua — el mismo logo del Login (logoIngenieriaClinica), fija dentro del
             panel mientras el contenido hace scroll: vive en este contenedor no-scrolleable,
             detrás del div interno que sí scrollea. pointer-events-none para no interferir
@@ -4322,6 +4392,8 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
       console.error('No se pudo sincronizar el equipo con el servidor compartido', err);
       const original = err.original || previous;
       if (original) setEquipos(prev => prev.map(e => e.id === updated.id ? original : e));
+      alert(`No se pudo guardar el cambio en "${updated.equipo || 'el equipo'}" después de varios intentos. `
+        + 'Se restauró el valor anterior: verifica tu conexión y vuelve a hacer el cambio.');
     });
   };
   const removeEquipo = (id) => {
@@ -7192,7 +7264,7 @@ function PlantillaLimpiezaCard({ empresa, plantilla, onUpload, onDelete, readOnl
   const [confirmarEliminar, setConfirmarEliminar] = useState(false);
   const inputRef = useRef(null);
 
-  const tieneArchivo = !!plantilla?.archivoDatos;
+  const tieneArchivo = !!(plantilla?.archivoDatos || plantilla?.archivoUrl);
 
   const handleFile = (e) => {
     const file = e.target.files[0];
