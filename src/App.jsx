@@ -935,7 +935,8 @@ async function crearEquipos(nuevos) {
 async function actualizarEquipo(id, patch, { keepalive = false } = {}) {
   const res = await apiFetch('/api/equipos', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }), keepalive });
   if (!res.ok) {
-    const err = new Error('No se pudo actualizar el equipo en la base de datos compartida.');
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.error || 'No se pudo actualizar el equipo en la base de datos compartida.');
     err.status = res.status;
     throw err;
   }
@@ -1818,12 +1819,16 @@ function esUrlDocumentoValida(value) {
 // nueva, sin descargar ni copiar nada localmente; los guardados antes de este cambio (con
 // archivo en `archivoDatos`, un Data URI) se siguen descargando igual que siempre, para no
 // perder acceso a lo que ya estaba guardado.
+// Tras la migración a Supabase, `archivoDatos` puede traer la URL autenticada del archivo en
+// Storage (/api/archivos?ruta=...) en lugar del Data URI: se abre/descarga desde ahí.
+const esUrlArchivo = (v) => typeof v === 'string' && v.startsWith('/api/archivos?');
+const urlDescargaArchivo = (v) => (esUrlArchivo(v) ? `${v}&descargar=1` : v);
 function abrirDocumento(doc) {
   if (doc.url) {
     window.open(doc.url, '_blank', 'noopener,noreferrer');
   } else if (doc.archivoDatos) {
     const a = document.createElement('a');
-    a.href = doc.archivoDatos;
+    a.href = urlDescargaArchivo(doc.archivoDatos);
     a.download = doc.archivoNombre || doc.nombre || 'documento';
     document.body.appendChild(a);
     a.click();
@@ -1848,6 +1853,7 @@ function dataUriAUrlTemporal(dataUri) {
 // API, solo al abrirla) en vez del archivo en base64.
 function verPlantillaLimpieza(plantilla) {
   if (plantilla?.archivoUrl) { window.open(plantilla.archivoUrl, '_blank', 'noopener,noreferrer'); return; }
+  if (esUrlArchivo(plantilla?.archivoDatos)) { window.open(plantilla.archivoDatos, '_blank', 'noopener,noreferrer'); return; }
   if (!plantilla?.archivoDatos) return;
   const url = dataUriAUrlTemporal(plantilla.archivoDatos);
   window.open(url, '_blank', 'noopener,noreferrer');
@@ -1856,7 +1862,7 @@ function verPlantillaLimpieza(plantilla) {
 function descargarPlantillaLimpieza(plantilla) {
   if (!plantilla?.archivoDatos && !plantilla?.archivoUrl) return;
   const a = document.createElement('a');
-  a.href = plantilla.archivoUrl ? `${plantilla.archivoUrl}&descargar=1` : plantilla.archivoDatos;
+  a.href = plantilla.archivoUrl ? `${plantilla.archivoUrl}&descargar=1` : urlDescargaArchivo(plantilla.archivoDatos);
   a.download = plantilla.nombre || 'plantilla';
   document.body.appendChild(a);
   a.click();
@@ -1946,7 +1952,7 @@ function DocumentPreviewModal({ doc, onClose, t, accent }) {
   const fuente = doc.archivoDatos || doc.url || '';
   const tieneArchivo = !!fuente;
   const esPdf = doc.archivoDatos
-    ? doc.archivoDatos.startsWith('data:application/pdf')
+    ? (esUrlArchivo(doc.archivoDatos) ? /\.pdf\b/i.test(decodeURIComponent(doc.archivoDatos)) : doc.archivoDatos.startsWith('data:application/pdf'))
     : (doc.extension || '').toUpperCase() === 'PDF' || /\.pdf(\?|#|$)/i.test(doc.url || '');
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -4392,8 +4398,10 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
       console.error('No se pudo sincronizar el equipo con el servidor compartido', err);
       const original = err.original || previous;
       if (original) setEquipos(prev => prev.map(e => e.id === updated.id ? original : e));
-      alert(`No se pudo guardar el cambio en "${updated.equipo || 'el equipo'}" después de varios intentos. `
-        + 'Se restauró el valor anterior: verifica tu conexión y vuelve a hacer el cambio.');
+      alert(err.status === 503
+        ? `No se guardó el cambio en "${updated.equipo || 'el equipo'}": ${err.message}`
+        : `No se pudo guardar el cambio en "${updated.equipo || 'el equipo'}" después de varios intentos. `
+          + 'Se restauró el valor anterior: verifica tu conexión y vuelve a hacer el cambio.');
     });
   };
   const removeEquipo = (id) => {
@@ -8073,7 +8081,7 @@ function AppInner() {
         if (data.authenticated && data.user) {
           claimDataCaches(data.user);
           setCompanies(data.empresas);
-          setSession({ authenticated: true, user: data.user, empresas: data.empresas || [], entorno: data.entorno || 'production' });
+          setSession({ authenticated: true, user: data.user, empresas: data.empresas || [], entorno: data.entorno || 'production', mantenimiento: data.mantenimiento || null });
         } else {
           setSession({ authenticated: false });
         }
@@ -8147,10 +8155,20 @@ function AppInner() {
     );
   }
 
-  const readOnly = user.role === 'LECTURA';
+  // Modo mantenimiento (MODO_MANTENIMIENTO en el servidor): toda la app queda en solo lectura
+  // y se muestra un aviso; el servidor además rechaza cualquier escritura.
+  const mantenimiento = session.mantenimiento?.activo ? session.mantenimiento : null;
+  const readOnly = user.role === 'LECTURA' || !!mantenimiento;
   return (
     <AuthUserContext.Provider value={user}>
       <ReadOnlyContext.Provider value={readOnly}>
+        {mantenimiento && (
+          <div role="status" aria-live="polite"
+            className="fixed top-0 inset-x-0 z-[100] px-4 py-2 text-center text-xs font-semibold shadow"
+            style={{ background: '#F59E0B', color: '#1F2937' }}>
+            Modo mantenimiento — {mantenimiento.mensaje}
+          </div>
+        )}
         {/* key: si cambia el usuario, MainApp se monta de cero (sin estado de otra sesión). */}
         <MainApp key={user.id} user={user} entorno={session.entorno} onLogout={() => cerrarSesion()} readOnly={readOnly} />
         {sessionWarning && (

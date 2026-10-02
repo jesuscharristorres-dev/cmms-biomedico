@@ -24,6 +24,10 @@ import { getEmpresa, listEmpresas } from '../lib/empresas.js';
 import { ensureSchema } from '../lib/migrations.js';
 import { sendError, methodNotAllowed, esLimiteBaseDatos, MENSAJE_LIMITE_BASE_DATOS } from '../lib/http.js';
 import { currentNamespace, namespaceExplicito } from '../lib/db.js';
+import { estadoMantenimiento } from '../lib/mantenimiento.js';
+
+// Solo se agrega a la respuesta mientras el modo está activo: la respuesta normal no cambia.
+const estadoMantenimientoPublico = () => (estadoMantenimiento().activo ? { mantenimiento: estadoMantenimiento() } : {});
 
 const CREDENCIALES_INVALIDAS = 'Usuario o contraseña incorrectos';
 
@@ -52,11 +56,12 @@ export default async function handler(req, res) {
     }
     try {
       const ctx = await getAuthContext(req);
-      if (!ctx) return res.status(200).json({ authenticated: false, entorno });
+      if (!ctx) return res.status(200).json({ authenticated: false, entorno, ...estadoMantenimientoPublico() });
       const empresas = ctx.isSuperAdmin ? await listEmpresas() : [ctx.empresa];
       // `entorno`: namespace de datos activo (production / preview / ...), para que la UI avise
       // cuando NO se está trabajando sobre los datos reales.
-      return res.status(200).json({ authenticated: true, user: usuarioPublico(ctx.user), empresas, entorno });
+      // `mantenimiento` (solo si está activo): la app muestra el aviso y se pone en solo lectura.
+      return res.status(200).json({ authenticated: true, user: usuarioPublico(ctx.user), empresas, entorno, ...estadoMantenimientoPublico() });
     } catch (err) {
       console.error('[api/login] Error verificando sesión (GET):', err);
       return res.status(200).json({ authenticated: false, entorno });
