@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node --test tests/*.test.js",
+    "test:supabase": "node --test tests/supabase/*.test.js",
     "migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
