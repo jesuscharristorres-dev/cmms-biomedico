@@ -19,7 +19,7 @@ test('PATCH sin cambios reales no reescribe cmms:equipos; con cambios sí, y se 
     get(t, p) {
       const v = t[p];
       if (typeof v !== 'function') return v;
-      return (...a) => { if (p === 'set') escrituras.push(a[0]); return v.apply(t, a); };
+      return (...a) => { if (p === 'set' || p === 'casSet') escrituras.push(a[0]); return v.apply(t, a); };
     },
   }));
   const antes = await store.get('cmms:equipos');

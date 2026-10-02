@@ -11,11 +11,11 @@
 //   POST → fuerza una sincronización nueva contra Google Sheets. Es una operación global
 //          (trae las hojas de todas las empresas), así que solo SUPER_ADMIN.
 
-import { kv } from '../lib/db.js';
 import { requireAuth, requireSuperAdmin } from '../lib/auth.js';
 import { buildCapacitacionesSnapshot } from '../lib/capacitaciones.js';
 import { scopeArray } from '../lib/tenancy.js';
 import { HttpError, withErrors, methodNotAllowed } from '../lib/http.js';
+import { mutar, responderConEtag } from '../lib/coleccion.js';
 
 const KV_KEY = 'cmms:capacitaciones';
 
@@ -27,8 +27,9 @@ function scopeSnapshot(ctx, data) {
 export default withErrors('api/capacitaciones', 'No se pudo sincronizar las capacitaciones.', async (req, res) => {
   if (req.method === 'GET') {
     const ctx = await requireAuth(req);
-    const data = (await kv.get(KV_KEY)) || null;
-    return res.status(200).json({ data: scopeSnapshot(ctx, data) });
+    // Caché por versión + ETag (lib/coleccion.js): 304 sin leer la colección si no cambió.
+    return responderConEtag(req, res, KV_KEY, () => null, [ctx.userId, ctx.role, ctx.empresaId],
+      data => ({ data: scopeSnapshot(ctx, data) }));
   }
 
   if (req.method !== 'POST') return methodNotAllowed(res, ['GET', 'POST']);
@@ -39,6 +40,8 @@ export default withErrors('api/capacitaciones', 'No se pudo sincronizar las capa
     throw new HttpError(500, 'No hay formularios de capacitaciones configurados. Falta la variable de entorno CAPACITACIONES_SHEETS en Vercel.');
   }
   const data = { ...snapshot, updatedAt: new Date().toISOString() };
-  await kv.set(KV_KEY, data);
+  // Una sincronización reemplaza el snapshot completo; la escritura condicional solo asegura
+  // que la versión se incremente junto con el valor (para invalidar las cachés y ETags).
+  await mutar(KV_KEY, () => null, () => ({ nuevo: data }));
   return res.status(200).json({ data });
 });
