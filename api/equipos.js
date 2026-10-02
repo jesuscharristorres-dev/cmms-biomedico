@@ -68,6 +68,11 @@ export default withErrors('api/equipos', 'No se pudo acceder a la base de datos 
     const equipos = (await kv.get(KV_KEY)) || [];
     const idx = findOwned(ctx, equipos, id);
     const actualizado = await applyScopedPatch(ctx, equipos[idx], patch);
+    // Si el cambio no modifica nada, no se reescribe el inventario completo en Redis
+    // (cada escritura de 'cmms:equipos' son ~2,4 MB de ancho de banda).
+    if (JSON.stringify(actualizado) === JSON.stringify(equipos[idx])) {
+      return res.status(200).json({ equipo: actualizado });
+    }
     const actualizados = [...equipos];
     actualizados[idx] = actualizado;
     await kv.set(KV_KEY, actualizados);

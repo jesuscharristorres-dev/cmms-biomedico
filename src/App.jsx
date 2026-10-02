@@ -955,13 +955,68 @@ async function crearEquipos(nuevos) {
   cacheAgregar(EQUIPOS_KEY, creados);
   return creados;
 }
-async function actualizarEquipo(id, patch) {
-  const res = await apiFetch('/api/equipos', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }) });
+async function actualizarEquipo(id, patch, { keepalive = false } = {}) {
+  const res = await apiFetch('/api/equipos', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }), keepalive });
   if (!res.ok) throw new Error('No se pudo actualizar el equipo en la base de datos compartida.');
   const { equipo } = await res.json();
   cacheReemplazar(EQUIPOS_KEY, equipo);
   return equipo;
 }
+// AGRUPACIÓN DE EDICIONES DE UN EQUIPO
+// Cada PATCH de un equipo obliga al servidor a leer y reescribir el inventario COMPLETO en
+// Redis (~2,4 MB, una sola clave 'cmms:equipos'), y la hoja de vida guardaba en cada tecla:
+// escribir "Philips" eran 8 PATCH = ~38 MB de tráfico con Redis. Ahora los cambios de un
+// mismo equipo se agrupan y se envía UN solo PATCH (con el estado final del equipo) cuando
+// pasan EDICION_EQUIPO_MS sin nuevos cambios. La pantalla se actualiza al instante igual
+// que antes (actualización optimista); lo único que se retrasa es el envío al servidor.
+// Lo pendiente se envía de inmediato al cerrar sesión, al ocultar/cerrar la pestaña
+// (fetch keepalive) o al eliminar el equipo (en ese caso se descarta).
+const EDICION_EQUIPO_MS = 1500;
+const edicionesEquipo = new Map(); // id → { record, original, timer, esperas: [{ resolve, reject }] }
+
+function programarActualizacionEquipo(record, original) {
+  return new Promise((resolve, reject) => {
+    const p = edicionesEquipo.get(record.id) || { original, esperas: [] };
+    clearTimeout(p.timer);
+    p.record = record;
+    p.esperas.push({ resolve, reject });
+    p.timer = setTimeout(() => { enviarEdicionEquipo(record.id); }, EDICION_EQUIPO_MS);
+    edicionesEquipo.set(record.id, p);
+  });
+}
+async function enviarEdicionEquipo(id, opciones) {
+  const p = edicionesEquipo.get(id);
+  if (!p) return;
+  edicionesEquipo.delete(id);
+  clearTimeout(p.timer);
+  try {
+    const equipo = await actualizarEquipo(id, p.record, opciones);
+    p.esperas.forEach(w => w.resolve(equipo));
+  } catch (err) {
+    // `original`: el estado previo a la PRIMERA edición agrupada, para revertir todo el grupo.
+    err.original = p.original;
+    p.esperas.forEach(w => w.reject(err));
+  }
+}
+function enviarEdicionesPendientes(opciones) {
+  return Promise.all([...edicionesEquipo.keys()].map(id => enviarEdicionEquipo(id, opciones)));
+}
+function descartarEdicionEquipo(id) {
+  const p = edicionesEquipo.get(id);
+  if (!p) return;
+  clearTimeout(p.timer);
+  edicionesEquipo.delete(id);
+  p.esperas.forEach(w => w.resolve(null));
+}
+if (typeof window !== 'undefined') {
+  // Al cerrar u ocultar la pestaña se envía lo pendiente; keepalive permite que la petición
+  // termine aunque la página se descargue.
+  window.addEventListener('pagehide', () => { enviarEdicionesPendientes({ keepalive: true }); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') enviarEdicionesPendientes({ keepalive: true });
+  });
+}
+
 async function eliminarEquipo(id) {
   const res = await apiFetch('/api/equipos', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
   if (!res.ok) throw new Error('No se pudo eliminar el equipo en la base de datos compartida.');
@@ -4590,15 +4645,19 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
   // Actualización optimista + persistencia puntual en el servidor (nunca se reescribe el
   // arreglo completo): si la operación falla, se revierte el cambio local para no mostrar
   // en pantalla algo que en realidad no quedó guardado para los demás usuarios/computadores.
+  // El envío al servidor se agrupa (ver programarActualizacionEquipo): varias ediciones
+  // seguidas del mismo equipo viajan en un solo PATCH.
   const updateEquipo = (updated) => {
     const previous = equipos.find(e => e.id === updated.id);
     setEquipos(prev => prev.map(e => e.id === updated.id ? updated : e));
-    actualizarEquipo(updated.id, updated).catch(err => {
+    programarActualizacionEquipo(updated, previous).catch(err => {
       console.error('No se pudo sincronizar el equipo con el servidor compartido', err);
-      if (previous) setEquipos(prev => prev.map(e => e.id === updated.id ? previous : e));
+      const original = err.original || previous;
+      if (original) setEquipos(prev => prev.map(e => e.id === updated.id ? original : e));
     });
   };
   const removeEquipo = (id) => {
+    descartarEdicionEquipo(id);
     const previous = equipos;
     setEquipos(prev => prev.filter(e => e.id !== id));
     eliminarEquipo(id).catch(err => {
@@ -8298,6 +8357,8 @@ function AppInner() {
   const cerrarSesion = async (motivo = '') => {
     setSessionWarning(false);
     if (authed) {
+      // Antes de cerrar la sesión se guardan las ediciones de equipos que estén en espera.
+      try { await enviarEdicionesPendientes(); } catch { /* el error ya se registró y revirtió en pantalla */ }
       try { await fetch('/api/logout', { method: 'POST' }); } catch { /* igual limpiamos el estado local */ }
     }
     setCompanies(DEFAULT_COMPANIES.map(c => ({ id: c.key, nombre: c.key, color: c.color, sedes: c.sedes, logo: c.logo })));
