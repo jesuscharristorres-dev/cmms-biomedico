@@ -47,6 +47,8 @@ try {
     const valor = await rawKv.get(k); // Production = claves sin prefijo (solo lectura)
     if (valor === null) { console.log(`· ${k}: vacío en production, se omite`); continue; }
     await rawKv.set(`${to}:${k}`, valor);
+    // Invalida las cachés por versión del destino (lib/coleccion.js).
+    await rawKv.incr(`${to}:${k}:version`);
     console.log(`✔ ${k} → ${to}:${k}`);
   }
   console.log(`\nListo. El deployment de ${to} verá estos datos; Production no se modificó.`);

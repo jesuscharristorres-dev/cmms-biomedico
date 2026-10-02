@@ -932,13 +932,111 @@ async function crearEquipos(nuevos) {
   cacheAgregar(EQUIPOS_KEY, creados);
   return creados;
 }
-async function actualizarEquipo(id, patch) {
-  const res = await apiFetch('/api/equipos', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }) });
-  if (!res.ok) throw new Error('No se pudo actualizar el equipo en la base de datos compartida.');
+async function actualizarEquipo(id, patch, { keepalive = false } = {}) {
+  const res = await apiFetch('/api/equipos', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch }), keepalive });
+  if (!res.ok) {
+    const err = new Error('No se pudo actualizar el equipo en la base de datos compartida.');
+    err.status = res.status;
+    throw err;
+  }
   const { equipo } = await res.json();
   cacheReemplazar(EQUIPOS_KEY, equipo);
   return equipo;
 }
+// AGRUPACIÓN DE EDICIONES DE UN EQUIPO
+// Cada PATCH de un equipo obliga al servidor a reescribir el inventario COMPLETO en Redis
+// (~2,4 MB, una sola clave 'cmms:equipos'), y la hoja de vida guardaba en cada tecla:
+// escribir "Philips" eran 8 PATCH. Ahora los cambios de un mismo equipo se agrupan y se envía
+// UN solo PATCH cuando pasan EDICION_EQUIPO_MS sin nuevos cambios. La pantalla se actualiza
+// al instante igual que antes (actualización optimista); solo se retrasa el envío.
+// Lo pendiente se envía de inmediato: al cerrar la hoja de vida o salir de ella (el foco deja
+// el panel), al cerrar sesión, al ocultar/cerrar la pestaña (fetch keepalive) y antes de
+// recargar el inventario. Al eliminar el equipo se descarta.
+// - Solo viajan los campos que cambiaron (el servidor los combina con el registro actual).
+// - Los envíos de un mismo equipo van en orden (nunca uno viejo pisa uno nuevo).
+// - Si falla por red o error temporal del servidor, se reintenta con espera creciente; solo
+//   si todos los intentos fallan se revierte la pantalla y se avisa al usuario.
+const EDICION_EQUIPO_MS = 1500;
+const REINTENTOS_EDICION_MS = [1000, 3000, 8000];
+const KEEPALIVE_MAX_BYTES = 60 * 1024; // límite de los navegadores para fetch keepalive: 64 KB
+const edicionesEquipo = new Map(); // id → { record, original, timer, esperas: [{ resolve, reject }] }
+const enviosEquipo = new Map(); // id → promesa del último envío (para encadenar en orden)
+
+// Campos de primer nivel que cambiaron entre `original` y `record`. null si se quitó alguno
+// (un PATCH parcial no puede expresar "borrar campo": entonces se envía el registro completo).
+function camposCambiados(original, record) {
+  if (!original) return null;
+  if (Object.keys(original).some(k => !(k in record))) return null;
+  const cambios = {};
+  for (const [k, v] of Object.entries(record)) {
+    if (JSON.stringify(v) !== JSON.stringify(original[k])) cambios[k] = v;
+  }
+  return cambios;
+}
+const esperar = (ms) => new Promise(r => setTimeout(r, ms));
+const errorTemporal = (err) => !err.status || err.status === 409 || err.status === 429 || err.status >= 500;
+
+function programarActualizacionEquipo(record, original) {
+  return new Promise((resolve, reject) => {
+    const p = edicionesEquipo.get(record.id) || { original, esperas: [] };
+    clearTimeout(p.timer);
+    p.record = record;
+    p.esperas.push({ resolve, reject });
+    p.timer = setTimeout(() => { enviarEdicionEquipo(record.id); }, EDICION_EQUIPO_MS);
+    edicionesEquipo.set(record.id, p);
+  });
+}
+function enviarEdicionEquipo(id, opciones = {}) {
+  const p = edicionesEquipo.get(id);
+  if (!p) return enviosEquipo.get(id) || Promise.resolve();
+  edicionesEquipo.delete(id);
+  clearTimeout(p.timer);
+  const patch = camposCambiados(p.original, p.record) || p.record;
+  const anterior = enviosEquipo.get(id) || Promise.resolve();
+  const envio = anterior.catch(() => {}).then(async () => {
+    if (Object.keys(patch).length === 0) { p.esperas.forEach(w => w.resolve(p.record)); return; }
+    // keepalive solo si el cuerpo cabe; si no, se envía normal (best-effort al cerrar la pestaña).
+    const keepalive = !!opciones.keepalive && JSON.stringify({ id, patch }).length < KEEPALIVE_MAX_BYTES;
+    for (let intento = 0; ; intento++) {
+      try {
+        const equipo = await actualizarEquipo(id, patch, { keepalive });
+        p.esperas.forEach(w => w.resolve(equipo));
+        return;
+      } catch (err) {
+        if (intento >= REINTENTOS_EDICION_MS.length || !errorTemporal(err)) {
+          // `original`: el estado previo a la PRIMERA edición agrupada, para revertir todo el grupo.
+          err.original = p.original;
+          p.esperas.forEach(w => w.reject(err));
+          return;
+        }
+        await esperar(REINTENTOS_EDICION_MS[intento]);
+      }
+    }
+  });
+  enviosEquipo.set(id, envio);
+  envio.finally(() => { if (enviosEquipo.get(id) === envio) enviosEquipo.delete(id); });
+  return envio;
+}
+function enviarEdicionesPendientes(opciones) {
+  const ids = new Set([...edicionesEquipo.keys(), ...enviosEquipo.keys()]);
+  return Promise.all([...ids].map(id => enviarEdicionEquipo(id, opciones)));
+}
+function descartarEdicionEquipo(id) {
+  const p = edicionesEquipo.get(id);
+  if (!p) return;
+  clearTimeout(p.timer);
+  edicionesEquipo.delete(id);
+  p.esperas.forEach(w => w.resolve(null));
+}
+if (typeof window !== 'undefined') {
+  // Al cerrar u ocultar la pestaña se envía lo pendiente; keepalive permite que la petición
+  // termine aunque la página se descargue.
+  window.addEventListener('pagehide', () => { enviarEdicionesPendientes({ keepalive: true }); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') enviarEdicionesPendientes({ keepalive: true });
+  });
+}
+
 async function eliminarEquipo(id) {
   const res = await apiFetch('/api/equipos', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
   if (!res.ok) throw new Error('No se pudo eliminar el equipo en la base de datos compartida.');
@@ -1514,12 +1612,33 @@ function PdfLink({ url, label = 'Ver PDF', title, t, emptyLabel = 'Sin documento
 
 // Carga + vista previa de una imagen de firma (PNG). El valor se guarda como Data URI,
 // así se imprime directamente en el reporte sin depender de almacenamiento externo.
+// La firma viaja DENTRO del equipo (cmms:equipos), así que antes de guardarla se reduce a un
+// tamaño suficiente para imprimir (máx. FIRMA_MAX_ANCHO × FIRMA_MAX_ALTO): una foto o un
+// escaneo de varios cientos de KB queda en pocos KB. Mismo formato (PNG en Data URI).
+const FIRMA_MAX_ANCHO = 480;
+const FIRMA_MAX_ALTO = 200;
+function reducirFirma(dataUri) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const escala = Math.min(1, FIRMA_MAX_ANCHO / img.width, FIRMA_MAX_ALTO / img.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.width * escala));
+      canvas.height = Math.max(1, Math.round(img.height * escala));
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const reducida = canvas.toDataURL('image/png');
+      resolve(reducida.length < dataUri.length ? reducida : dataUri);
+    };
+    img.onerror = () => resolve(dataUri);
+    img.src = dataUri;
+  });
+}
 function FirmaInput({ value, onChange, readOnly, alt, t }) {
   const handleFile = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => onChange(ev.target.result);
+    reader.onload = async (ev) => onChange(await reducirFirma(ev.target.result));
     reader.readAsDataURL(file);
   };
   return (
@@ -1725,16 +1844,19 @@ function dataUriAUrlTemporal(dataUri) {
   for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
   return URL.createObjectURL(new Blob([bytes], { type: mime }));
 }
+// Plantillas guardadas en Vercel Blob: llegan con `archivoUrl` (descarga autenticada por la
+// API, solo al abrirla) en vez del archivo en base64.
 function verPlantillaLimpieza(plantilla) {
+  if (plantilla?.archivoUrl) { window.open(plantilla.archivoUrl, '_blank', 'noopener,noreferrer'); return; }
   if (!plantilla?.archivoDatos) return;
   const url = dataUriAUrlTemporal(plantilla.archivoDatos);
   window.open(url, '_blank', 'noopener,noreferrer');
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 function descargarPlantillaLimpieza(plantilla) {
-  if (!plantilla?.archivoDatos) return;
+  if (!plantilla?.archivoDatos && !plantilla?.archivoUrl) return;
   const a = document.createElement('a');
-  a.href = plantilla.archivoDatos;
+  a.href = plantilla.archivoUrl ? `${plantilla.archivoUrl}&descargar=1` : plantilla.archivoDatos;
   a.download = plantilla.nombre || 'plantilla';
   document.body.appendChild(a);
   a.click();
@@ -2388,7 +2510,10 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className={`animate-drawer-in relative w-full sm:w-1/2 sm:min-w-[640px] max-w-full h-full overflow-hidden ${t.panel} border-l ${t.border}`}>
+      {/* Si el foco sale de la hoja de vida (p. ej. a la barra lateral u otra ventana), lo
+          pendiente de este equipo se envía de una vez, sin esperar la pausa de agrupación. */}
+      <div onBlur={e => { if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget)) enviarEdicionEquipo(equipo.id); }}
+        className={`animate-drawer-in relative w-full sm:w-1/2 sm:min-w-[640px] max-w-full h-full overflow-hidden ${t.panel} border-l ${t.border}`}>
         {/* Marca de agua — el mismo logo del Login (logoIngenieriaClinica), fija dentro del
             panel mientras el contenido hace scroll: vive en este contenedor no-scrolleable,
             detrás del div interno que sí scrollea. pointer-events-none para no interferir
@@ -4006,6 +4131,16 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
 /* APP PRINCIPAL                                                     */
 /* ---------------------------------------------------------------- */
 
+// Estado de carga de una sección cuyos datos se piden al entrar (carga diferida).
+function SeccionCargando({ t, texto }) {
+  return (
+    <div className={`rounded-xl border p-10 text-center ${t.panel} ${t.border}`} role="status" aria-live="polite">
+      <RefreshCw size={22} className={`mx-auto mb-3 animate-spin ${t.muted}`} />
+      <p className={`text-sm ${t.muted}`}>{texto}</p>
+    </div>
+  );
+}
+
 function MainApp({ user, entorno, onLogout, readOnly }) {
   const [equipos, setEquipos] = useState([]);
   const [dark, setDark] = useState(false);
@@ -4043,7 +4178,11 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
   const [limpiezaPlantillas, setLimpiezaPlantillas] = useState({});
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  useEffect(() => { loadEquipos().then(setEquipos); }, [dataVersion]);
+  // Antes de recargar el inventario se envían las ediciones agrupadas que estén en espera,
+  // para que la recarga no traiga del servidor un estado anterior a esas ediciones.
+  useEffect(() => {
+    enviarEdicionesPendientes().catch(() => {}).then(() => loadEquipos()).then(setEquipos);
+  }, [dataVersion]);
   useEffect(() => { loadReportes().then(setReportesFalla); }, [dataVersion]);
   // Notificación en vivo: si otra pestaña del mismo navegador refresca la caché local, esta la recoge de inmediato.
   useEffect(() => {
@@ -4094,7 +4233,19 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
     });
   };
 
-  useEffect(() => { loadCapacitaciones().then(setCapacitaciones); }, []);
+  // CARGA DIFERIDA: capacitaciones (~330 KB en Redis) solo se piden cuando el usuario entra
+  // a esa sección, no al abrir la aplicación. Se cargan una vez por sesión de la app.
+  const [capCargadas, setCapCargadas] = useState(false);
+  useEffect(() => {
+    if (menu !== 'capacitaciones' || capCargadas) return undefined;
+    let vigente = true;
+    loadCapacitaciones().then(data => {
+      if (!vigente) return;
+      setCapacitaciones(data);
+      setCapCargadas(true);
+    });
+    return () => { vigente = false; };
+  }, [menu, capCargadas]);
   // A diferencia de updateEquipo/updatePlanPrograma, esto no es una edición optimista de un
   // campo puntual: es un refresh completo que solo tiene sentido esperar a que el servidor
   // termine (puede tardar unos segundos, consulta ~20 hojas de Google en vivo), así que el
@@ -4191,7 +4342,19 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
     });
   };
 
-  useEffect(() => { loadLimpiezaPlantillas().then(setLimpiezaPlantillas); }, []);
+  // CARGA DIFERIDA: las plantillas guardan archivos completos en base64 (~300 KB en Redis);
+  // solo se piden al entrar a "Formatos de limpieza y desinfección".
+  const [plantillasCargadas, setPlantillasCargadas] = useState(false);
+  useEffect(() => {
+    if (menu !== 'limpieza' || plantillasCargadas) return undefined;
+    let vigente = true;
+    loadLimpiezaPlantillas().then(data => {
+      if (!vigente) return;
+      setLimpiezaPlantillas(data);
+      setPlantillasCargadas(true);
+    });
+    return () => { vigente = false; };
+  }, [menu, plantillasCargadas]);
   // A diferencia de los demás updateX de arriba, estas dos NO actualizan el estado de forma
   // optimista: cargar/reemplazar/eliminar un archivo real depende de una respuesta del
   // servidor (éxito o error de validación/permisos) que la tarjeta necesita mostrarle al
@@ -4220,15 +4383,21 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
   // Actualización optimista + persistencia puntual en el servidor (nunca se reescribe el
   // arreglo completo): si la operación falla, se revierte el cambio local para no mostrar
   // en pantalla algo que en realidad no quedó guardado para los demás usuarios/computadores.
+  // El envío al servidor se agrupa (ver programarActualizacionEquipo): varias ediciones
+  // seguidas del mismo equipo viajan en un solo PATCH.
   const updateEquipo = (updated) => {
     const previous = equipos.find(e => e.id === updated.id);
     setEquipos(prev => prev.map(e => e.id === updated.id ? updated : e));
-    actualizarEquipo(updated.id, updated).catch(err => {
+    programarActualizacionEquipo(updated, previous).catch(err => {
       console.error('No se pudo sincronizar el equipo con el servidor compartido', err);
-      if (previous) setEquipos(prev => prev.map(e => e.id === updated.id ? previous : e));
+      const original = err.original || previous;
+      if (original) setEquipos(prev => prev.map(e => e.id === updated.id ? original : e));
+      alert(`No se pudo guardar el cambio en "${updated.equipo || 'el equipo'}" después de varios intentos. `
+        + 'Se restauró el valor anterior: verifica tu conexión y vuelve a hacer el cambio.');
     });
   };
   const removeEquipo = (id) => {
+    descartarEdicionEquipo(id);
     const previous = equipos;
     setEquipos(prev => prev.filter(e => e.id !== id));
     eliminarEquipo(id).catch(err => {
@@ -4653,13 +4822,15 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
         )}
         {menu === 'fallas' && !readOnly && <ReportesFallaPage reportes={reportesFalla} equipos={equipos} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateReporte} onEliminarReporte={eliminarReporte} onVaciarHistorial={vaciarHistorialFallas} readOnly={readOnly} />}
         {menu === 'planes' && <PlanesProgramasPage planesProgramas={planesProgramas} activeCompany={activeCompany} t={t} onUpdate={updatePlanPrograma} readOnly={readOnly} />}
-        {menu === 'capacitaciones' && (
+        {menu === 'capacitaciones' && !capCargadas && <SeccionCargando t={t} texto="Cargando capacitaciones…" />}
+        {menu === 'capacitaciones' && capCargadas && (
           <CapacitacionesPage capacitaciones={capacitaciones} activeCompany={activeCompany} onChangeEmpresa={setActiveCompany} t={t} accent={accent}
             onActualizar={actualizarCapacitaciones} sincronizando={capSincronizando} syncStatus={capSyncStatus} readOnly={readOnly || !isSuper} />
         )}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
-        {menu === 'limpieza' && (
+        {menu === 'limpieza' && !plantillasCargadas && <SeccionCargando t={t} texto="Cargando formatos de limpieza y desinfección…" />}
+        {menu === 'limpieza' && plantillasCargadas && (
           <LimpiezaDesinfeccionPage data={limpiezaDesinfeccion} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateLimpiezaDesinfeccion}
             plantillas={limpiezaPlantillas} onUploadPlantilla={subirLimpiezaPlantilla} onDeletePlantilla={eliminarLimpiezaPlantilla} readOnly={readOnly} />
         )}
@@ -4669,7 +4840,7 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
         </div>
       </div>
 
-      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => setDrawerId(null)} onUpdate={updateEquipo} t={t} readOnly={readOnly} />}
+      {drawerEquipo && <EquipoDrawer equipo={drawerEquipo} onClose={() => { enviarEdicionEquipo(drawerEquipo.id); setDrawerId(null); }} onUpdate={updateEquipo} t={t} readOnly={readOnly} />}
       {obsEquipo && <ObsModal equipo={obsEquipo} onClose={() => setObsModalId(null)} onSave={(v) => updateEquipo({ ...obsEquipo, observaciones: v })} t={t} accent={accent} readOnly={readOnly} />}
       </div>
     </div>
@@ -7093,7 +7264,7 @@ function PlantillaLimpiezaCard({ empresa, plantilla, onUpload, onDelete, readOnl
   const [confirmarEliminar, setConfirmarEliminar] = useState(false);
   const inputRef = useRef(null);
 
-  const tieneArchivo = !!plantilla?.archivoDatos;
+  const tieneArchivo = !!(plantilla?.archivoDatos || plantilla?.archivoUrl);
 
   const handleFile = (e) => {
     const file = e.target.files[0];
@@ -7917,6 +8088,8 @@ function AppInner() {
   const cerrarSesion = async (motivo = '') => {
     setSessionWarning(false);
     if (authed) {
+      // Antes de cerrar la sesión se guardan las ediciones de equipos que estén en espera.
+      try { await enviarEdicionesPendientes(); } catch { /* el error ya se registró y revirtió en pantalla */ }
       try { await fetch('/api/logout', { method: 'POST' }); } catch { /* igual limpiamos el estado local */ }
     }
     setCompanies(DEFAULT_COMPANIES.map(c => ({ id: c.key, nombre: c.key, color: c.color, sedes: c.sedes, logo: c.logo })));

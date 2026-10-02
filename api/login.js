@@ -22,7 +22,7 @@ import { verifyPassword, DUMMY_HASH } from '../lib/password.js';
 import { findUsuarioByLogin, usuarioPublico } from '../lib/usuarios.js';
 import { getEmpresa, listEmpresas } from '../lib/empresas.js';
 import { ensureSchema } from '../lib/migrations.js';
-import { sendError, methodNotAllowed } from '../lib/http.js';
+import { sendError, methodNotAllowed, esLimiteBaseDatos, MENSAJE_LIMITE_BASE_DATOS } from '../lib/http.js';
 import { currentNamespace, namespaceExplicito } from '../lib/db.js';
 
 const CREDENCIALES_INVALIDAS = 'Usuario o contraseña incorrectos';
@@ -103,7 +103,10 @@ export default async function handler(req, res) {
     await createSession(req, res, usuario.id, { remember: !!remember });
     return res.status(200).json({ ok: true, user: usuarioPublico(usuario) });
   } catch (err) {
+    // El detalle técnico completo queda en el log del servidor (Vercel → Logs); al usuario
+    // solo se le muestra un mensaje sin datos sensibles.
     console.error('[api/login] Error:', err);
+    if (esLimiteBaseDatos(err)) return sendError(res, 503, MENSAJE_LIMITE_BASE_DATOS);
     return sendError(res, 500, 'Error inesperado del servidor al iniciar sesión.');
   }
 }
