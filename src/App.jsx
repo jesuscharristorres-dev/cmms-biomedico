@@ -3272,14 +3272,6 @@ function LandingPage({ onIniciarSesion, onReportarFalla, onIngresarModulo }) {
             <a href="#evolucion" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Evolución</a>
             <a href="#beneficios" className="landing-link text-xs font-medium" style={{ color: '#334155' }}>Beneficios</a>
           </nav>
-          <div className="flex items-center gap-2 shrink-0">
-            <button type="button" onClick={onReportarFalla} aria-label="Reportar una falla de equipo" className="landing-btn inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold border" style={{ borderColor: 'rgba(59,159,214,0.35)', color: '#1D6FA5', background: 'rgba(255,255,255,0.6)' }}>
-              <Wrench size={13} /> <span className="hidden sm:inline">Reportar falla</span>
-            </button>
-            <button type="button" onClick={onIniciarSesion} className="landing-btn landing-btn-primary rounded-lg px-4 py-2 text-xs font-semibold text-white">
-              Ingresar
-            </button>
-          </div>
         </div>
       </header>
 
