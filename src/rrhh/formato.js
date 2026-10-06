@@ -70,3 +70,19 @@ export function tiempoTranscurrido(inicio, fin) {
   const anios = Math.max(0, b - a);
   return anios === 0 ? 'Menos de 1 año' : `${anios} año${anios !== 1 ? 's' : ''}`;
 }
+
+// Documentos por enlace, como en el CMMS biomédico: el PDF vive en Drive/OneDrive/SharePoint
+// y la plataforma solo guarda la URL; "Ver" lo abre en una pestaña nueva.
+export function esUrlValida(valor) {
+  try {
+    const u = new URL((valor || '').trim());
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+// También acepta rutas de la propia app ("/…"), que usan los documentos de ejemplo de la demo.
+export function abrirEnlace(url) {
+  const limpia = (url || '').trim();
+  if (esUrlValida(limpia) || limpia.startsWith('/')) window.open(limpia, '_blank', 'noopener,noreferrer');
+}

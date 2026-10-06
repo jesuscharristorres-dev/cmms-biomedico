@@ -3,8 +3,9 @@
 // plataforma), tipografía y lenguaje de tarjetas/badges que el portal y Biomédica.
 
 import { useEffect, useRef, useState } from 'react';
-import { X, Upload, Loader2 } from 'lucide-react';
-import { colorPorTexto, iniciales } from './formato';
+import { X, Loader2, Link2, ExternalLink } from 'lucide-react';
+import { colorPorTexto, iniciales, esUrlValida, abrirEnlace } from './formato';
+
 
 export function Pill({ color, children, fuerte }) {
   return (
@@ -122,18 +123,23 @@ export function Modal({ t, titulo, subtitulo, onClose, children, pie, ancho = 'm
 }
 
 // Formulario genérico en modal (cargar documento, agregar título, registrar vacuna…).
-// `campos`: [{ name, label, type: text|date|number|select|textarea|file, options, required, full, placeholder }]
+// `campos`: [{ name, label, type: text|date|number|select|textarea|url, options, required, full, placeholder }]
+// `url`: enlace al documento (Drive, OneDrive, SharePoint…), igual que en el CMMS biomédico.
 export function FormularioModal({ t, titulo, subtitulo, campos, inicial = {}, textoGuardar = 'Guardar', nota, onGuardar, onClose, color }) {
   const [valores, setValores] = useState(inicial);
   const [errores, setErrores] = useState({});
   const [guardando, setGuardando] = useState(false);
   const formRef = useRef(null);
-  const set = (k, v) => setValores(prev => ({ ...prev, [k]: v }));
+  const set = (k, v) => { setValores(prev => ({ ...prev, [k]: v })); setErrores(prev => (prev[k] ? { ...prev, [k]: undefined } : prev)); };
 
   const guardar = async (e) => {
     e.preventDefault();
     const err = {};
-    campos.forEach(c => { if (c.required && !valores[c.name]) err[c.name] = 'Campo obligatorio.'; });
+    campos.forEach(c => {
+      const v = typeof valores[c.name] === 'string' ? valores[c.name].trim() : valores[c.name];
+      if (c.required && !v) err[c.name] = 'Campo obligatorio.';
+      else if (c.type === 'url' && v && !esUrlValida(v)) err[c.name] = 'Ingresa un enlace válido que empiece por https://';
+    });
     setErrores(err);
     if (Object.keys(err).length) return;
     setGuardando(true);
@@ -153,7 +159,7 @@ export function FormularioModal({ t, titulo, subtitulo, campos, inicial = {}, te
     }>
       <form ref={formRef} onSubmit={guardar} className="grid grid-cols-1 sm:grid-cols-2 gap-3" noValidate>
         {campos.map(c => (
-          <label key={c.name} className={`block ${c.full || c.type === 'textarea' || c.type === 'file' ? 'sm:col-span-2' : ''}`}>
+          <label key={c.name} className={`block ${c.full || c.type === 'textarea' || c.type === 'url' ? 'sm:col-span-2' : ''}`}>
             <span className={`block text-3xs uppercase tracking-wide font-semibold mb-1 ${t.muted}`}>{c.label}{c.required ? ' *' : ''}</span>
             {c.type === 'select' ? (
               <select value={valores[c.name] || ''} onChange={e => set(c.name, e.target.value)} className={claseInput}>
@@ -162,11 +168,22 @@ export function FormularioModal({ t, titulo, subtitulo, campos, inicial = {}, te
               </select>
             ) : c.type === 'textarea' ? (
               <textarea rows={3} value={valores[c.name] || ''} onChange={e => set(c.name, e.target.value)} className={`${claseInput} py-2`} placeholder={c.placeholder} />
-            ) : c.type === 'file' ? (
-              <span className={`flex items-center gap-3 rounded-lg border border-dashed px-3 py-3 ${t.border}`}>
-                <Upload size={16} className={t.muted} />
-                <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" onChange={e => set(c.name, e.target.files?.[0] || null)} className="text-2xs w-full" />
-              </span>
+            ) : c.type === 'url' ? (
+              <>
+                <span className="flex gap-2">
+                  <span className={`flex-1 min-w-0 flex items-center gap-2 rounded-lg border px-3 min-h-10 ${t.input}`}>
+                    <Link2 size={15} className={`shrink-0 ${t.muted}`} />
+                    <input type="url" inputMode="url" value={valores[c.name] || ''} onChange={e => set(c.name, e.target.value)}
+                      className="flex-1 min-w-0 bg-transparent outline-none text-xs" placeholder={c.placeholder || 'https://drive.google.com/...'} />
+                  </span>
+                  <button type="button" disabled={!esUrlValida(valores[c.name])} title="Abrir el enlace en una pestaña nueva"
+                    onClick={() => abrirEnlace(valores[c.name])}
+                    className={`shrink-0 inline-flex items-center gap-1 rounded-lg border px-3 min-h-10 text-2xs font-semibold disabled:opacity-40 ${t.border}`}>
+                    <ExternalLink size={13} /> Probar
+                  </button>
+                </span>
+                <span className={`block text-3xs mt-1 ${t.muted}`}>Sube el PDF a Drive/OneDrive/SharePoint y pega aquí el enlace.</span>
+              </>
             ) : (
               <input type={c.type || 'text'} value={valores[c.name] || ''} onChange={e => set(c.name, e.target.value)} className={claseInput} placeholder={c.placeholder} />
             )}

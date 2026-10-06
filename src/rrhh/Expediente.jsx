@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, Pencil, Eye, Download, FilePlus2, GraduationCap, Award, Syringe, FileSignature,
-  AlertTriangle, AlertCircle, CheckCircle2, Clock, Upload, RefreshCw, Briefcase, History,
+  AlertTriangle, AlertCircle, CheckCircle2, Link2, ExternalLink, RefreshCw, Briefcase, History,
   IdCard, BookOpen, FolderOpen, LayoutDashboard, UserRound, HardHat, BadgeCheck, HeartPulse, FileText,
   CalendarDays, MapPin, Phone, Mail,
 } from 'lucide-react';
@@ -13,9 +13,9 @@ import * as rrhh from './rrhhService';
 import { verExpediente, descargarExpediente } from './exportarExpediente';
 import {
   COLOR_RRHH, ESTADO_DOCUMENTO, ESTADO_VACUNA, ESTADO_CONTRATO, NIVEL_ALERTA, TIPOS_DOCUMENTO, TIPOS_CONTRATO,
-  AREAS_RRHH, fmtFecha, tiempoTranscurrido,
+  AREAS_RRHH, fmtFecha, tiempoTranscurrido, abrirEnlace,
 } from './formato';
-import { Avatar, Boton, Card, EstadoPill, FormularioModal, Modal, Pill, Progreso, Tabla } from './ui';
+import { Avatar, Boton, Card, EstadoPill, FormularioModal, Pill, Progreso, Tabla } from './ui';
 
 const PESTANAS = [
   { key: 'resumen', label: 'Resumen', icon: LayoutDashboard },
@@ -28,7 +28,7 @@ const PESTANAS = [
   { key: 'historial', label: 'Historial', icon: History },
 ];
 
-const NOTA_ARCHIVO = 'Demostración: el archivo seleccionado solo se conserva en esta sesión del navegador (no se envía a ningún servidor). En la versión real se guardará en el almacenamiento de la plataforma.';
+const NOTA_ARCHIVO = 'Igual que en el CMMS biomédico: el documento se guarda como un enlace. Súbelo en PDF a Drive, OneDrive o SharePoint, compártelo con tu organización y pega aquí la URL; al dar clic en "Ver" se abre en una pestaña nueva. (Demostración: los cambios se conservan solo en esta sesión del navegador.)';
 
 function IconoAlerta({ nivel }) {
   const c = NIVEL_ALERTA[nivel].color;
@@ -51,7 +51,6 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
   const [version, setVersion] = useState(0);
   const [pestana, setPestana] = useState('resumen');
   const [formulario, setFormulario] = useState(null);
-  const [vistaPrevia, setVistaPrevia] = useState(null);
   const [filtroTipo, setFiltroTipo] = useState('');
 
   useEffect(() => {
@@ -72,42 +71,31 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
   }
 
   /* ---- acciones sobre documentos ---- */
-  const verDoc = (archivo, nombre) => {
-    if (archivo?.url) window.open(archivo.url, '_blank', 'noopener');
-    else setVistaPrevia({ archivo, nombre });
-  };
-  const descargarDoc = (archivo) => {
-    if (archivo?.url) {
-      const a = document.createElement('a');
-      a.href = archivo.url; a.download = archivo.nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); document.body.appendChild(a); a.click();
-      setTimeout(() => a.remove(), 10000);
-    } else {
-      notificar('Documento de demostración: no tiene un archivo real para descargar.');
-    }
-  };
+  // Igual que en el CMMS biomédico: el documento es un enlace y se abre en una pestaña nueva.
+  const verDoc = (archivo) => abrirEnlace(archivo?.url);
   const guardarYNotificar = (mensaje) => async (promesa) => { await promesa; recargar(); notificar(mensaje); };
 
   const abrir = (clave, extra = {}) => {
     const base = { color: COLOR_RRHH, nota: NOTA_ARCHIVO };
     const formularios = {
       adjuntar: {
-        titulo: extra.reemplazar ? 'Reemplazar documento' : 'Cargar documento', subtitulo: extra.nombre,
+        titulo: extra.reemplazar ? 'Cambiar enlace del documento' : 'Agregar enlace del documento', subtitulo: extra.nombre,
         campos: [
           { name: 'fechaExpedicion', label: 'Fecha de expedición', type: 'date' },
           ...(extra.conVencimiento ? [{ name: 'fechaVencimiento', label: 'Fecha de vencimiento', type: 'date' }] : []),
-          { name: 'archivo', label: 'Archivo', type: 'file', required: true },
+          { name: 'archivo', label: 'URL del documento (PDF)', type: 'url', required: true },
         ],
         textoGuardar: 'Guardar documento',
-        onGuardar: v => guardarYNotificar('Documento cargado en el expediente.')(rrhh.adjuntarArchivo(c.id, extra.ref, v, usuario)),
+        onGuardar: v => guardarYNotificar('Enlace del documento guardado en el expediente.')(rrhh.adjuntarArchivo(c.id, extra.ref, v, usuario)),
       },
       documento: {
-        titulo: 'Cargar documento', subtitulo: c.nombreCompleto,
+        titulo: 'Agregar documento', subtitulo: c.nombreCompleto,
         campos: [
           { name: 'tipo', label: 'Tipo de documento', type: 'select', options: TIPOS_DOCUMENTO, required: true },
           { name: 'nombre', label: 'Nombre', required: true, placeholder: 'Ej.: Certificado laboral' },
           { name: 'fechaExpedicion', label: 'Fecha de expedición', type: 'date' },
           { name: 'fechaVencimiento', label: 'Fecha de vencimiento', type: 'date' },
-          { name: 'archivo', label: 'Archivo', type: 'file' },
+          { name: 'archivo', label: 'URL del documento (PDF)', type: 'url' },
         ],
         textoGuardar: 'Guardar documento',
         onGuardar: v => guardarYNotificar('Documento agregado al expediente.')(rrhh.agregarDocumento(c.id, v, usuario)),
@@ -120,22 +108,22 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
           { name: 'nivel', label: 'Nivel', type: 'select', options: ['Técnico', 'Tecnológico', 'Pregrado', 'Especialización', 'Maestría', 'Doctorado'], required: true },
           { name: 'anio', label: 'Año de grado', type: 'number', required: true },
           { name: 'fechaActa', label: 'Fecha del acta de grado', type: 'date' },
-          { name: 'archivo', label: 'Diploma', type: 'file' },
-          { name: 'archivoActa', label: 'Acta de grado', type: 'file' },
+          { name: 'archivo', label: 'URL del diploma (PDF)', type: 'url' },
+          { name: 'archivoActa', label: 'URL del acta de grado (PDF)', type: 'url' },
         ],
         textoGuardar: 'Agregar título',
         onGuardar: v => guardarYNotificar('Título académico agregado.')(rrhh.agregarTitulo(c.id, v, usuario)),
       },
       acta: {
-        titulo: 'Cargar acta de grado', subtitulo: c.nombreCompleto,
+        titulo: 'Agregar acta de grado', subtitulo: c.nombreCompleto,
         campos: [
           { name: 'tituloId', label: 'Título al que corresponde', type: 'select', options: exp.titulos.map(x => x.titulo), required: true, full: true },
-          { name: 'archivo', label: 'Acta de grado', type: 'file', required: true },
+          { name: 'archivo', label: 'URL del acta de grado (PDF)', type: 'url', required: true },
         ],
         textoGuardar: 'Guardar acta',
         onGuardar: v => {
           const tit = exp.titulos.find(x => x.titulo === v.tituloId);
-          return guardarYNotificar('Acta de grado cargada.')(rrhh.adjuntarArchivo(c.id, { coleccion: 'actas', id: tit.id }, v, usuario));
+          return guardarYNotificar('Enlace del acta de grado guardado.')(rrhh.adjuntarArchivo(c.id, { coleccion: 'actas', id: tit.id }, v, usuario));
         },
       },
       estudio: {
@@ -148,7 +136,7 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
           { name: 'horas', label: 'Horas', type: 'number' },
           { name: 'anio', label: 'Año', type: 'number' },
           { name: 'fechaVencimiento', label: 'Vigencia hasta (si aplica)', type: 'date' },
-          { name: 'archivo', label: 'Certificado', type: 'file' },
+          { name: 'archivo', label: 'URL del certificado (PDF)', type: 'url' },
         ],
         textoGuardar: 'Agregar estudio',
         onGuardar: v => guardarYNotificar('Estudio complementario agregado.')(rrhh.agregarEstudio(c.id, v, usuario)),
@@ -161,7 +149,7 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
           { name: 'fecha', label: 'Fecha de aplicación', type: 'date', required: true },
           { name: 'lote', label: 'Lote', placeholder: 'LOTE-0000' },
           { name: 'proximaDosis', label: 'Próxima dosis (si aplica)', type: 'date' },
-          { name: 'archivo', label: 'Soporte (carné / certificado)', type: 'file' },
+          { name: 'archivo', label: 'URL del soporte (carné / certificado)', type: 'url' },
         ],
         textoGuardar: 'Registrar vacuna',
         onGuardar: v => guardarYNotificar('Vacuna registrada.')(rrhh.registrarVacuna(c.id, v, usuario)),
@@ -176,7 +164,7 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
           { name: 'fechaFin', label: 'Fecha de terminación (si aplica)', type: 'date' },
           { name: 'cargo', label: 'Cargo', required: true },
           { name: 'area', label: 'Área', type: 'select', options: AREAS_RRHH, required: true },
-          { name: 'archivo', label: 'Documento del contrato firmado', type: 'file' },
+          { name: 'archivo', label: 'URL del contrato firmado (PDF)', type: 'url' },
         ],
         textoGuardar: 'Actualizar contrato',
         onGuardar: v => guardarYNotificar('Contrato actualizado.')(rrhh.actualizarContrato(c.id, v, usuario)),
@@ -208,12 +196,11 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
 
   const accionesDoc = (d) => (
     <div className="flex flex-wrap gap-1">
-      {d.archivo && <Boton pequeno variante="fantasma" icono={Eye} onClick={() => verDoc(d.archivo, d.nombre)}>Ver</Boton>}
-      {d.archivo && <Boton pequeno variante="fantasma" icono={Download} onClick={() => descargarDoc(d.archivo)}>Descargar</Boton>}
+      {d.archivo && <Boton pequeno variante="fantasma" icono={ExternalLink} onClick={() => verDoc(d.archivo)}>Ver</Boton>}
       {!readOnly && (
-        <Boton pequeno variante={d.archivo ? 'fantasma' : 'secundario'} icono={d.archivo ? RefreshCw : Upload}
+        <Boton pequeno variante={d.archivo ? 'fantasma' : 'secundario'} icono={d.archivo ? RefreshCw : Link2}
           onClick={() => abrir('adjuntar', { ref: d.ref, nombre: d.nombre, reemplazar: !!d.archivo, conVencimiento: d.ref.coleccion === 'documentos' || d.ref.coleccion === 'estudios' })}>
-          {d.archivo ? 'Reemplazar' : 'Cargar'}
+          {d.archivo ? 'Cambiar URL' : 'Agregar URL'}
         </Boton>
       )}
     </div>
@@ -290,7 +277,7 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
                     <span className="font-semibold block truncate" title={p.nombre}>{p.nombre}</span>
                     <span className={`text-3xs ${t.muted}`}>{p.motivo}</span>
                   </span>
-                  {!readOnly && <Boton pequeno variante="fantasma" icono={Upload} onClick={() => cargarPendiente(p)}>Cargar</Boton>}
+                  {!readOnly && <Boton pequeno variante="fantasma" icono={Link2} onClick={() => cargarPendiente(p)}>Agregar URL</Boton>}
                 </li>
               ))}
               {exp.completitud.pendientes.length > 4 && <li className={`text-3xs ${t.muted}`}>y {exp.completitud.pendientes.length - 4} más…</li>}
@@ -411,9 +398,8 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
                       {x.archivo ? <Pill color="#16A34A">Verificado</Pill> : <Pill color="#DC2626">Sin soporte</Pill>}
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1">
-                      {x.archivo && <Boton pequeno variante="fantasma" icono={Eye} onClick={() => verDoc(x.archivo, `Título — ${x.titulo}`)}>Ver documento</Boton>}
-                      {x.archivo && <Boton pequeno variante="fantasma" icono={Download} onClick={() => descargarDoc(x.archivo)}>Descargar</Boton>}
-                      {!x.archivo && !readOnly && <Boton pequeno icono={Upload} onClick={() => abrir('adjuntar', { ref: { coleccion: 'titulos', id: x.id }, nombre: `Título — ${x.titulo}` })}>Cargar diploma</Boton>}
+                      {x.archivo && <Boton pequeno variante="fantasma" icono={ExternalLink} onClick={() => verDoc(x.archivo)}>Ver documento</Boton>}
+                      {!x.archivo && !readOnly && <Boton pequeno icono={Link2} onClick={() => abrir('adjuntar', { ref: { coleccion: 'titulos', id: x.id }, nombre: `Título — ${x.titulo}` })}>Agregar URL del diploma</Boton>}
                     </div>
                   </div>
                 ))}
@@ -421,7 +407,7 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
             </Card>
 
             <Card t={t} titulo="Actas de grado" icono={FileText} color={COLOR_RRHH}
-              accion={!readOnly && exp.titulos.length > 0 && <Boton pequeno icono={FilePlus2} onClick={() => abrir('acta')}>Cargar acta de grado</Boton>}>
+              accion={!readOnly && exp.titulos.length > 0 && <Boton pequeno icono={FilePlus2} onClick={() => abrir('acta')}>Agregar acta de grado</Boton>}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {exp.titulos.map(x => (
                   <div key={x.id} className={`rounded-xl border p-4 ${t.border}`}>
@@ -433,12 +419,11 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
                       {x.acta.archivo ? <Pill color="#16A34A">Documento cargado</Pill> : <Pill color="#DC2626">Pendiente</Pill>}
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1">
-                      {x.acta.archivo && <Boton pequeno variante="fantasma" icono={Eye} onClick={() => verDoc(x.acta.archivo, `Acta de grado — ${x.titulo}`)}>Ver</Boton>}
-                      {x.acta.archivo && <Boton pequeno variante="fantasma" icono={Download} onClick={() => descargarDoc(x.acta.archivo)}>Descargar</Boton>}
+                      {x.acta.archivo && <Boton pequeno variante="fantasma" icono={ExternalLink} onClick={() => verDoc(x.acta.archivo)}>Ver</Boton>}
                       {!readOnly && (
-                        <Boton pequeno variante={x.acta.archivo ? 'fantasma' : 'secundario'} icono={x.acta.archivo ? RefreshCw : Upload}
+                        <Boton pequeno variante={x.acta.archivo ? 'fantasma' : 'secundario'} icono={x.acta.archivo ? RefreshCw : Link2}
                           onClick={() => abrir('adjuntar', { ref: { coleccion: 'actas', id: x.id }, nombre: `Acta de grado — ${x.titulo}`, reemplazar: !!x.acta.archivo })}>
-                          {x.acta.archivo ? 'Reemplazar' : 'Cargar'}
+                          {x.acta.archivo ? 'Cambiar URL' : 'Agregar URL'}
                         </Boton>
                       )}
                     </div>
@@ -461,8 +446,8 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
                     <div className={`text-2xs mt-1 ${t.muted}`}>{s.institucion}</div>
                     <div className={`text-2xs mt-1 ${t.muted}`}>{s.horas} horas · {s.anio}{s.fechaVencimiento ? ` · Vigente hasta ${fmtFecha(s.fechaVencimiento)}` : ''}</div>
                     <div className="mt-auto pt-3 flex flex-wrap gap-1">
-                      {s.archivo && <Boton pequeno variante="fantasma" icono={Eye} onClick={() => verDoc(s.archivo, `Certificado — ${s.nombre}`)}>Ver</Boton>}
-                      {!readOnly && !s.archivo && <Boton pequeno icono={Upload} onClick={() => abrir('adjuntar', { ref: { coleccion: 'estudios', id: s.id }, nombre: `Certificado — ${s.nombre}`, conVencimiento: true })}>Cargar certificado</Boton>}
+                      {s.archivo && <Boton pequeno variante="fantasma" icono={ExternalLink} onClick={() => verDoc(s.archivo)}>Ver</Boton>}
+                      {!readOnly && !s.archivo && <Boton pequeno icono={Link2} onClick={() => abrir('adjuntar', { ref: { coleccion: 'estudios', id: s.id }, nombre: `Certificado — ${s.nombre}`, conVencimiento: true })}>Agregar URL del certificado</Boton>}
                     </div>
                   </div>
                 ))}
@@ -489,7 +474,7 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
               { key: 'nombre', label: 'Documento', render: d => (
                 <div className="min-w-0">
                   <div className="font-semibold">{d.nombre}</div>
-                  <div className={`text-3xs ${t.muted}`}>{d.archivo ? `${d.archivo.nombre} · ${d.archivo.tamano}` : 'Sin archivo'}</div>
+                  <div className={`text-3xs ${t.muted}`}>{d.archivo ? `Enlace · ${d.archivo.nombre}` : 'Sin enlace'}</div>
                 </div>
               ) },
               { key: 'fechaCarga', label: 'Cargado', render: d => fmtFecha(d.fechaCarga), className: 'whitespace-nowrap' },
@@ -511,9 +496,9 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
               { key: 'proximaDosis', label: 'Próxima dosis', render: v => fmtFecha(v.proximaDosis) },
               { key: 'estado', label: 'Estado', render: v => <EstadoPill mapa={ESTADO_VACUNA} valor={v.estado} /> },
               { key: 'soporte', label: 'Soporte', render: v => (v.archivo
-                ? <Boton pequeno variante="fantasma" icono={Eye} onClick={() => verDoc(v.archivo, `Soporte de vacunación — ${v.vacuna}`)}>Ver</Boton>
+                ? <Boton pequeno variante="fantasma" icono={ExternalLink} onClick={() => verDoc(v.archivo)}>Ver</Boton>
                 : readOnly ? <span className={`text-2xs ${t.muted}`}>Pendiente</span>
-                  : <Boton pequeno icono={Upload} onClick={() => abrir('adjuntar', { ref: { coleccion: 'vacunas', id: v.id }, nombre: `Soporte de vacunación — ${v.vacuna} (${v.dosis})` })}>Cargar</Boton>) },
+                  : <Boton pequeno icono={Link2} onClick={() => abrir('adjuntar', { ref: { coleccion: 'vacunas', id: v.id }, nombre: `Soporte de vacunación — ${v.vacuna} (${v.dosis})` })}>Agregar URL</Boton>) },
             ]} />
             <div className="mt-4 flex flex-wrap gap-3 text-2xs">
               {Object.entries(ESTADO_VACUNA).map(([k, e]) => <span key={k} className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: e.color }} />{e.label}</span>)}
@@ -552,13 +537,12 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
                   <FileText size={28} style={{ color: COLOR_RRHH }} />
                   <div className="min-w-0">
                     <div className="text-xs font-semibold truncate">{exp.contrato.documento.archivo.nombre}</div>
-                    <div className={`text-3xs ${t.muted}`}>Cargado {fmtFecha(exp.contrato.documento.fechaCarga)} · {exp.contrato.documento.archivo.tamano}</div>
+                    <div className={`text-3xs ${t.muted}`}>Registrado {fmtFecha(exp.contrato.documento.fechaCarga)} · enlace</div>
                   </div>
                 </div>
               ) : <p className="text-xs text-red-500">No se ha cargado el contrato firmado.</p>}
               <div className="mt-4 flex flex-wrap gap-2">
-                {exp.contrato.documento?.archivo && <Boton pequeno icono={Eye} onClick={() => verDoc(exp.contrato.documento.archivo, 'Contrato laboral')}>Ver contrato</Boton>}
-                {exp.contrato.documento?.archivo && <Boton pequeno icono={Download} onClick={() => descargarDoc(exp.contrato.documento.archivo)}>Descargar</Boton>}
+                {exp.contrato.documento?.archivo && <Boton pequeno icono={ExternalLink} onClick={() => verDoc(exp.contrato.documento.archivo)}>Ver contrato</Boton>}
                 {!readOnly && <Boton pequeno icono={RefreshCw} variante="primario" onClick={() => abrir('contrato')}>Actualizar contrato</Boton>}
               </div>
             </Card>
@@ -570,8 +554,7 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
             <Card t={t} titulo="Perfil profesional" icono={UserRound} color={COLOR_RRHH}
               accion={
                 <div className="flex flex-wrap gap-1">
-                  {docHv?.archivo && <Boton pequeno variante="fantasma" icono={Eye} onClick={() => verDoc(docHv.archivo, 'Hoja de vida')}>Ver hoja de vida</Boton>}
-                  {docHv?.archivo && <Boton pequeno variante="fantasma" icono={Download} onClick={() => descargarDoc(docHv.archivo)}>Descargar PDF</Boton>}
+                  {docHv?.archivo && <Boton pequeno variante="fantasma" icono={ExternalLink} onClick={() => verDoc(docHv.archivo)}>Ver hoja de vida</Boton>}
                   {!readOnly && <Boton pequeno icono={Pencil} onClick={() => abrir('editar')}>Actualizar información</Boton>}
                 </div>
               }>
@@ -617,26 +600,6 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
 
       {formulario && <FormularioModal t={t} {...formulario} onClose={() => setFormulario(null)} />}
 
-      {vistaPrevia && (
-        <Modal t={t} titulo="Vista previa del documento" subtitulo={vistaPrevia.nombre} onClose={() => setVistaPrevia(null)}
-          pie={<Boton onClick={() => setVistaPrevia(null)} color="#64748B">Cerrar</Boton>}>
-          <div className="rounded-xl border bg-white text-slate-800 p-6 shadow-inner" style={{ borderColor: '#E2E8F0' }}>
-            <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: '#E2E8F0' }}>
-              <span className="text-2xs font-bold uppercase tracking-widest text-indigo-600">Plataforma Integral de Gestión</span>
-              <span className="text-3xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-800">DEMO</span>
-            </div>
-            <div className="mt-4 text-sm font-bold">{vistaPrevia.nombre}</div>
-            <div className="mt-1 text-2xs text-slate-500">{c.nombreCompleto} · {c.tipoDocumento} {c.documento}</div>
-            <div className="mt-4 space-y-2" aria-hidden="true">
-              {[92, 100, 85, 96, 70, 88].map((w, i) => <div key={i} className="h-2 rounded bg-slate-200" style={{ width: `${w}%` }} />)}
-            </div>
-            <div className="mt-5 text-3xs text-slate-500">Archivo: {vistaPrevia.archivo?.nombre} · {vistaPrevia.archivo?.tamano}</div>
-          </div>
-          <p className={`mt-3 text-2xs flex items-start gap-1.5 ${t.muted}`}>
-            <Clock size={13} className="shrink-0 mt-0.5" /> Vista previa simulada: los documentos de la demostración no tienen un archivo real. Los archivos que cargues durante la demo sí se abren tal cual.
-          </p>
-        </Modal>
-      )}
     </div>
   );
 }

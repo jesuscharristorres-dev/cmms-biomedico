@@ -342,8 +342,11 @@ function slug(texto) {
   return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
 
+// Documento de ejemplo: un enlace (como los de Drive/OneDrive que se usan en la plataforma)
+// que apunta a un PDF de demostración servido por la misma app (public/rrhh-demo).
+const PDF_DEMO = '/rrhh-demo/documento-demo.pdf';
 function archivoSimulado(nombre, fechaCarga) {
-  return { nombre, tamano: `${180 + (nombre.length * 17) % 700} KB`, fechaCarga, simulado: true };
+  return { nombre: 'PDF de demostración', url: `${PDF_DEMO}#${encodeURIComponent(nombre)}`, fechaCarga };
 }
 
 // Construye las colecciones "planas" (una fila por registro, como vendrían de la BD).

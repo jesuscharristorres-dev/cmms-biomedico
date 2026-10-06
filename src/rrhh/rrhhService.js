@@ -224,16 +224,25 @@ export async function listarContratos() {
 /* ---------------------------------------------------------------- */
 /* OPERACIONES (futuros POST / PATCH)                                */
 /* ---------------------------------------------------------------- */
-// `archivo` es un File del navegador o null. En la demo solo se crea una URL local para
-// poder verlo/descargarlo en esta sesión; en producción se subiría a almacenamiento
-// (p. ej. Vercel Blob, como las plantillas de limpieza) y se guardaría la URL devuelta.
-function registrarArchivo(archivo) {
-  if (!archivo) return null;
-  const kb = Math.max(1, Math.round(archivo.size / 1024));
-  return { nombre: archivo.name, tamano: kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`, fechaCarga: hoyISO(), simulado: false, url: URL.createObjectURL(archivo) };
+// `archivo` es el ENLACE al documento (Drive, OneDrive, SharePoint…), igual que en el CMMS
+// biomédico: la plataforma no almacena el PDF, solo su URL, y "Ver" lo abre en una pestaña
+// nueva. `nombre` es lo que se muestra en el expediente (el servicio de origen del enlace).
+function nombreDesdeUrl(url) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    if (host.includes('drive.google') || host.includes('docs.google')) return 'Google Drive';
+    if (host.includes('sharepoint')) return 'SharePoint';
+    if (host.includes('onedrive') || host.includes('1drv.ms')) return 'OneDrive';
+    if (host.includes('dropbox')) return 'Dropbox';
+    return host;
+  } catch {
+    return 'Enlace';
+  }
 }
-function registrarArchivoSimulado(nombre) {
-  return { nombre: nombre || 'documento.pdf', tamano: '—', fechaCarga: hoyISO(), simulado: true };
+function registrarArchivo(url) {
+  const limpia = typeof url === 'string' ? url.trim() : '';
+  if (!limpia) return null;
+  return { nombre: nombreDesdeUrl(limpia), url: limpia, fechaCarga: hoyISO() };
 }
 
 function agregarHistorial(colaboradorId, titulo, detalle, tipo, usuario) {
@@ -241,8 +250,8 @@ function agregarHistorial(colaboradorId, titulo, detalle, tipo, usuario) {
 }
 
 // Carga o reemplaza el archivo de cualquier documento del expediente (ver `ref`).
-export async function adjuntarArchivo(colaboradorId, ref, { archivo, nombreArchivo, fechaExpedicion, fechaVencimiento }, usuario) {
-  const nuevo = archivo ? registrarArchivo(archivo) : registrarArchivoSimulado(nombreArchivo);
+export async function adjuntarArchivo(colaboradorId, ref, { archivo, fechaExpedicion, fechaVencimiento }, usuario) {
+  const nuevo = registrarArchivo(archivo);
   let nombre = '';
   if (ref.coleccion === 'documentos') {
     const d = store.documentos.find(x => x.id === ref.id);
@@ -256,15 +265,15 @@ export async function adjuntarArchivo(colaboradorId, ref, { archivo, nombreArchi
   } else if (ref.coleccion === 'vacunas') {
     const v = store.vacunas.find(x => x.id === ref.id); v.archivo = nuevo; nombre = `Soporte de vacunación — ${v.vacuna}`;
   }
-  agregarHistorial(colaboradorId, 'Documento cargado', `${nombre}.`, 'documento', usuario);
+  agregarHistorial(colaboradorId, 'Enlace de documento registrado', `${nombre}.`, 'documento', usuario);
   return espera(true);
 }
 
-export async function agregarDocumento(colaboradorId, { tipo, nombre, fechaExpedicion, fechaVencimiento, archivo, nombreArchivo }, usuario) {
+export async function agregarDocumento(colaboradorId, { tipo, nombre, fechaExpedicion, fechaVencimiento, archivo }, usuario) {
   store.documentos.push({
     id: nuevoId('doc'), colaboradorId, clave: null, tipo, nombre, requerido: false,
     fechaExpedicion: fechaExpedicion || hoyISO(), fechaVencimiento: fechaVencimiento || null,
-    archivo: archivo ? registrarArchivo(archivo) : registrarArchivoSimulado(nombreArchivo || `${nombre}.pdf`),
+    archivo: registrarArchivo(archivo),
   });
   agregarHistorial(colaboradorId, 'Nuevo documento', `${tipo}: ${nombre}.`, 'documento', usuario);
   return espera(true);
@@ -273,8 +282,8 @@ export async function agregarDocumento(colaboradorId, { tipo, nombre, fechaExped
 export async function agregarTitulo(colaboradorId, { titulo, institucion, nivel, anio, fechaActa, archivo, archivoActa }, usuario) {
   store.titulos.push({
     id: nuevoId('tit'), colaboradorId, titulo, institucion, nivel, anio: Number(anio) || anio,
-    verificado: !!archivo, archivo: archivo ? registrarArchivo(archivo) : null,
-    acta: { fecha: fechaActa ? fechaActa.split('-').reverse().join('/') : '', archivo: archivoActa ? registrarArchivo(archivoActa) : null },
+    verificado: !!archivo, archivo: registrarArchivo(archivo),
+    acta: { fecha: fechaActa ? fechaActa.split('-').reverse().join('/') : '', archivo: registrarArchivo(archivoActa) },
   });
   agregarHistorial(colaboradorId, 'Nuevo título académico', `${titulo} — ${institucion}.`, 'estudio', usuario);
   return espera(true);
@@ -283,7 +292,7 @@ export async function agregarTitulo(colaboradorId, { titulo, institucion, nivel,
 export async function agregarEstudio(colaboradorId, { nombre, institucion, tipo, horas, anio, fechaVencimiento, archivo }, usuario) {
   store.estudios.push({
     id: nuevoId('est'), colaboradorId, nombre, institucion, tipo, horas: Number(horas) || 0, anio: Number(anio) || anio,
-    fechaVencimiento: fechaVencimiento || null, archivo: archivo ? registrarArchivo(archivo) : null,
+    fechaVencimiento: fechaVencimiento || null, archivo: registrarArchivo(archivo),
   });
   agregarHistorial(colaboradorId, 'Nuevo estudio complementario', `${nombre} (${horas || 0} horas).`, 'estudio', usuario);
   return espera(true);
@@ -292,7 +301,7 @@ export async function agregarEstudio(colaboradorId, { nombre, institucion, tipo,
 export async function registrarVacuna(colaboradorId, { vacuna, dosis, fecha, lote, proximaDosis, archivo }, usuario) {
   store.vacunas.push({
     id: nuevoId('vac'), colaboradorId, vacuna, dosis, fecha, lote, proximaDosis: proximaDosis || null,
-    archivo: archivo ? registrarArchivo(archivo) : null,
+    archivo: registrarArchivo(archivo),
   });
   agregarHistorial(colaboradorId, 'Vacuna registrada', `${vacuna} — ${dosis}.`, 'vacuna', usuario);
   return espera(true);
