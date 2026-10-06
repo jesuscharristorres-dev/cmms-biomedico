@@ -123,7 +123,8 @@ export function Modal({ t, titulo, subtitulo, onClose, children, pie, ancho = 'm
 }
 
 // Formulario genérico en modal (cargar documento, agregar título, registrar vacuna…).
-// `campos`: [{ name, label, type: text|date|number|select|textarea|url, options, required, full, placeholder }]
+// `campos`: [{ name, label, type: text|date|number|select|textarea|url, options, required, full, placeholder, visible }]
+// `visible(valores)`: opcional; si devuelve false el campo se oculta y no se valida.
 // `url`: enlace al documento (Drive, OneDrive, SharePoint…), igual que en el CMMS biomédico.
 export function FormularioModal({ t, titulo, subtitulo, campos, inicial = {}, textoGuardar = 'Guardar', nota, onGuardar, onClose, color }) {
   const [valores, setValores] = useState(inicial);
@@ -131,11 +132,12 @@ export function FormularioModal({ t, titulo, subtitulo, campos, inicial = {}, te
   const [guardando, setGuardando] = useState(false);
   const formRef = useRef(null);
   const set = (k, v) => { setValores(prev => ({ ...prev, [k]: v })); setErrores(prev => (prev[k] ? { ...prev, [k]: undefined } : prev)); };
+  const camposVisibles = campos.filter(c => !c.visible || c.visible(valores));
 
   const guardar = async (e) => {
     e.preventDefault();
     const err = {};
-    campos.forEach(c => {
+    camposVisibles.forEach(c => {
       const v = typeof valores[c.name] === 'string' ? valores[c.name].trim() : valores[c.name];
       if (c.required && !v) err[c.name] = 'Campo obligatorio.';
       else if (c.type === 'url' && v && !esUrlValida(v)) err[c.name] = 'Ingresa un enlace válido que empiece por https://';
@@ -158,7 +160,7 @@ export function FormularioModal({ t, titulo, subtitulo, campos, inicial = {}, te
       </>
     }>
       <form ref={formRef} onSubmit={guardar} className="grid grid-cols-1 sm:grid-cols-2 gap-3" noValidate>
-        {campos.map(c => (
+        {camposVisibles.map(c => (
           <label key={c.name} className={`block ${c.full || c.type === 'textarea' || c.type === 'url' ? 'sm:col-span-2' : ''}`}>
             <span className={`block text-3xs uppercase tracking-wide font-semibold mb-1 ${t.muted}`}>{c.label}{c.required ? ' *' : ''}</span>
             {c.type === 'select' ? (

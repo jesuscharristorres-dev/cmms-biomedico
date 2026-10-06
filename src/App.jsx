@@ -25,6 +25,7 @@ import { PlatformHeader, ModuloInfoPage, PortalPublico } from './platform/Portal
 import { LANDING_ECOSISTEMA } from './platform/landing';
 // Módulo Gestión Humana (demo): se carga solo cuando alguien entra al módulo.
 const GestionHumana = React.lazy(() => import('./rrhh/GestionHumana'));
+import { EMPRESAS_RRHH, empresaRRHHDeUsuario, nombreEmpresaRRHH } from './rrhh/empresas';
 // Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
 import logoIngenieriaClinica from './assets/logo-ingenieria-clinica.png';
@@ -4101,6 +4102,8 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
   const [menu, setMenu] = useState(menuInicial || 'inicio');
   // Sección de Gestión Humana elegida desde el menú lateral (`n` cambia en cada clic).
   const [rrhhNav, setRrhhNav] = useState({ seccion: 'inicio', n: 0 });
+  // Empresa activa dentro de Gestión Humana (sus empresas son propias del módulo).
+  const [rrhhEmpresa, setRrhhEmpresa] = useState(() => (user.role === 'SUPER_ADMIN' ? 'TODAS' : empresaRRHHDeUsuario(user.empresa_id)));
   // MULTIEMPRESA: el SUPER_ADMIN empieza en "Todas" y puede filtrar por cualquier empresa.
   // Un usuario de empresa queda fijo en SU empresa (la que asignó el servidor) y no puede
   // cambiarla — y aunque lo intentara desde DevTools, la API solo le devuelve sus datos.
@@ -4330,7 +4333,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
   const itemsMenuModulo = enRRHH ? [
     { key: 'rrhh:inicio', label: 'Inicio', icon: LayoutDashboard, group: 'Gestión Humana', activo: rrhhNav.seccion === 'inicio' },
     { key: 'rrhh:colaboradores', label: 'Colaboradores', icon: Users, group: 'Gestión Humana', activo: rrhhNav.seccion === 'colaboradores' },
-    { key: 'rrhh:capacitaciones', label: 'Capacitaciones de ingreso y reinducción', icon: GraduationCap, group: 'Gestión Humana', activo: rrhhNav.seccion === 'capacitaciones' },
+    { key: 'rrhh:capacitaciones', label: 'Capacitaciones de inducción y reinducción', icon: GraduationCap, group: 'Gestión Humana', activo: rrhhNav.seccion === 'capacitaciones' },
     { key: 'rrhh:funciones', label: 'Funciones del cargo', icon: BriefcaseBusiness, group: 'Gestión Humana', activo: rrhhNav.seccion === 'funciones' },
   ] : null;
   const navegarDesdeMenu = (key) => {
@@ -4718,7 +4721,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
         </div>
       )}
       {/* ENCABEZADO DE LA PLATAFORMA — todas las pantallas; en <lg además abre el menú lateral */}
-      <PlatformHeader t={t} dark={dark} user={user} rolLabel={ROLE_LABELS[user.role] || user.role} empresaLabel={empresaLabel}
+      <PlatformHeader t={t} dark={dark} user={user} rolLabel={ROLE_LABELS[user.role] || user.role} empresaLabel={moduloDeMenu(menu) === 'rrhh' ? nombreEmpresaRRHH(rrhhEmpresa) : empresaLabel}
         seccion={seccion} logo={logoIngenieriaClinica}
         notificaciones={puedeAbrir('fallas') ? nuevosReportes : null}
         onNotificaciones={puedeAbrir('fallas') ? () => setMenu('fallas') : undefined}
@@ -4780,9 +4783,9 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
 
         {moduloInfo?.key === 'rrhh' && permitidos.has('rrhh') && (
           <React.Suspense fallback={<div className={`py-24 text-center text-sm ${t.muted}`}>Cargando Gestión Humana…</div>}>
-            <GestionHumana t={t} user={user} readOnly={readOnly} empresaLabel={empresaLabel} empresa={activeCompany}
-              empresas={COMPANIES.map(c => ({ key: c.key, nombre: c.nombre || c.key, color: c.color, gradient: c.gradient }))}
-              onCambiarEmpresa={isSuper ? changeCompany : undefined}
+            <GestionHumana t={t} user={user} readOnly={readOnly} empresaLabel={nombreEmpresaRRHH(rrhhEmpresa)} empresa={rrhhEmpresa}
+              empresas={EMPRESAS_RRHH}
+              onCambiarEmpresa={isSuper ? setRrhhEmpresa : undefined}
               seccion={rrhhNav.seccion} onSeccion={(k) => setRrhhNav(v => ({ ...v, seccion: k }))} navegacion={rrhhNav.n} />
           </React.Suspense>
         )}

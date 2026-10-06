@@ -61,7 +61,7 @@ const VACUNAS_BASE = [
 // con eso cada expediente tiene un nivel de completitud distinto (100 %, 92 %, 84 %, 72 %…).
 const ESPECIFICACION = [
   {
-    id: 'col-001', nombres: 'María Fernanda', apellidos: 'Gómez', genero: 'F', empresa: 'MACROMED',
+    id: 'col-001', nombres: 'María Fernanda', apellidos: 'Gómez', genero: 'F', empresa: 'MACROMED SAS', dotacion: { recibio: true, dias: -40 },
     tipoDocumento: 'CC', documento: '52.XXX.XXX', cargo: 'Coordinadora Administrativa', area: 'Administración',
     contrato: 'Indefinido', estado: 'Activo', ingreso: '2022-02-01', nacimiento: '1990-04-18', estadoCivil: 'Casada',
     ciudad: 'Bogotá', perfil: 'Profesional con experiencia en gestión administrativa y coordinación de procesos.',
@@ -88,7 +88,7 @@ const ESPECIFICACION = [
     ],
   },
   {
-    id: 'col-002', nombres: 'Carlos Andrés', apellidos: 'Rodríguez', genero: 'M', empresa: 'NP MEDICAL',
+    id: 'col-002', nombres: 'Carlos Andrés', apellidos: 'Rodríguez', genero: 'M', empresa: 'NP MEDICAL', dotacion: { recibio: false, dias: -25 },
     tipoDocumento: 'CC', documento: '79.XXX.XXX', cargo: 'Ingeniero Biomédico', area: 'Biomédica',
     contrato: 'Indefinido', estado: 'Activo', ingreso: '2020-06-16', nacimiento: '1987-11-02', estadoCivil: 'Soltero',
     ciudad: 'Bogotá', perfil: 'Ingeniero biomédico con experiencia en gestión de tecnología, mantenimiento y metrología de equipos médicos.',
@@ -372,6 +372,11 @@ function construirColecciones() {
       telefono: `300 000 00${n}`, correo: `${usuarioCorreo}@example.com`, direccion: `Calle ${100 + idx} # 00-${n} (dirección ficticia)`,
       contactoEmergencia: { nombre: `Contacto de emergencia ${n} (ficticio)`, parentesco: idx % 2 ? 'Hermano(a)' : 'Cónyuge', telefono: `310 000 00${n}` },
       perfil: e.perfil,
+      // Dotación: null = sin registrar; { recibio: true, archivo } o { recibio: false }.
+      dotacion: e.dotacion ? {
+        recibio: e.dotacion.recibio, fecha: fechaRelativa(e.dotacion.dias),
+        archivo: e.dotacion.recibio ? archivoSimulado(`Acta_entrega_dotacion_${inicial}.pdf`, fechaRelativa(e.dotacion.dias)) : null,
+      } : null,
     });
 
     DOCUMENTOS_BASE.forEach((d, i) => {

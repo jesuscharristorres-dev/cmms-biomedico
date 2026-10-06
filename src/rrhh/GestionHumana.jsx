@@ -26,7 +26,7 @@ import { Aviso, Avatar, Boton, Card, EstadoPill, FormularioModal, Modal, Pill, P
 const SECCIONES = [
   { key: 'inicio', label: 'Inicio', icon: LayoutDashboard },
   { key: 'colaboradores', label: 'Colaboradores', icon: Users },
-  { key: 'capacitaciones', label: 'Capacitaciones de ingreso y reinducción', icon: GraduationCap },
+  { key: 'capacitaciones', label: 'Capacitaciones de inducción y reinducción', icon: GraduationCap },
   { key: 'funciones', label: 'Funciones del cargo', icon: BriefcaseBusiness },
 ];
 
@@ -307,7 +307,7 @@ function CapacitacionesIngreso({ t }) {
       <div className="flex items-start gap-3">
         <span className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: COLOR_RRHH + '1A', color: COLOR_RRHH }}><GraduationCap size={20} /></span>
         <div>
-          <h2 className="text-base font-bold">Capacitaciones de ingreso y reinducción</h2>
+          <h2 className="text-base font-bold">Capacitaciones de inducción y reinducción</h2>
           <p className={`text-xs mt-1 max-w-3xl ${t.muted}`}>
             Material para la inducción de quien ingresa a la organización y para la reinducción periódica del personal.
           </p>

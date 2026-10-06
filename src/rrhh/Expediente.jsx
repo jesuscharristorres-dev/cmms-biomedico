@@ -7,7 +7,7 @@ import {
   ArrowLeft, Pencil, Eye, Download, FilePlus2, GraduationCap, Award, Syringe, FileSignature,
   AlertTriangle, AlertCircle, CheckCircle2, Link2, ExternalLink, RefreshCw, Briefcase, History,
   IdCard, BookOpen, FolderOpen, LayoutDashboard, UserRound, HardHat, BadgeCheck, HeartPulse, FileText,
-  CalendarDays, MapPin, Phone, Mail,
+  CalendarDays, MapPin, Phone, Mail, Shirt,
 } from 'lucide-react';
 import * as rrhh from './rrhhService';
 import { verExpediente, descargarExpediente } from './exportarExpediente';
@@ -27,6 +27,9 @@ const PESTANAS = [
   { key: 'hoja', label: 'Hoja de vida', icon: BookOpen },
   { key: 'historial', label: 'Historial', icon: History },
 ];
+
+const DOTACION_SI = 'Sí, recibió dotación';
+const DOTACION_NO = 'No recibió dotación';
 
 const NOTA_ARCHIVO = 'Igual que en el CMMS biomédico: el documento se guarda como un enlace. Súbelo en PDF a Drive, OneDrive o SharePoint, compártelo con tu organización y pega aquí la URL; al dar clic en "Ver" se abre en una pestaña nueva. (Demostración: los cambios se conservan solo en esta sesión del navegador.)';
 
@@ -168,6 +171,24 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
         nota: 'El contrato se renueva automáticamente cada 3 meses desde la fecha de inicio; la alarma aparece cuando falta 1 mes y 1 día para terminar el periodo. (Demostración: los cambios se conservan solo en esta sesión.)',
         textoGuardar: 'Actualizar contrato',
         onGuardar: v => guardarYNotificar('Contrato actualizado.')(rrhh.actualizarContrato(c.id, v, usuario)),
+      },
+      dotacion: {
+        titulo: 'Registrar dotación', subtitulo: c.nombreCompleto,
+        inicial: {
+          recibio: c.dotacion ? (c.dotacion.recibio ? DOTACION_SI : DOTACION_NO) : '',
+          fecha: c.dotacion?.fecha || '', archivo: c.dotacion?.archivo?.url?.startsWith('http') ? c.dotacion.archivo.url : '',
+        },
+        campos: [
+          { name: 'recibio', label: '¿Se le entregó dotación?', type: 'select', options: [DOTACION_SI, DOTACION_NO], required: true, full: true },
+          { name: 'fecha', label: 'Fecha', type: 'date' },
+          { name: 'archivo', label: 'URL del acta de entrega de dotación (PDF)', type: 'url', required: true, visible: v => v.recibio === DOTACION_SI },
+        ],
+        textoGuardar: 'Guardar dotación',
+        onGuardar: v => {
+          const recibio = v.recibio === DOTACION_SI;
+          return guardarYNotificar(recibio ? 'Entrega de dotación registrada.' : 'Se marcó que no recibió dotación.')(
+            rrhh.registrarDotacion(c.id, { recibio, url: recibio ? v.archivo : null, fecha: v.fecha }, usuario));
+        },
       },
       editar: {
         titulo: 'Editar información', subtitulo: c.nombreCompleto,
@@ -569,6 +590,27 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
                 </div>
               }>
               <p className="text-sm leading-relaxed">{c.perfil}</p>
+            </Card>
+            <Card t={t} titulo="Dotación" icono={Shirt} color={COLOR_RRHH}
+              accion={!readOnly && <Boton pequeno icono={Pencil} onClick={() => abrir('dotacion')}>{c.dotacion ? 'Actualizar dotación' : 'Registrar dotación'}</Boton>}>
+              {c.dotacion?.recibio ? (
+                <div className={`rounded-xl border p-4 flex flex-wrap items-center gap-3 ${t.border}`}>
+                  <CheckCircle2 size={24} className="shrink-0 text-green-600" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold">Recibió dotación</div>
+                    <div className={`text-3xs ${t.muted}`}>Entregada {fmtFecha(c.dotacion.fecha)} · soporte por enlace</div>
+                  </div>
+                  {c.dotacion.archivo && <Boton pequeno variante="fantasma" icono={ExternalLink} onClick={() => verDoc(c.dotacion.archivo)}>Ver acta de entrega</Boton>}
+                </div>
+              ) : c.dotacion ? (
+                <div className={`rounded-xl border p-4 flex items-center gap-3 ${t.border}`}>
+                  <AlertCircle size={24} className="shrink-0 text-red-500" />
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold">No recibió dotación</div>
+                    <div className={`text-3xs ${t.muted}`}>Registrado {fmtFecha(c.dotacion.fecha)}</div>
+                  </div>
+                </div>
+              ) : <p className={`text-xs ${t.muted}`}>Aún no se ha registrado si el colaborador recibió dotación.</p>}
             </Card>
             <Card t={t} titulo="Experiencia laboral" icono={Briefcase} color={COLOR_RRHH}>
               <Tabla t={t} filas={experienciaActual} vacio="Sin experiencia actual registrada." columnas={[

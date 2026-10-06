@@ -440,6 +440,17 @@ export async function eliminarCargo(id) {
   return espera(true);
 }
 
+// Dotación entregada al colaborador: si la recibió se guarda el enlace al soporte (acta de
+// entrega); si no, queda marcado que no la recibió.
+export async function registrarDotacion(colaboradorId, { recibio, url, fecha }, usuario) {
+  const c = store.colaboradores.find(x => x.id === colaboradorId);
+  c.dotacion = recibio
+    ? { recibio: true, fecha: fecha || hoyISO(), archivo: registrarArchivo(url) }
+    : { recibio: false, fecha: fecha || hoyISO(), archivo: null };
+  agregarHistorial(colaboradorId, 'Dotación', recibio ? 'Se registró la entrega de dotación con su soporte.' : 'Se registró que el colaborador no recibió dotación.', 'documento', usuario);
+  return espera(true);
+}
+
 const CAMPOS_EDITABLES = ['telefono', 'correo', 'direccion', 'ciudad', 'estadoCivil', 'perfil'];
 export async function actualizarColaborador(colaboradorId, cambios, usuario) {
   const c = store.colaboradores.find(x => x.id === colaboradorId);
