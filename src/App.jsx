@@ -4330,6 +4330,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
   const itemsMenuModulo = enRRHH ? [
     { key: 'rrhh:inicio', label: 'Inicio', icon: LayoutDashboard, group: 'Gestión Humana', activo: rrhhNav.seccion === 'inicio' },
     { key: 'rrhh:colaboradores', label: 'Colaboradores', icon: Users, group: 'Gestión Humana', activo: rrhhNav.seccion === 'colaboradores' },
+    { key: 'rrhh:capacitaciones', label: 'Capacitaciones de ingreso y reinducción', icon: GraduationCap, group: 'Gestión Humana', activo: rrhhNav.seccion === 'capacitaciones' },
   ] : null;
   const navegarDesdeMenu = (key) => {
     if (key.startsWith('rrhh:')) {

@@ -22,7 +22,7 @@ export const ESTADO_VACUNA = {
 };
 export const ESTADO_CONTRATO = {
   activo: { label: 'Activo', color: VERDE },
-  por_vencer: { label: 'Por vencer', color: AMBAR },
+  por_vencer: { label: 'Por renovar', color: AMBAR },
   finalizado: { label: 'Finalizado', color: GRIS },
 };
 export const ESTADO_COLABORADOR = {

@@ -161,11 +161,11 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
           { name: 'tipo', label: 'Tipo de contrato', type: 'select', options: TIPOS_CONTRATO, required: true },
           { name: 'jornada', label: 'Jornada', type: 'select', options: ['Tiempo completo', 'Medio tiempo', 'Por horas'], required: true },
           { name: 'fechaInicio', label: 'Fecha de inicio', type: 'date', required: true },
-          { name: 'fechaFin', label: 'Fecha de terminación (si aplica)', type: 'date' },
           { name: 'cargo', label: 'Cargo', required: true },
           { name: 'area', label: 'Área', type: 'select', options: AREAS_RRHH, required: true },
           { name: 'archivo', label: 'URL del contrato firmado (PDF)', type: 'url' },
         ],
+        nota: 'El contrato se renueva automáticamente cada 3 meses desde la fecha de inicio; la alarma aparece cuando falta 1 mes y 1 día para terminar el periodo. (Demostración: los cambios se conservan solo en esta sesión.)',
         textoGuardar: 'Actualizar contrato',
         onGuardar: v => guardarYNotificar('Contrato actualizado.')(rrhh.actualizarContrato(c.id, v, usuario)),
       },
@@ -522,7 +522,10 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
                 <div className="mt-3 text-xl sm:text-2xl font-bold">{exp.contrato.tipoDescripcion}</div>
                 <div className="mt-5 grid grid-cols-2 gap-4 text-sm">
                   <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Fecha de inicio</div><div className="font-semibold">{fmtFecha(exp.contrato.fechaInicio)}</div></div>
-                  <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Terminación</div><div className="font-semibold">{exp.contrato.fechaFin ? fmtFecha(exp.contrato.fechaFin) : 'No aplica'}</div></div>
+                  <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Terminación del periodo</div><div className="font-semibold">{exp.contrato.fechaFin ? fmtFecha(exp.contrato.fechaFin) : 'No aplica'}</div></div>
+                  <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Renovación</div><div className="font-semibold">Automática cada 3 meses</div></div>
+                  <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Alarma desde</div><div className="font-semibold">{exp.contrato.estado.alarma ? fmtFecha(exp.contrato.estado.alarma) : '—'}</div></div>
+                  <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Renovaciones automáticas</div><div className="font-semibold">{exp.contrato.renovaciones || 0}</div></div>
                   <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Cargo</div><div className="font-semibold">{exp.contrato.cargo}</div></div>
                   <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Área</div><div className="font-semibold">{exp.contrato.area}</div></div>
                   <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Jornada</div><div className="font-semibold">{exp.contrato.jornada}</div></div>
@@ -530,6 +533,12 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
                     <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Días para terminar</div><div className="font-semibold">{exp.contrato.estado.dias}</div></div>
                   )}
                 </div>
+                {exp.contrato.estado.clave === 'por_vencer' && (
+                  <div className="mt-5 flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold" style={{ background: '#FEF3C7', color: '#92400E' }}>
+                    <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                    Alarma: faltan {exp.contrato.estado.dias} días para terminar el periodo. El {fmtFecha(exp.contrato.fechaFin)} se renovará automáticamente por 3 meses más.
+                  </div>
+                )}
               </div>
             </section>
             <Card t={t} titulo="Documento del contrato" icono={FileSignature} color={COLOR_RRHH}>

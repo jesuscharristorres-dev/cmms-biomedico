@@ -11,12 +11,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Users, FolderOpen, FileWarning, FileSignature, AlertCircle, LayoutDashboard,
   Search, ChevronRight, Eye, Sparkles, ArrowRight, Filter, UserPlus, Trash2, Building2,
+  GraduationCap, BriefcaseBusiness, ExternalLink, Link2, RefreshCw, Plus,
 } from 'lucide-react';
 import * as rrhh from './rrhhService';
 import Expediente from './Expediente';
 import {
   COLOR_RRHH, ESTADO_COLABORADOR, ESTADO_DOCUMENTACION, ESTADO_DOCUMENTO,
-  AREAS_RRHH, TIPOS_CONTRATO, fmtFecha,
+  AREAS_RRHH, TIPOS_CONTRATO, fmtFecha, abrirEnlace,
 } from './formato';
 import { Aviso, Avatar, Boton, Card, EstadoPill, FormularioModal, Modal, Pill, Progreso, Tabla } from './ui';
 
@@ -25,6 +26,7 @@ import { Aviso, Avatar, Boton, Card, EstadoPill, FormularioModal, Modal, Pill, P
 const SECCIONES = [
   { key: 'inicio', label: 'Inicio', icon: LayoutDashboard },
   { key: 'colaboradores', label: 'Colaboradores', icon: Users },
+  { key: 'capacitaciones', label: 'Capacitaciones de ingreso y reinducción', icon: GraduationCap },
 ];
 
 // Carga asíncrona simple con recarga manual (misma forma que tendrá con la API).
@@ -296,6 +298,98 @@ function Colaboradores({ t, abrirExpediente, filtroInicial, empresa, empresas, r
 }
 
 /* ---------------------------------------------------------------- */
+/* CAPACITACIONES DE INGRESO Y REINDUCCIÓN — funciones del cargo     */
+/* ---------------------------------------------------------------- */
+// Un documento (enlace al PDF, igual que en el expediente) por cargo: Director, Coordinador,
+// Analista, Auxiliar… Se usa en la inducción de quien ingresa y en la reinducción periódica.
+function CapacitacionesIngreso({ t, readOnly, notificar }) {
+  const [version, setVersion] = useState(0);
+  const cargos = useDatos(rrhh.listarFuncionesCargo, [version]);
+  const [formulario, setFormulario] = useState(null);
+  const [aEliminar, setAEliminar] = useState(null);
+  const recargar = () => setVersion(v => v + 1);
+
+  const editarDocumento = (x) => setFormulario({
+    titulo: x.archivo ? 'Cambiar documento de funciones' : 'Agregar documento de funciones', subtitulo: `Cargo: ${x.cargo}`,
+    campos: [{ name: 'url', label: 'URL del documento de funciones (PDF)', type: 'url', required: true }],
+    inicial: { url: x.archivo?.url?.startsWith('/') ? '' : (x.archivo?.url || '') },
+    textoGuardar: 'Guardar documento',
+    onGuardar: async (v) => { await rrhh.guardarDocumentoCargo(x.id, v.url); recargar(); notificar(`Documento de funciones de ${x.cargo} guardado.`); },
+  });
+  const nuevoCargo = () => setFormulario({
+    titulo: 'Agregar cargo', subtitulo: 'Funciones del cargo',
+    campos: [
+      { name: 'cargo', label: 'Cargo', required: true, placeholder: 'Ej.: Jefe de área', full: true },
+      { name: 'url', label: 'URL del documento de funciones (PDF)', type: 'url' },
+    ],
+    textoGuardar: 'Agregar cargo',
+    onGuardar: async (v) => { await rrhh.agregarCargo(v.cargo, v.url); recargar(); notificar(`Cargo ${v.cargo.trim()} agregado.`); },
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card t={t}>
+        <div className="flex items-start gap-3">
+          <span className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: COLOR_RRHH + '1A', color: COLOR_RRHH }}><GraduationCap size={20} /></span>
+          <div>
+            <h2 className="text-base font-bold">Capacitaciones de ingreso y reinducción</h2>
+            <p className={`text-xs mt-1 max-w-3xl ${t.muted}`}>
+              Material para la inducción de quien ingresa a la organización y para la reinducción periódica del personal.
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <Card t={t} titulo="Funciones del cargo" icono={BriefcaseBusiness} color={COLOR_RRHH}
+        accion={!readOnly && <Boton pequeno icono={Plus} onClick={nuevoCargo}>Agregar cargo</Boton>}>
+        <p className={`text-2xs mb-4 ${t.muted}`}>Un documento por cargo. Súbelo en PDF a Drive, OneDrive o SharePoint y pega el enlace; al dar clic en “Ver” se abre en una pestaña nueva.</p>
+        {!cargos ? <div className={`py-10 text-center text-xs ${t.muted}`}>Cargando…</div> : (
+          <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            {cargos.map(x => (
+              <li key={x.id} className={`rounded-xl border p-4 flex flex-col ${t.border}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: COLOR_RRHH + '1A', color: COLOR_RRHH }}><BriefcaseBusiness size={18} /></span>
+                  {x.archivo ? <Pill color="#16A34A">Documento cargado</Pill> : <Pill color="#DC2626">Pendiente</Pill>}
+                </div>
+                <h3 className="mt-3 text-sm font-bold">{x.cargo}</h3>
+                <p className={`text-3xs mt-0.5 ${t.muted}`}>{x.archivo ? `Enlace · ${x.archivo.nombre} · ${fmtFecha(x.archivo.fechaCarga)}` : 'Sin documento de funciones'}</p>
+                <div className="mt-auto pt-4 flex flex-wrap items-center gap-1.5">
+                  {x.archivo && <Boton pequeno variante="fantasma" icono={ExternalLink} onClick={() => abrirEnlace(x.archivo.url)}>Ver</Boton>}
+                  {!readOnly && (
+                    <Boton pequeno variante={x.archivo ? 'fantasma' : 'secundario'} icono={x.archivo ? RefreshCw : Link2} onClick={() => editarDocumento(x)}>
+                      {x.archivo ? 'Cambiar URL' : 'Agregar URL'}
+                    </Boton>
+                  )}
+                  {!readOnly && (
+                    <button type="button" title={`Eliminar el cargo ${x.cargo}`} aria-label={`Eliminar el cargo ${x.cargo}`} onClick={() => setAEliminar(x)}
+                      className="ml-auto w-8 h-8 inline-flex items-center justify-center rounded-lg text-red-500 hover:bg-red-500/10 transition">
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      {formulario && <FormularioModal t={t} color={COLOR_RRHH} nota="Demostración: los cambios se conservan solo en esta sesión del navegador." {...formulario} onClose={() => setFormulario(null)} />}
+      {aEliminar && (
+        <Modal t={t} titulo="Eliminar cargo" subtitulo={aEliminar.cargo} onClose={() => setAEliminar(null)} pie={
+          <>
+            <Boton onClick={() => setAEliminar(null)} color="#64748B">Cancelar</Boton>
+            <Boton variante="primario" color="#DC2626" icono={Trash2}
+              onClick={async () => { await rrhh.eliminarCargo(aEliminar.id); notificar(`Cargo ${aEliminar.cargo} eliminado.`); setAEliminar(null); recargar(); }}>Eliminar</Boton>
+          </>
+        }>
+          <p className="text-sm">¿Eliminar el cargo <strong>{aEliminar.cargo}</strong> y su documento de funciones?</p>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
 /* MÓDULO                                                           */
 /* ---------------------------------------------------------------- */
 // `seccion` / `onSeccion` / `navegacion`: el menú lateral de la plataforma maneja la sección
@@ -391,6 +485,7 @@ export default function GestionHumana({ t, user, readOnly, empresaLabel, empresa
             <Colaboradores key={JSON.stringify(filtroInicial)} t={t} abrirExpediente={abrirExpediente} filtroInicial={filtroInicial}
               empresa={empresa} empresas={empresas} readOnly={readOnly} usuario={usuario} notificar={setAviso} />
           )}
+          {seccion === 'capacitaciones' && <CapacitacionesIngreso t={t} readOnly={readOnly} notificar={setAviso} />}
         </>
       )}
 

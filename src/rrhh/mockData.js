@@ -114,7 +114,7 @@ const ESPECIFICACION = [
   {
     id: 'col-003', nombres: 'Laura Valentina', apellidos: 'Martínez', genero: 'F', empresa: 'DIAGNOSTIK',
     tipoDocumento: 'CC', documento: '1.XXX.XXX.XXX', cargo: 'Analista de Calidad', area: 'Calidad',
-    contrato: 'Término fijo', estado: 'Activo', ingreso: '2023-09-04', nacimiento: '1996-02-27', estadoCivil: 'Soltera',
+    contrato: 'Término fijo', estado: 'Activo', ingreso: fechaRelativa(-435), nacimiento: '1996-02-27', estadoCivil: 'Soltera',
     ciudad: 'Medellín', perfil: 'Profesional en gestión de la calidad con enfoque en auditoría de procesos y mejora continua.',
     titulos: [
       { titulo: 'Administración de Empresas', institucion: 'Universidad de Medellín', nivel: 'Pregrado', anio: 2019, acta: '06/12/2019' },
@@ -420,7 +420,9 @@ function construirColecciones() {
 
     contratos.push({
       id: `${e.id}-contrato`, colaboradorId: e.id, tipo: e.contrato, tipoDescripcion: TIPO_CONTRATO_LARGO[e.contrato] || e.contrato,
-      fechaInicio: e.ingreso, fechaFin: e.contratoFinDias != null ? fechaRelativa(e.contratoFinDias) : null,
+      // Periodo de 3 meses con renovación automática: rrhhService calcula la terminación del
+      // periodo vigente a partir de la fecha de inicio (ver renovarContratos).
+      fechaInicio: e.ingreso, fechaFin: null,
       cargo: e.cargo, area: e.area, jornada: e.contrato === 'Aprendizaje' ? 'Medio tiempo' : 'Tiempo completo',
       // El documento firmado del contrato es el documento 'contrato' del expediente.
     });
@@ -429,7 +431,15 @@ function construirColecciones() {
     e.historial.forEach((h, i) => historial.push({ id: `${e.id}-his-${i}`, colaboradorId: e.id, ...h }));
   });
 
-  return { colaboradores, documentos, titulos, estudios, vacunas, contratos, experiencia, historial };
+  // Funciones del cargo (Capacitaciones de ingreso y reinducción): un documento por cargo.
+  const funcionesCargo = [
+    { id: 'cargo-director', cargo: 'Director', archivo: archivoSimulado('Funciones_Director.pdf', fechaRelativa(-200)) },
+    { id: 'cargo-coordinador', cargo: 'Coordinador', archivo: archivoSimulado('Funciones_Coordinador.pdf', fechaRelativa(-180)) },
+    { id: 'cargo-analista', cargo: 'Analista', archivo: archivoSimulado('Funciones_Analista.pdf', fechaRelativa(-150)) },
+    { id: 'cargo-auxiliar', cargo: 'Auxiliar', archivo: null },
+  ];
+
+  return { colaboradores, documentos, titulos, estudios, vacunas, contratos, experiencia, historial, funcionesCargo };
 }
 
 export const DATOS_DEMO = construirColecciones();

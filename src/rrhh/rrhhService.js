@@ -25,6 +25,7 @@ const store = structuredClone(DATOS_DEMO);
 
 const espera = (valor) => new Promise(resolve => setTimeout(() => resolve(valor), 120));
 const hoyISO = () => new Date().toISOString().slice(0, 10);
+const fmtCorta = (iso) => iso.split('-').reverse().join('/');
 let secuencia = 0;
 const nuevoId = (prefijo) => `${prefijo}-${Date.now().toString(36)}-${(secuencia++).toString(36)}`;
 
@@ -55,12 +56,33 @@ export function estadoVacuna(v) {
   return dias < 0 ? 'vencida' : 'pendiente';
 }
 
+// CONTRATOS: se renuevan automáticamente cada 3 meses. La alarma se enciende cuando falta
+// 1 mes y 1 día (o menos) para terminar el periodo vigente.
+export const MESES_RENOVACION_CONTRATO = 3;
+export function sumarMeses(fechaISO, meses) {
+  const [a, m, d] = fechaISO.split('-').map(Number);
+  const base = new Date(Date.UTC(a, m - 1 + meses, 1));
+  const ultimoDia = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)).getUTCDate();
+  base.setUTCDate(Math.min(d, ultimoDia));
+  return base.toISOString().slice(0, 10);
+}
+function restarDias(fechaISO, dias) {
+  const f = new Date(fechaISO + 'T00:00:00Z');
+  f.setUTCDate(f.getUTCDate() - dias);
+  return f.toISOString().slice(0, 10);
+}
+// Fecha desde la que suena la alarma: 1 mes y 1 día antes de terminar el periodo.
+export function fechaAlarmaContrato(fechaFin) {
+  return fechaFin ? restarDias(sumarMeses(fechaFin, -1), 1) : null;
+}
+
 export function estadoContrato(c) {
   const dias = diasHasta(c.fechaFin);
-  if (dias == null) return { clave: 'activo', dias: null };
-  if (dias < 0) return { clave: 'finalizado', dias };
-  if (dias <= DIAS_ALERTA_VENCIMIENTO) return { clave: 'por_vencer', dias };
-  return { clave: 'activo', dias };
+  if (dias == null) return { clave: 'activo', dias: null, alarma: null };
+  const alarma = fechaAlarmaContrato(c.fechaFin);
+  if (dias < 0) return { clave: 'finalizado', dias, alarma };
+  if (diasHasta(alarma) <= 0) return { clave: 'por_vencer', dias, alarma };
+  return { clave: 'activo', dias, alarma };
 }
 
 // Todos los documentos del expediente en una sola lista (documentos generales + títulos,
@@ -112,7 +134,7 @@ function calcularAlertas({ documentos, vacunas, contrato }) {
   if (contrato) {
     const ec = estadoContrato(contrato);
     if (ec.clave === 'finalizado') alertas.push({ nivel: 'rojo', texto: 'Contrato finalizado' });
-    else if (ec.clave === 'por_vencer') alertas.push({ nivel: 'amarillo', texto: `El contrato vence en ${ec.dias} días` });
+    else if (ec.clave === 'por_vencer') alertas.push({ nivel: 'amarillo', texto: `Alarma de contrato: el periodo termina el ${fmtCorta(contrato.fechaFin)} (en ${ec.dias} días); se renovará automáticamente por ${MESES_RENOVACION_CONTRATO} meses` });
     else alertas.push({ nivel: 'verde', texto: 'Contrato vigente' });
   }
   const orden = { rojo: 0, amarillo: 1, verde: 2 };
@@ -148,10 +170,12 @@ function colaboradoresDe(empresa) {
 }
 
 export async function listarColaboradores(empresa) {
+  renovarContratos();
   return espera(colaboradoresDe(empresa).map(resumenColaborador));
 }
 
 export async function obtenerExpediente(colaboradorId) {
+  renovarContratos();
   const colaborador = store.colaboradores.find(c => c.id === colaboradorId);
   if (!colaborador) return espera(null);
   const documentos = documentosUnificados(colaboradorId);
@@ -177,6 +201,7 @@ export async function obtenerExpediente(colaboradorId) {
 // Indicadores del tablero, calculados sobre los expedientes cargados (en producción: un
 // endpoint de agregados).
 export async function obtenerResumen(empresa) {
+  renovarContratos();
   const colaboradores = colaboradoresDe(empresa).map(resumenColaborador);
   const ids = new Set(colaboradores.map(c => c.id));
   const porArea = {};
@@ -189,6 +214,13 @@ export async function obtenerResumen(empresa) {
       vencimientos.push({ colaboradorId: c.id, colaborador: c.nombreCompleto, documento: d.nombre, estado: d.estado, fecha: d.fechaVencimiento, dias: diasHasta(d.fechaVencimiento) });
     }
   }));
+  // Contratos en alarma (falta 1 mes y 1 día o menos para terminar el periodo).
+  store.contratos.filter(k => ids.has(k.colaboradorId)).forEach(k => {
+    const ec = estadoContrato(k);
+    if (ec.clave !== 'por_vencer') return;
+    const c = colaboradores.find(x => x.id === k.colaboradorId);
+    vencimientos.push({ colaboradorId: k.colaboradorId, colaborador: c.nombreCompleto, documento: 'Contrato laboral (renovación automática)', estado: 'por_vencer', fecha: k.fechaFin, dias: ec.dias, esContrato: true });
+  });
   const promedio = colaboradores.length ? Math.round(colaboradores.reduce((s, c) => s + c.completitud.porcentaje, 0) / colaboradores.length) : 0;
   return espera({
     indicadores: {
@@ -252,8 +284,32 @@ function registrarArchivo(url) {
   return { nombre: nombreDesdeUrl(limpia), url: limpia, fechaCarga: hoyISO() };
 }
 
-function agregarHistorial(colaboradorId, titulo, detalle, tipo, usuario) {
-  store.historial.push({ id: nuevoId('his'), colaboradorId, fecha: hoyISO(), titulo, detalle: usuario ? `${detalle} Registrado por ${usuario}.` : detalle, tipo });
+function agregarHistorial(colaboradorId, titulo, detalle, tipo, usuario, fecha = hoyISO()) {
+  store.historial.push({ id: nuevoId('his'), colaboradorId, fecha, titulo, detalle: usuario ? `${detalle} Registrado por ${usuario}.` : detalle, tipo });
+}
+
+// Renovación automática: cada periodo dura 3 meses desde la fecha de inicio; al cumplirse,
+// el contrato se renueva solo por otros 3 meses y queda registrado en el historial. Se
+// ejecuta en cada consulta (en producción sería una tarea programada del servidor).
+function renovarContratos() {
+  const hoy = hoyISO();
+  store.contratos.forEach(k => {
+    if (!k.fechaInicio) return;
+    if (!k.fechaFin) k.fechaFin = sumarMeses(k.fechaInicio, MESES_RENOVACION_CONTRATO);
+    let renovadas = 0;
+    let ultima = null;
+    while (k.fechaFin <= hoy) {
+      ultima = k.fechaFin;
+      k.fechaFin = sumarMeses(k.fechaFin, MESES_RENOVACION_CONTRATO);
+      renovadas += 1;
+    }
+    if (renovadas) {
+      k.renovaciones = (k.renovaciones || 0) + renovadas;
+      agregarHistorial(k.colaboradorId, 'Renovación automática del contrato',
+        `Contrato renovado automáticamente por ${MESES_RENOVACION_CONTRATO} meses el ${fmtCorta(ultima)}; nueva terminación del periodo: ${fmtCorta(k.fechaFin)}.`,
+        'contrato', null, ultima);
+    }
+  });
 }
 
 // Carga o reemplaza el archivo de cualquier documento del expediente (ver `ref`).
@@ -314,9 +370,11 @@ export async function registrarVacuna(colaboradorId, { vacuna, dosis, fecha, lot
   return espera(true);
 }
 
-export async function actualizarContrato(colaboradorId, { tipo, fechaInicio, fechaFin, cargo, area, jornada, archivo }, usuario) {
+export async function actualizarContrato(colaboradorId, { tipo, fechaInicio, cargo, area, jornada, archivo }, usuario) {
   const k = store.contratos.find(x => x.colaboradorId === colaboradorId);
-  Object.assign(k, { tipo, fechaInicio, fechaFin: fechaFin || null, cargo, area, jornada });
+  // La terminación se recalcula: periodos de 3 meses desde la (nueva) fecha de inicio.
+  Object.assign(k, { tipo, tipoDescripcion: TIPO_CONTRATO_LARGO[tipo] || tipo, fechaInicio, fechaFin: null, cargo, area, jornada });
+  renovarContratos();
   const c = store.colaboradores.find(x => x.id === colaboradorId);
   Object.assign(c, { cargo, area });
   if (archivo) {
@@ -359,6 +417,26 @@ export async function eliminarColaborador(colaboradorId) {
   ['documentos', 'titulos', 'estudios', 'vacunas', 'contratos', 'experiencia', 'historial'].forEach(k => {
     store[k] = store[k].filter(x => x.colaboradorId !== colaboradorId);
   });
+  return espera(true);
+}
+
+/* ---------------------------------------------------------------- */
+/* FUNCIONES DEL CARGO (Capacitaciones de ingreso y reinducción)     */
+/* ---------------------------------------------------------------- */
+export async function listarFuncionesCargo() {
+  return espera(store.funcionesCargo.map(x => ({ ...x })));
+}
+export async function guardarDocumentoCargo(id, url) {
+  const x = store.funcionesCargo.find(f => f.id === id);
+  if (x) x.archivo = registrarArchivo(url);
+  return espera(true);
+}
+export async function agregarCargo(cargo, url) {
+  store.funcionesCargo.push({ id: nuevoId('cargo'), cargo: cargo.trim(), archivo: registrarArchivo(url) });
+  return espera(true);
+}
+export async function eliminarCargo(id) {
+  store.funcionesCargo = store.funcionesCargo.filter(f => f.id !== id);
   return espera(true);
 }
 
