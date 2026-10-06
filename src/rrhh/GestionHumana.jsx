@@ -298,8 +298,13 @@ function Colaboradores({ t, abrirExpediente, filtroInicial, empresa, empresas, r
 /* ---------------------------------------------------------------- */
 /* MÓDULO                                                           */
 /* ---------------------------------------------------------------- */
-export default function GestionHumana({ t, user, readOnly, empresaLabel, empresa = 'TODAS', empresas = [], onCambiarEmpresa }) {
-  const [seccion, setSeccion] = useState('inicio');
+// `seccion` / `onSeccion` / `navegacion`: el menú lateral de la plataforma maneja la sección
+// (Inicio, Colaboradores); cada clic en el menú incrementa `navegacion` y cierra el expediente
+// abierto. Sin esas props el módulo maneja su sección por sí solo.
+export default function GestionHumana({ t, user, readOnly, empresaLabel, empresa = 'TODAS', empresas = [], onCambiarEmpresa, seccion: seccionControlada, onSeccion, navegacion = 0 }) {
+  const [seccionLocal, setSeccionLocal] = useState('inicio');
+  const seccion = seccionControlada ?? seccionLocal;
+  const setSeccion = onSeccion ?? setSeccionLocal;
   const [filtroInicial, setFiltroInicial] = useState(null);
   const [colaboradorId, setColaboradorId] = useState(null);
   const [aviso, setAviso] = useState('');
@@ -308,6 +313,8 @@ export default function GestionHumana({ t, user, readOnly, empresaLabel, empresa
   // Al cambiar de empresa en el encabezado se cierra el expediente abierto (puede ser de otra empresa).
   const [empresaVista, setEmpresaVista] = useState(empresa);
   if (empresaVista !== empresa) { setEmpresaVista(empresa); setColaboradorId(null); }
+  const [navegacionVista, setNavegacionVista] = useState(navegacion);
+  if (navegacionVista !== navegacion) { setNavegacionVista(navegacion); setColaboradorId(null); setFiltroInicial(null); }
 
   const ir = (key, filtro = null) => { setSeccion(key); setFiltroInicial(filtro); setColaboradorId(null); };
   const abrirExpediente = (id) => { setColaboradorId(id); };

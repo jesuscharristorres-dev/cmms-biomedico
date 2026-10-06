@@ -4014,11 +4014,13 @@ function AmbientBackground({ theme, dark }) {
 /* NAVEGACIÓN LATERAL — compartida entre el sidebar de escritorio    */
 /* (columna fija) y el drawer móvil (superpuesto con backdrop)       */
 /* ---------------------------------------------------------------- */
-function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dark, setDark, onLogout, readOnly, onCloseMobile }) {
+// `itemsModulo`: cuando se está dentro de un módulo con menú propio (Gestión Humana), el panel
+// muestra solo las opciones de ese módulo en lugar del menú completo de la plataforma.
+function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dark, setDark, onLogout, readOnly, onCloseMobile, itemsModulo }) {
   const user = useContext(AuthUserContext);
   const isSuper = user?.role === 'SUPER_ADMIN';
   const permitidos = modulosPermitidos(user);
-  const items = MENU.filter(m => !(readOnly && m.guestHidden) && !(m.superOnly && !isSuper) && !(m.modulo && !permitidos.has(m.modulo)));
+  const items = itemsModulo || MENU.filter(m => !(readOnly && m.guestHidden) && !(m.superOnly && !isSuper) && !(m.modulo && !permitidos.has(m.modulo)));
   return (
     <>
       <div className="h-1" style={{ background: accentBg }} />
@@ -4039,7 +4041,7 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
       <div className="flex-1 py-3 overflow-y-auto">
         {items.map((m, i) => {
           const Icon = m.icon;
-          const active = menu === m.key;
+          const active = m.activo ?? menu === m.key;
           const header = m.group && m.group !== items[i - 1]?.group;
           return (
             <React.Fragment key={m.key}>
@@ -4097,6 +4099,8 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
   // Pantalla de entrada: el portal corporativo de la plataforma (antes el dashboard biomédico,
   // que sigue existiendo dentro del módulo Biomédica).
   const [menu, setMenu] = useState(menuInicial || 'inicio');
+  // Sección de Gestión Humana elegida desde el menú lateral (`n` cambia en cada clic).
+  const [rrhhNav, setRrhhNav] = useState({ seccion: 'inicio', n: 0 });
   // MULTIEMPRESA: el SUPER_ADMIN empieza en "Todas" y puede filtrar por cualquier empresa.
   // Un usuario de empresa queda fijo en SU empresa (la que asignó el servidor) y no puede
   // cambiarla — y aunque lo intentara desde DevTools, la API solo le devuelve sus datos.
@@ -4321,6 +4325,20 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
   const inicioPorDefecto = puedeAbrir('dashboard') ? 'dashboard'
     : (MODULOS.map(m => m.entrada).find(e => e && puedeAbrir(e)) || 'dashboard');
   const moduloDelMenu = (key) => moduloDeMenu(key) || menuDef(key)?.modulo || null;
+  // Menú lateral por módulo: dentro de Gestión Humana solo se muestran sus opciones.
+  const enRRHH = moduloDeMenu(menu) === 'rrhh' && permitidos.has('rrhh');
+  const itemsMenuModulo = enRRHH ? [
+    { key: 'rrhh:inicio', label: 'Inicio', icon: LayoutDashboard, group: 'Gestión Humana', activo: rrhhNav.seccion === 'inicio' },
+    { key: 'rrhh:colaboradores', label: 'Colaboradores', icon: Users, group: 'Gestión Humana', activo: rrhhNav.seccion === 'colaboradores' },
+  ] : null;
+  const navegarDesdeMenu = (key) => {
+    if (key.startsWith('rrhh:')) {
+      setMenu('modulo_rrhh');
+      setRrhhNav(v => ({ seccion: key.slice(5), n: v.n + 1 }));
+    } else {
+      setMenu(key);
+    }
+  };
   const irAlInicioDelModulo = () => {
     const destino = inicioDeModulo(moduloDelMenu(menu));
     setMenu(destino && puedeAbrir(destino) ? destino : inicioPorDefecto);
@@ -4714,7 +4732,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
       {/* SIDEBAR — escritorio: columna fija en el flujo normal, oculta en <lg */}
       <div className={`hidden lg:flex lg:w-56 lg:shrink-0 border-r flex-col ${t.panel} ${t.border}`}
         style={!dark ? { background: SIDEBAR_GRADIENT_LIGHT } : undefined}>
-        <SidebarNav menu={menu} onNavigate={setMenu} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
+        <SidebarNav menu={menu} onNavigate={navegarDesdeMenu} itemsModulo={itemsMenuModulo} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
           t={t} dark={dark} setDark={setDark} onLogout={onLogout} readOnly={readOnly} />
       </div>
 
@@ -4724,7 +4742,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
           transform: mobileNavOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 300ms cubic-bezier(0.23,1,0.32,1)',
           ...(!dark ? { background: SIDEBAR_GRADIENT_LIGHT } : {}),
         }}>
-        <SidebarNav menu={menu} onNavigate={(k) => { setMenu(k); setMobileNavOpen(false); }} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
+        <SidebarNav menu={menu} onNavigate={(k) => { navegarDesdeMenu(k); setMobileNavOpen(false); }} itemsModulo={itemsMenuModulo} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
           t={t} dark={dark} setDark={setDark} onLogout={onLogout} readOnly={readOnly} onCloseMobile={() => setMobileNavOpen(false)} />
       </div>
 
@@ -4762,7 +4780,8 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
           <React.Suspense fallback={<div className={`py-24 text-center text-sm ${t.muted}`}>Cargando Gestión Humana…</div>}>
             <GestionHumana t={t} user={user} readOnly={readOnly} empresaLabel={empresaLabel} empresa={activeCompany}
               empresas={COMPANIES.map(c => ({ key: c.key, nombre: c.nombre || c.key, color: c.color, gradient: c.gradient }))}
-              onCambiarEmpresa={isSuper ? changeCompany : undefined} />
+              onCambiarEmpresa={isSuper ? changeCompany : undefined}
+              seccion={rrhhNav.seccion} onSeccion={(k) => setRrhhNav(v => ({ ...v, seccion: k }))} navegacion={rrhhNav.n} />
           </React.Suspense>
         )}
         {moduloInfo && !(moduloInfo.key === 'rrhh' && permitidos.has('rrhh')) && (
