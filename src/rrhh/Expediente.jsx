@@ -46,7 +46,7 @@ function Dato({ t, label, valor, icono: Icono }) {
   );
 }
 
-export default function Expediente({ t, colaboradorId, readOnly, usuario, empresaLabel, onVolver, notificar }) {
+export default function Expediente({ t, colaboradorId, readOnly, usuario, empresaLabel, empresas = [], onVolver, notificar }) {
   const [exp, setExp] = useState(null);
   const [version, setVersion] = useState(0);
   const [pestana, setPestana] = useState('resumen');
@@ -237,7 +237,8 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
                 <Boton icono={Download} variante="primario" onClick={() => { descargarExpediente(exp, empresaLabel); notificar('Expediente descargado.'); }}>Descargar expediente</Boton>
               </div>
             </div>
-            <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
+              <Dato t={t} label="Empresa" valor={empresas.find(e => e.key === c.empresa)?.nombre || c.empresa} />
               <Dato t={t} label="Documento" valor={`${c.tipoDocumento} ${c.documento}`} />
               <Dato t={t} label="Cargo" valor={c.cargo} />
               <Dato t={t} label="Área" valor={c.area} />

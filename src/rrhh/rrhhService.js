@@ -14,7 +14,7 @@
 // Multiempresa: en la versión real cada consulta debe filtrarse por la empresa del usuario
 // en el servidor (igual que el resto de la plataforma, ver lib/tenancy.js).
 
-import { DATOS_DEMO } from './mockData';
+import { DATOS_DEMO, DOCUMENTOS_BASE, TIPO_CONTRATO_LARGO } from './mockData';
 
 export const ES_DEMO = true;
 
@@ -141,8 +141,14 @@ function resumenColaborador(c) {
 /* ---------------------------------------------------------------- */
 /* CONSULTAS (futuros GET)                                           */
 /* ---------------------------------------------------------------- */
-export async function listarColaboradores() {
-  return espera(store.colaboradores.map(resumenColaborador));
+// Multiempresa: `empresa` es la empresa activa de la plataforma (la del selector del
+// encabezado); 'TODAS' o vacío = todas. En la versión real lo decide el servidor.
+function colaboradoresDe(empresa) {
+  return !empresa || empresa === 'TODAS' ? store.colaboradores : store.colaboradores.filter(c => c.empresa === empresa);
+}
+
+export async function listarColaboradores(empresa) {
+  return espera(colaboradoresDe(empresa).map(resumenColaborador));
 }
 
 export async function obtenerExpediente(colaboradorId) {
@@ -170,8 +176,9 @@ export async function obtenerExpediente(colaboradorId) {
 
 // Indicadores del tablero, calculados sobre los expedientes cargados (en producción: un
 // endpoint de agregados).
-export async function obtenerResumen() {
-  const colaboradores = store.colaboradores.map(resumenColaborador);
+export async function obtenerResumen(empresa) {
+  const colaboradores = colaboradoresDe(empresa).map(resumenColaborador);
+  const ids = new Set(colaboradores.map(c => c.id));
   const porArea = {};
   colaboradores.forEach(c => { porArea[c.area] = (porArea[c.area] || 0) + 1; });
   const vencimientos = [];
@@ -188,7 +195,7 @@ export async function obtenerResumen() {
       colaboradoresActivos: colaboradores.filter(c => c.estado === 'Activo').length,
       documentosRegistrados: colaboradores.reduce((s, c) => s + c.documentosTotal, 0),
       documentosPorVencer,
-      contratosActivos: store.contratos.filter(k => estadoContrato(k).clave !== 'finalizado').length,
+      contratosActivos: store.contratos.filter(k => ids.has(k.colaboradorId) && estadoContrato(k).clave !== 'finalizado').length,
       documentacionPendiente: colaboradores.filter(c => c.documentacion === 'Con pendientes').length,
     },
     muestra: {
@@ -317,6 +324,41 @@ export async function actualizarContrato(colaboradorId, { tipo, fechaInicio, fec
     if (d) { d.archivo = registrarArchivo(archivo); d.fechaExpedicion = hoyISO(); }
   }
   agregarHistorial(colaboradorId, 'Actualización de contrato', `${tipo} — ${cargo}.`, 'contrato', usuario);
+  return espera(true);
+}
+
+// Alta de un colaborador: queda con su expediente vacío (los documentos requeridos como
+// pendientes) y su contrato, listo para ir agregando los enlaces de cada documento.
+export async function crearColaborador(datos, usuario) {
+  const id = nuevoId('col');
+  const nombres = datos.nombres.trim();
+  const apellidos = datos.apellidos.trim();
+  const cargo = datos.cargo.trim();
+  store.colaboradores.push({
+    id, nombres, apellidos, nombreCompleto: `${nombres} ${apellidos}`, genero: datos.genero === 'Femenino' ? 'F' : 'M',
+    tipoDocumento: datos.tipoDocumento, documento: datos.documento.trim(), cargo, area: datos.area, empresa: datos.empresa,
+    estado: 'Activo', fechaIngreso: datos.fechaIngreso, fechaNacimiento: datos.fechaNacimiento || null, estadoCivil: '',
+    ciudad: (datos.ciudad || '').trim(), telefono: (datos.telefono || '').trim(), correo: (datos.correo || '').trim(), direccion: '',
+    contactoEmergencia: { nombre: '', parentesco: '', telefono: '' }, perfil: '',
+  });
+  DOCUMENTOS_BASE.forEach(d => store.documentos.push({
+    id: `${id}-doc-${d.clave}`, colaboradorId: id, clave: d.clave, tipo: d.tipo, nombre: d.nombre, requerido: true,
+    fechaExpedicion: null, fechaVencimiento: null, archivo: null,
+  }));
+  store.contratos.push({
+    id: `${id}-contrato`, colaboradorId: id, tipo: datos.tipoContrato, tipoDescripcion: TIPO_CONTRATO_LARGO[datos.tipoContrato] || datos.tipoContrato,
+    fechaInicio: datos.fechaIngreso, fechaFin: null, cargo, area: datos.area, jornada: 'Tiempo completo',
+  });
+  agregarHistorial(id, 'Ingreso a la organización', `Vinculación como ${cargo}.`, 'ingreso', usuario);
+  return espera(id);
+}
+
+// Elimina al colaborador y todo su expediente (documentos, estudios, vacunas, contrato…).
+export async function eliminarColaborador(colaboradorId) {
+  store.colaboradores = store.colaboradores.filter(c => c.id !== colaboradorId);
+  ['documentos', 'titulos', 'estudios', 'vacunas', 'contratos', 'experiencia', 'historial'].forEach(k => {
+    store[k] = store[k].filter(x => x.colaboradorId !== colaboradorId);
+  });
   return espera(true);
 }
 

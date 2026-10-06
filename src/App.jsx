@@ -5004,7 +5004,9 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
         )}
         {moduloInfo?.key === 'rrhh' && permitidos.has('rrhh') && (
           <React.Suspense fallback={<div className={`py-24 text-center text-sm ${t.muted}`}>Cargando Gestión Humana…</div>}>
-            <GestionHumana t={t} user={user} readOnly={readOnly} empresaLabel={empresaLabel} />
+            <GestionHumana t={t} user={user} readOnly={readOnly} empresaLabel={empresaLabel} empresa={activeCompany}
+              empresas={COMPANIES.map(c => ({ key: c.key, nombre: c.nombre || c.key, color: c.color, gradient: c.gradient }))}
+              onCambiarEmpresa={isSuper ? changeCompany : undefined} />
           </React.Suspense>
         )}
         {moduloInfo && !(moduloInfo.key === 'rrhh' && permitidos.has('rrhh')) && (

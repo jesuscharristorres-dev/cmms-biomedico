@@ -32,7 +32,7 @@ export function fechaRelativa(dias) {
 
 
 // Documentos generales que se esperan en todo expediente.
-const DOCUMENTOS_BASE = [
+export const DOCUMENTOS_BASE = [
   { clave: 'cedula', tipo: 'Cédula', nombre: 'Cédula de ciudadanía', archivo: 'Cedula.pdf' },
   { clave: 'hv', tipo: 'Hoja de vida', nombre: 'Hoja de vida actualizada', archivo: 'Hoja_de_vida.pdf' },
   { clave: 'eps', tipo: 'Certificados', nombre: 'Certificado de afiliación a EPS', archivo: 'Afiliacion_EPS.pdf' },
@@ -61,7 +61,7 @@ const VACUNAS_BASE = [
 // con eso cada expediente tiene un nivel de completitud distinto (100 %, 92 %, 84 %, 72 %…).
 const ESPECIFICACION = [
   {
-    id: 'col-001', nombres: 'María Fernanda', apellidos: 'Gómez', genero: 'F',
+    id: 'col-001', nombres: 'María Fernanda', apellidos: 'Gómez', genero: 'F', empresa: 'MACROMED',
     tipoDocumento: 'CC', documento: '52.XXX.XXX', cargo: 'Coordinadora Administrativa', area: 'Administración',
     contrato: 'Indefinido', estado: 'Activo', ingreso: '2022-02-01', nacimiento: '1990-04-18', estadoCivil: 'Casada',
     ciudad: 'Bogotá', perfil: 'Profesional con experiencia en gestión administrativa y coordinación de procesos.',
@@ -88,7 +88,7 @@ const ESPECIFICACION = [
     ],
   },
   {
-    id: 'col-002', nombres: 'Carlos Andrés', apellidos: 'Rodríguez', genero: 'M',
+    id: 'col-002', nombres: 'Carlos Andrés', apellidos: 'Rodríguez', genero: 'M', empresa: 'NP MEDICAL',
     tipoDocumento: 'CC', documento: '79.XXX.XXX', cargo: 'Ingeniero Biomédico', area: 'Biomédica',
     contrato: 'Indefinido', estado: 'Activo', ingreso: '2020-06-16', nacimiento: '1987-11-02', estadoCivil: 'Soltero',
     ciudad: 'Bogotá', perfil: 'Ingeniero biomédico con experiencia en gestión de tecnología, mantenimiento y metrología de equipos médicos.',
@@ -112,7 +112,7 @@ const ESPECIFICACION = [
     ],
   },
   {
-    id: 'col-003', nombres: 'Laura Valentina', apellidos: 'Martínez', genero: 'F',
+    id: 'col-003', nombres: 'Laura Valentina', apellidos: 'Martínez', genero: 'F', empresa: 'DIAGNOSTIK',
     tipoDocumento: 'CC', documento: '1.XXX.XXX.XXX', cargo: 'Analista de Calidad', area: 'Calidad',
     contrato: 'Término fijo', estado: 'Activo', ingreso: '2023-09-04', nacimiento: '1996-02-27', estadoCivil: 'Soltera',
     ciudad: 'Medellín', perfil: 'Profesional en gestión de la calidad con enfoque en auditoría de procesos y mejora continua.',
@@ -330,7 +330,7 @@ const ESPECIFICACION = [
   },
 ];
 
-const TIPO_CONTRATO_LARGO = {
+export const TIPO_CONTRATO_LARGO = {
   Indefinido: 'Contrato a término indefinido',
   'Término fijo': 'Contrato a término fijo',
   'Obra o labor': 'Contrato por obra o labor',
@@ -367,7 +367,7 @@ function construirColecciones() {
     const usuarioCorreo = `${slug(e.nombres.split(' ')[0]).toLowerCase()}.${slug(e.apellidos.split(' ')[0]).toLowerCase()}`;
     colaboradores.push({
       id: e.id, nombres: e.nombres, apellidos: e.apellidos, nombreCompleto: `${e.nombres} ${e.apellidos}`, genero: e.genero,
-      tipoDocumento: e.tipoDocumento, documento: e.documento, cargo: e.cargo, area: e.area, estado: e.estado,
+      tipoDocumento: e.tipoDocumento, documento: e.documento, cargo: e.cargo, area: e.area, empresa: e.empresa, estado: e.estado,
       fechaIngreso: e.ingreso, fechaNacimiento: e.nacimiento, estadoCivil: e.estadoCivil, ciudad: e.ciudad,
       telefono: `300 000 00${n}`, correo: `${usuarioCorreo}@example.com`, direccion: `Calle ${100 + idx} # 00-${n} (dirección ficticia)`,
       contactoEmergencia: { nombre: `Contacto de emergencia ${n} (ficticio)`, parentesco: idx % 2 ? 'Hermano(a)' : 'Cónyuge', telefono: `310 000 00${n}` },

@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Users, FolderOpen, FileWarning, FileSignature, AlertCircle, LayoutDashboard,
-  Search, ChevronRight, Eye, Sparkles, ArrowRight, Filter,
+  Search, ChevronRight, Eye, Sparkles, ArrowRight, Filter, UserPlus, Trash2, Building2,
 } from 'lucide-react';
 import * as rrhh from './rrhhService';
 import Expediente from './Expediente';
@@ -18,7 +18,7 @@ import {
   COLOR_RRHH, ESTADO_COLABORADOR, ESTADO_DOCUMENTACION, ESTADO_DOCUMENTO,
   AREAS_RRHH, TIPOS_CONTRATO, fmtFecha,
 } from './formato';
-import { Aviso, Avatar, Boton, Card, EstadoPill, Pill, Progreso, Tabla } from './ui';
+import { Aviso, Avatar, Boton, Card, EstadoPill, FormularioModal, Modal, Pill, Progreso, Tabla } from './ui';
 
 // Solo Inicio y Colaboradores: desde cada colaborador se abre su expediente, que ya reúne
 // documentación, estudios, vacunación y contrato, así que no hacen falta vistas aparte.
@@ -77,15 +77,15 @@ function Buscador({ t, value, onChange, placeholder }) {
 /* ---------------------------------------------------------------- */
 /* INICIO — tablero de Gestión Humana                                */
 /* ---------------------------------------------------------------- */
-function InicioRRHH({ t, ir, abrirExpediente }) {
-  const resumen = useDatos(rrhh.obtenerResumen, []);
+function InicioRRHH({ t, ir, abrirExpediente, empresa }) {
+  const resumen = useDatos(() => rrhh.obtenerResumen(empresa), [empresa]);
   if (!resumen) return <div className={`py-20 text-center text-sm ${t.muted}`}>Cargando indicadores…</div>;
   const { indicadores: k, muestra } = resumen;
   const maxArea = Math.max(...muestra.porArea.map(([, n]) => n), 1);
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Kpi t={t} label="Colaboradores activos" valor={k.colaboradoresActivos} sub="En los expedientes de la demo" color={COLOR_RRHH} icono={Users} onClick={() => ir('colaboradores')} />
+        <Kpi t={t} label="Colaboradores activos" valor={k.colaboradoresActivos} sub="De la empresa seleccionada" color={COLOR_RRHH} icono={Users} onClick={() => ir('colaboradores')} />
         <Kpi t={t} label="Documentos registrados" valor={k.documentosRegistrados} sub="En expedientes digitales" color="#0D9488" icono={FolderOpen} onClick={() => ir('colaboradores')} />
         <Kpi t={t} label="Próximos a vencer" valor={k.documentosPorVencer} sub="En los próximos 60 días" color="#D97706" icono={FileWarning} onClick={() => ir('colaboradores', { documentacion: 'Por vencer' })} />
         <Kpi t={t} label="Contratos activos" valor={k.contratosActivos} sub="Vigentes a la fecha" color="#2563EB" icono={FileSignature} onClick={() => ir('colaboradores')} />
@@ -162,8 +162,31 @@ function InicioRRHH({ t, ir, abrirExpediente }) {
 /* ---------------------------------------------------------------- */
 /* COLABORADORES — listado con búsqueda y filtros                   */
 /* ---------------------------------------------------------------- */
-function Colaboradores({ t, abrirExpediente, filtroInicial }) {
-  const lista = useDatos(rrhh.listarColaboradores, []);
+function Colaboradores({ t, abrirExpediente, filtroInicial, empresa, empresas, readOnly, usuario, notificar }) {
+  const [version, setVersion] = useState(0);
+  const lista = useDatos(() => rrhh.listarColaboradores(empresa), [empresa, version]);
+  const [formAlta, setFormAlta] = useState(false);
+  const [aEliminar, setAEliminar] = useState(null);
+  const [eliminando, setEliminando] = useState(false);
+  const nombreEmpresa = (key) => empresas.find(e => e.key === key)?.nombre || key || '—';
+  const colorEmpresa = (key) => empresas.find(e => e.key === key)?.color || '#64748B';
+  const verTodas = !empresa || empresa === 'TODAS';
+
+  const crear = async (v) => {
+    const empresaKey = empresas.find(e => e.nombre === v.empresa)?.key || empresa;
+    await rrhh.crearColaborador({ ...v, empresa: empresaKey }, usuario);
+    setVersion(x => x + 1);
+    notificar(`${v.nombres.trim()} ${v.apellidos.trim()} fue agregado a ${nombreEmpresa(empresaKey)}.`);
+  };
+  const confirmarEliminar = async () => {
+    setEliminando(true);
+    try {
+      await rrhh.eliminarColaborador(aEliminar.id);
+      notificar(`${aEliminar.nombreCompleto} fue eliminado.`);
+      setAEliminar(null);
+      setVersion(x => x + 1);
+    } finally { setEliminando(false); }
+  };
   const [texto, setTexto] = useState('');
   const [filtros, setFiltros] = useState({ area: '', estado: '', contrato: '', documentacion: '', ...filtroInicial });
   const set = (k) => (v) => setFiltros(f => ({ ...f, [k]: v }));
@@ -185,9 +208,14 @@ function Colaboradores({ t, abrirExpediente, filtroInicial }) {
       <div className="flex flex-wrap items-end justify-between gap-2 mb-4">
         <div>
           <h2 className="text-base font-bold">Colaboradores</h2>
-          <p className={`text-2xs mt-0.5 ${t.muted}`}>{lista ? `Mostrando ${filtrados.length} de ${lista.length} expedientes (muestra de demostración)` : 'Cargando…'}</p>
+          <p className={`text-2xs mt-0.5 ${t.muted}`}>
+            {lista ? `${verTodas ? 'Todas las empresas' : nombreEmpresa(empresa)} · mostrando ${filtrados.length} de ${lista.length} colaborador${lista.length !== 1 ? 'es' : ''}` : 'Cargando…'}
+          </p>
         </div>
-        {hayFiltros && <Boton pequeno variante="fantasma" icono={Filter} onClick={() => { setTexto(''); setFiltros({ area: '', estado: '', contrato: '', documentacion: '' }); }}>Limpiar filtros</Boton>}
+        <div className="flex flex-wrap gap-2">
+          {hayFiltros && <Boton pequeno variante="fantasma" icono={Filter} onClick={() => { setTexto(''); setFiltros({ area: '', estado: '', contrato: '', documentacion: '' }); }}>Limpiar filtros</Boton>}
+          {!readOnly && <Boton variante="primario" color={COLOR_RRHH} icono={UserPlus} onClick={() => setFormAlta(true)}>Agregar colaborador</Boton>}
+        </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-2 mb-4">
         <Buscador t={t} value={texto} onChange={setTexto} placeholder="Buscar colaborador..." />
@@ -196,10 +224,12 @@ function Colaboradores({ t, abrirExpediente, filtroInicial }) {
         <Selector t={t} etiqueta="Contrato" value={filtros.contrato} onChange={set('contrato')} opciones={TIPOS_CONTRATO} />
         <Selector t={t} etiqueta="Documentación" value={filtros.documentacion} onChange={set('documentacion')} opciones={Object.keys(ESTADO_DOCUMENTACION)} />
       </div>
-      <Tabla t={t} filas={filtrados} onFila={c => abrirExpediente(c.id)} vacio="Ningún colaborador coincide con la búsqueda." columnas={[
+      <Tabla t={t} filas={filtrados} onFila={c => abrirExpediente(c.id)}
+        vacio={lista && lista.length === 0 ? 'Esta empresa todavía no tiene colaboradores registrados.' : 'Ningún colaborador coincide con la búsqueda.'} columnas={[
         { key: 'foto', label: 'Foto', render: c => <Avatar nombre={c.nombreCompleto} size={34} /> },
         { key: 'nombreCompleto', label: 'Nombre completo', render: c => <span className="font-semibold">{c.nombreCompleto}</span> },
         { key: 'documento', label: 'Documento', render: c => <span className="font-mono text-2xs whitespace-nowrap">{c.documento}</span> },
+        ...(verTodas ? [{ key: 'empresa', label: 'Empresa', render: c => <Pill color={colorEmpresa(c.empresa)}>{nombreEmpresa(c.empresa)}</Pill> }] : []),
         { key: 'cargo', label: 'Cargo' },
         { key: 'area', label: 'Área' },
         { key: 'tipoContrato', label: 'Tipo de contrato' },
@@ -211,9 +241,56 @@ function Colaboradores({ t, abrirExpediente, filtroInicial }) {
           </div>
         ) },
         { key: 'accion', label: 'Acción', render: c => (
-          <Boton pequeno icono={Eye} onClick={(e) => { e.stopPropagation(); abrirExpediente(c.id); }}>Ver expediente</Boton>
+          <div className="flex items-center gap-1.5">
+            <Boton pequeno icono={Eye} onClick={(e) => { e.stopPropagation(); abrirExpediente(c.id); }}>Ver expediente</Boton>
+            {!readOnly && (
+              <button type="button" title={`Eliminar a ${c.nombreCompleto}`} aria-label={`Eliminar a ${c.nombreCompleto}`}
+                onClick={(e) => { e.stopPropagation(); setAEliminar(c); }}
+                className="w-8 h-8 shrink-0 inline-flex items-center justify-center rounded-lg text-red-500 hover:bg-red-500/10 transition">
+                <Trash2 size={15} />
+              </button>
+            )}
+          </div>
         ) },
       ]} />
+
+      {formAlta && (
+        <FormularioModal t={t} color={COLOR_RRHH} titulo="Agregar colaborador"
+          subtitulo="Se crea su expediente con los documentos requeridos pendientes."
+          inicial={{ empresa: verTodas ? '' : nombreEmpresa(empresa), tipoDocumento: 'CC', fechaIngreso: new Date().toISOString().slice(0, 10) }}
+          campos={[
+            { name: 'nombres', label: 'Nombres', required: true },
+            { name: 'apellidos', label: 'Apellidos', required: true },
+            { name: 'tipoDocumento', label: 'Tipo de documento', type: 'select', options: ['CC', 'CE', 'PA', 'TI'], required: true },
+            { name: 'documento', label: 'Número de documento', required: true },
+            { name: 'empresa', label: 'Empresa', type: 'select', options: empresas.map(e => e.nombre), required: true, full: true },
+            { name: 'cargo', label: 'Cargo', required: true },
+            { name: 'area', label: 'Área', type: 'select', options: AREAS_RRHH, required: true },
+            { name: 'tipoContrato', label: 'Tipo de contrato', type: 'select', options: TIPOS_CONTRATO, required: true },
+            { name: 'fechaIngreso', label: 'Fecha de ingreso', type: 'date', required: true },
+            { name: 'genero', label: 'Género', type: 'select', options: ['Femenino', 'Masculino'] },
+            { name: 'correo', label: 'Correo electrónico', type: 'email' },
+            { name: 'telefono', label: 'Teléfono' },
+            { name: 'ciudad', label: 'Ciudad' },
+          ]}
+          nota="Demostración: el colaborador se conserva solo en esta sesión del navegador."
+          textoGuardar="Agregar colaborador" onGuardar={crear} onClose={() => setFormAlta(false)} />
+      )}
+
+      {aEliminar && (
+        <Modal t={t} titulo="Eliminar colaborador" subtitulo={aEliminar.nombreCompleto} onClose={() => !eliminando && setAEliminar(null)} pie={
+          <>
+            <Boton onClick={() => setAEliminar(null)} color="#64748B" disabled={eliminando}>Cancelar</Boton>
+            <Boton variante="primario" color="#DC2626" icono={Trash2} disabled={eliminando} onClick={confirmarEliminar}>
+              {eliminando ? 'Eliminando…' : 'Eliminar'}
+            </Boton>
+          </>
+        }>
+          <p className="text-sm">
+            ¿Eliminar a <strong>{aEliminar.nombreCompleto}</strong> ({nombreEmpresa(aEliminar.empresa)})? Se borrará su expediente completo: documentos, estudios, vacunación y contrato.
+          </p>
+        </Modal>
+      )}
     </Card>
   );
 }
@@ -221,12 +298,16 @@ function Colaboradores({ t, abrirExpediente, filtroInicial }) {
 /* ---------------------------------------------------------------- */
 /* MÓDULO                                                           */
 /* ---------------------------------------------------------------- */
-export default function GestionHumana({ t, user, readOnly, empresaLabel }) {
+export default function GestionHumana({ t, user, readOnly, empresaLabel, empresa = 'TODAS', empresas = [], onCambiarEmpresa }) {
   const [seccion, setSeccion] = useState('inicio');
   const [filtroInicial, setFiltroInicial] = useState(null);
   const [colaboradorId, setColaboradorId] = useState(null);
   const [aviso, setAviso] = useState('');
   const cerrarAviso = useCallback(() => setAviso(''), []);
+
+  // Al cambiar de empresa en el encabezado se cierra el expediente abierto (puede ser de otra empresa).
+  const [empresaVista, setEmpresaVista] = useState(empresa);
+  if (empresaVista !== empresa) { setEmpresaVista(empresa); setColaboradorId(null); }
 
   const ir = (key, filtro = null) => { setSeccion(key); setFiltroInicial(filtro); setColaboradorId(null); };
   const abrirExpediente = (id) => { setColaboradorId(id); };
@@ -252,6 +333,32 @@ export default function GestionHumana({ t, user, readOnly, empresaLabel }) {
         </div>
       </div>
 
+      {/* EMPRESAS — mismo selector que Biomédica: el SUPER_ADMIN filtra por empresa; un
+          usuario de empresa ve únicamente la suya. */}
+      <div className="flex gap-2 flex-wrap mb-4" role="group" aria-label="Empresa">
+        {onCambiarEmpresa ? (
+          <>
+            <button type="button" onClick={() => onCambiarEmpresa('TODAS')} aria-pressed={empresa === 'TODAS'}
+              className={`px-3 min-h-10 flex items-center rounded-full text-2xs font-mono border transition ${empresa === 'TODAS' ? 'font-semibold' : t.border}`}
+              style={empresa === 'TODAS' ? { background: COLOR_RRHH + '1A', borderColor: COLOR_RRHH, color: COLOR_RRHH } : {}}>
+              Todas las empresas
+            </button>
+            {empresas.map(e => (
+              <button type="button" key={e.key} onClick={() => onCambiarEmpresa(e.key)} aria-pressed={empresa === e.key}
+                className={`px-3 min-h-10 flex items-center rounded-full text-2xs font-mono border transition ${empresa === e.key ? 'text-white font-semibold' : t.border}`}
+                style={empresa === e.key ? { background: e.gradient || e.color, borderColor: e.color } : {}}>
+                {e.nombre}
+              </button>
+            ))}
+          </>
+        ) : (
+          <span className="px-3 min-h-10 flex items-center gap-1.5 rounded-full text-2xs font-mono border text-white font-semibold"
+            style={{ background: empresas.find(e => e.key === empresa)?.gradient || COLOR_RRHH }}>
+            <Building2 size={12} /> {empresaLabel}
+          </span>
+        )}
+      </div>
+
       {/* NAVEGACIÓN INTERNA */}
       <nav className={`flex gap-1 overflow-x-auto rounded-xl border p-1 mb-5 ${t.panel} ${t.border}`} aria-label="Secciones de Gestión Humana">
         {SECCIONES.map(s => {
@@ -269,11 +376,14 @@ export default function GestionHumana({ t, user, readOnly, empresaLabel }) {
 
       {colaboradorId ? (
         <Expediente key={colaboradorId} t={t} colaboradorId={colaboradorId} readOnly={readOnly} usuario={usuario}
-          empresaLabel={empresaLabel} onVolver={() => setColaboradorId(null)} notificar={setAviso} />
+          empresaLabel={empresaLabel} empresas={empresas} onVolver={() => setColaboradorId(null)} notificar={setAviso} />
       ) : (
         <>
-          {seccion === 'inicio' && <InicioRRHH t={t} ir={ir} abrirExpediente={abrirExpediente} />}
-          {seccion === 'colaboradores' && <Colaboradores key={JSON.stringify(filtroInicial)} t={t} abrirExpediente={abrirExpediente} filtroInicial={filtroInicial} />}
+          {seccion === 'inicio' && <InicioRRHH t={t} ir={ir} abrirExpediente={abrirExpediente} empresa={empresa} />}
+          {seccion === 'colaboradores' && (
+            <Colaboradores key={JSON.stringify(filtroInicial)} t={t} abrirExpediente={abrirExpediente} filtroInicial={filtroInicial}
+              empresa={empresa} empresas={empresas} readOnly={readOnly} usuario={usuario} notificar={setAviso} />
+          )}
         </>
       )}
 
