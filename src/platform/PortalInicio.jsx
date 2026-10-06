@@ -364,13 +364,14 @@ function LineaEvolucion({ t }) {
 /* ---------------------------------------------------------------- */
 /* PORTAL DE INICIO / CATÁLOGO DE MÓDULOS                            */
 /* ---------------------------------------------------------------- */
-export function PortalInicio({ vista = 'inicio', t, dark, user, empresaLabel, permitidos, canOpen, onNavigate, resumen, biomedicaStats }) {
-  const principales = MODULOS.filter(m => m.principal);
-  const secundarios = MODULOS.filter(m => !m.principal);
-  const nombre = user?.nombre || user?.email || '';
-  const hoy = new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-
-  const tarjetasModulos = (
+// Tarjetas de módulos (principales + "Más módulos"). Las comparten el portal interno (tras el
+// login) y la landing pública (antes del login), para que ambas muestren exactamente lo mismo.
+function TarjetasModulos({ t, permitidos, canOpen, onNavigate, biomedicaStats, publico = false }) {
+  // En la landing pública no se muestran los módulos exclusivos del SUPER_ADMIN (Administración).
+  const visibles = publico ? MODULOS.filter(m => !m.soloSuperAdmin) : MODULOS;
+  const principales = visibles.filter(m => m.principal);
+  const secundarios = visibles.filter(m => !m.principal);
+  return (
     <>
       <section className="mt-8">
         <SeccionTitulo t={t} titulo="Módulos de la organización"
@@ -393,6 +394,40 @@ export function PortalInicio({ vista = 'inicio', t, dark, user, empresaLabel, pe
         </div>
       </section>
     </>
+  );
+}
+
+// Versión PÚBLICA del portal para la landing (antes del login): la misma bienvenida y las
+// mismas tarjetas. Cualquier botón lleva a iniciar sesión y, al entrar, directo a ese módulo;
+// los permisos reales se aplican después del login, como siempre.
+const TODOS_LOS_MODULOS = new Set(MODULOS.filter(m => !m.soloSuperAdmin).map(m => m.key));
+export function PortalPublico({ t, onIngresar }) {
+  const hoy = new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return (
+    <div className="max-w-7xl mx-auto">
+      <section className="rounded-2xl p-6 sm:p-8 text-white relative overflow-hidden shadow-lg" style={{ background: HERO_BG }}>
+        <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full opacity-10" style={{ background: '#2DD4BF' }} aria-hidden="true" />
+        <div className="relative">
+          <div className="text-3xs uppercase tracking-[0.2em] font-semibold text-teal-300">{PLATAFORMA_NOMBRE}</div>
+          <h2 className="mt-2 text-xl sm:text-2xl font-bold leading-tight">Bienvenido a la {PLATAFORMA_NOMBRE}</h2>
+          <p className="mt-2 text-sm text-slate-300">Selecciona el área o módulo que deseas gestionar: inicias sesión y entras directo a él.</p>
+          <div className="mt-5 flex flex-wrap gap-2 text-2xs">
+            <span className="px-3 py-1.5 rounded-full bg-white/10 border border-white/15 capitalize">{hoy}</span>
+          </div>
+          <p className="mt-5 text-xs text-slate-400 max-w-2xl">{PLATAFORMA_DESCRIPCION}</p>
+        </div>
+      </section>
+      <TarjetasModulos t={t} permitidos={TODOS_LOS_MODULOS} canOpen={() => true} onNavigate={onIngresar} publico />
+    </div>
+  );
+}
+
+export function PortalInicio({ vista = 'inicio', t, dark, user, empresaLabel, permitidos, canOpen, onNavigate, resumen, biomedicaStats }) {
+  const nombre = user?.nombre || user?.email || '';
+  const hoy = new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  const tarjetasModulos = (
+    <TarjetasModulos t={t} permitidos={permitidos} canOpen={canOpen} onNavigate={onNavigate} biomedicaStats={biomedicaStats} />
   );
 
   if (vista === 'catalogo') {

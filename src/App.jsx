@@ -21,7 +21,7 @@ import writeXlsxFile from 'write-excel-file/browser';
 import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts, aplicaCalibracionEfectiva } from './services/alertLogic';
 import { preventivoDelMes } from './services/preventivoSchedule';
 import { MODULOS, ESTADOS_MODULO, moduloPorKey, moduloDeMenu, menuDeModulo, modulosPermitidos } from './platform/modulos';
-import { PlatformHeader, PortalInicio, ModuloInfoPage } from './platform/PortalInicio';
+import { PlatformHeader, PortalInicio, ModuloInfoPage, PortalPublico } from './platform/PortalInicio';
 import { LANDING_AREAS, LANDING_OTRAS_AREAS, LANDING_ECOSISTEMA } from './platform/landing';
 // Módulo Gestión Humana (demo): se carga solo cuando alguien entra al módulo.
 const GestionHumana = React.lazy(() => import('./rrhh/GestionHumana'));
@@ -3288,7 +3288,7 @@ function useLandingInView() {
   }, []);
 }
 
-function LandingPage({ onIniciarSesion, onReportarFalla }) {
+function LandingPage({ onIniciarSesion, onReportarFalla, onIngresarModulo }) {
   useLandingInView();
   const principales = LANDING_AREAS;
   return (
@@ -3378,7 +3378,7 @@ function LandingPage({ onIniciarSesion, onReportarFalla }) {
                   );
                 })}
               </div>
-              <a href="#mas-modulos" className="mt-4 flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-semibold text-white transition hover:bg-white/10" style={{ border: '1px dashed rgba(255,255,255,0.22)' }}>
+              <a href="#modulos" className="mt-4 flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-semibold text-white transition hover:bg-white/10" style={{ border: '1px dashed rgba(255,255,255,0.22)' }}>
                 <span className="inline-flex items-center gap-2"><Plus size={14} /> {LANDING_OTRAS_AREAS.length} áreas más en la hoja de ruta</span>
                 <ChevronRight size={15} />
               </a>
@@ -3387,89 +3387,12 @@ function LandingPage({ onIniciarSesion, onReportarFalla }) {
         </div>
       </section>
 
-      {/* 2. MÓDULOS DE LA ORGANIZACIÓN — sección principal: 4 áreas con su estado real. */}
-      <section id="modulos" className="landing-anchor relative overflow-hidden py-20" style={{ background: 'linear-gradient(160deg, #EAF4FB 0%, #DCEEFA 45%, #E3F0FA 100%)' }}>
-        <RedNeuronalFondo tema="claro" densidad="baja" />
-        <div className="absolute inset-0 landing-dotgrid-light opacity-50 pointer-events-none" aria-hidden="true" />
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
-          <LandingEncabezado etiqueta="Módulos de la organización" titulo="Una plataforma que puede crecer con tu organización"
-            texto="Comenzamos con la gestión biomédica y evolucionamos hacia una plataforma capaz de integrar diferentes áreas y procesos empresariales." />
-          <div className="landing-inview mt-6 flex flex-wrap justify-center gap-2">
-            {['ACTIVO', 'EN_DESARROLLO', 'PROXIMAMENTE'].map(e => <LandingEstado key={e} estado={e} />)}
-          </div>
-
-          <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-5">
-            {principales.map((a, i) => {
-              const Icon = a.icon;
-              const activo = a.estado === 'ACTIVO';
-              return (
-                <article key={a.key} className="landing-inview landing-glass-light rounded-2xl overflow-hidden flex flex-col" style={{ transitionDelay: `${i * 70}ms` }}>
-                  <div className="h-1.5" style={{ background: a.color }} />
-                  <div className="p-6 flex flex-col flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${a.color} 0%, ${a.color}CC 100%)`, boxShadow: `0 12px 24px -10px ${a.color}99` }}>
-                        <Icon size={26} className="text-white" />
-                      </div>
-                      <LandingEstado estado={a.estado} />
-                    </div>
-                    <h3 className="mt-5 text-xl font-bold tracking-tight" style={{ color: '#0F172A' }}>{a.titulo}</h3>
-                    <div className="text-3xs font-bold uppercase tracking-widest mt-1" style={{ color: a.color }}>{a.etiqueta}</div>
-                    <p className="mt-3 text-sm leading-relaxed" style={{ color: '#5B6B7C' }}>{a.descripcion}</p>
-                    <ul className="mt-5 flex flex-wrap gap-2">
-                      {a.caracteristicas.map(c => (
-                        <li key={c} className="inline-flex items-center gap-1.5 text-2xs font-medium px-2.5 py-1.5 rounded-lg"
-                          style={activo ? { background: a.color + '14', color: '#0F172A', border: `1px solid ${a.color}33` } : { background: '#F7FAFC', color: '#64748B', border: '1px dashed #CBD5E1' }}>
-                          {activo ? <CheckCircle2 size={12} style={{ color: a.color }} /> : <CalendarClock size={12} />} {c}
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-auto pt-6 flex flex-wrap gap-2">
-                      {activo ? (
-                        <>
-                          <a href="#biomedica" className="landing-btn rounded-lg px-5 py-2.5 text-xs font-semibold text-white inline-flex items-center gap-2" style={{ background: a.color, boxShadow: `0 12px 24px -12px ${a.color}` }}>
-                            Conocer módulo <ChevronRight size={14} />
-                          </a>
-                          <button type="button" onClick={onIniciarSesion} className="landing-btn rounded-lg px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-2 border" style={{ borderColor: a.color + '55', color: a.color, background: '#FFFFFF' }}>
-                            Ingresar
-                          </button>
-                        </>
-                      ) : (
-                        <span className="rounded-lg px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-2 border cursor-default select-none" aria-disabled="true"
-                          style={{ borderColor: '#CBD5E1', color: '#64748B', background: '#F8FAFC' }}>
-                          <CalendarClock size={14} /> Próximamente
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-
-          {/* 3. Y MUCHO MÁS… */}
-          <div id="mas-modulos" className="landing-anchor mt-16">
-            <div className="landing-inview text-center">
-              <h3 className="text-xl sm:text-2xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Y mucho más...</h3>
-              <p className="mt-2 text-sm" style={{ color: '#5B6B7C' }}>Áreas que pueden incorporarse sobre la misma plataforma.</p>
-            </div>
-            <div className="mt-8 grid grid-cols-1 min-[440px]:grid-cols-2 lg:grid-cols-4 gap-4">
-              {LANDING_OTRAS_AREAS.map((a, i) => {
-                const Icon = a.icon;
-                return (
-                  <div key={a.key} className="landing-inview landing-glass-light rounded-2xl p-5" style={{ transitionDelay: `${(i % 4) * 60}ms` }}>
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: a.color + '1A', color: a.color }}>
-                        <Icon size={19} />
-                      </span>
-                      <LandingEstado estado={a.estado} />
-                    </div>
-                    <h4 className="mt-4 text-sm font-bold" style={{ color: '#0F172A' }}>{a.titulo}</h4>
-                    <p className="mt-1.5 text-xs leading-relaxed" style={{ color: '#5B6B7C' }}>{a.descripcion}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+      {/* 2. MÓDULOS DE LA ORGANIZACIÓN — la MISMA interfaz del portal interno (bienvenida y
+          tarjetas de módulos), ahora antes del login: cada botón lleva a iniciar sesión y, al
+          entrar, directo a ese módulo (Biomédica, Gestión Humana…). */}
+      <section id="modulos" className="landing-anchor relative overflow-hidden py-16 sm:py-20" style={{ background: 'linear-gradient(160deg, #F8FAFC 0%, #EEF4F9 55%, #F8FAFC 100%)' }}>
+        <div className="relative px-4 sm:px-6">
+          <PortalPublico t={uiTheme(false)} onIngresar={onIngresarModulo} />
         </div>
       </section>
 
@@ -3741,7 +3664,15 @@ const LOGIN_SCREEN_STYLES = `
     .login-illus, .login-decor, .login-glow, .login-bg-blob, .login-card-wrap, .login-field-in { animation: none; }
   }
 `;
-function LoginScreen({ notice, onLogin, onReportarFalla, onBack }) {
+// Nombre del módulo al que lleva un menú ('dashboard' → Biomédica, 'modulo_rrhh' → Gestión
+// Humana…), para avisar en el login a dónde se entrará.
+function nombreModuloDeMenu(menu) {
+  if (!menu) return '';
+  const m = MODULOS.find(x => x.entrada === menu || `modulo_${x.key}` === menu || (x.funciones || []).some(f => f.menu === menu));
+  return m?.nombre || '';
+}
+
+function LoginScreen({ notice, onLogin, onReportarFalla, onBack, destinoLabel }) {
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -3838,6 +3769,11 @@ function LoginScreen({ notice, onLogin, onReportarFalla, onBack }) {
               <span className="font-bold" style={{ color: '#3CAA55' }}>de Gestión</span>
             </p>
             <p className="text-sm text-slate-500 mt-3 max-w-sm">Conecta, gestiona y controla los procesos de las diferentes áreas de tu organización en un solo lugar.</p>
+            {destinoLabel && (
+              <p className="mt-4 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: '#173B6C14', color: '#173B6C' }}>
+                <ArrowRight size={13} /> Al iniciar sesión entrarás a {destinoLabel}
+              </p>
+            )}
           </div>
 
           {/* LOGO — elemento principal de la pantalla, con halo y constelación decorativa.
@@ -4316,12 +4252,12 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
 /* APP PRINCIPAL                                                     */
 /* ---------------------------------------------------------------- */
 
-function MainApp({ user, entorno, onLogout, readOnly }) {
+function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
   const [equipos, setEquipos] = useState([]);
   const [dark, setDark] = useState(false);
   // Pantalla de entrada: el portal corporativo de la plataforma (antes el dashboard biomédico,
   // que sigue existiendo dentro del módulo Biomédica).
-  const [menu, setMenu] = useState('inicio');
+  const [menu, setMenu] = useState(menuInicial || 'inicio');
   // MULTIEMPRESA: el SUPER_ADMIN empieza en "Todas" y puede filtrar por cualquier empresa.
   // Un usuario de empresa queda fijo en SU empresa (la que asignó el servidor) y no puede
   // cambiarla — y aunque lo intentara desde DevTools, la API solo le devuelve sus datos.
@@ -4539,6 +4475,13 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
     return true;
   };
   const navegar = (key) => { if (puedeAbrir(key)) setMenu(key); };
+  // El módulo elegido en la landing solo se respeta si este usuario puede abrirlo; si no,
+  // se queda en el portal (una sola vez, al montar).
+  const [menuInicialRevisado, setMenuInicialRevisado] = useState(false);
+  if (!menuInicialRevisado) {
+    setMenuInicialRevisado(true);
+    if (menu !== 'inicio' && !puedeAbrir(menu)) setMenu('inicio');
+  }
 
   // Conteo de usuarios para el resumen corporativo: solo el SUPER_ADMIN puede listarlos (la
   // API responde 403 a cualquier otro rol), así que para el resto no se consulta.
@@ -8270,6 +8213,9 @@ function AppInner() {
   const [publicView, setPublicView] = useState(null); // null | 'reporte'
   // Puerta de entrada pública: se muestra la landing antes del formulario de login.
   const [showLogin, setShowLogin] = useState(false);
+  // Módulo elegido en la landing (p. ej. 'dashboard' = Biomédica, 'modulo_rrhh' = Gestión
+  // Humana): tras iniciar sesión se entra directo a él en vez de al portal.
+  const [destinoLogin, setDestinoLogin] = useState(null);
   // Aviso de cierre por inactividad y mensaje que se muestra luego en LoginScreen.
   const [sessionWarning, setSessionWarning] = useState(false);
   const [warningSegundos, setWarningSegundos] = useState(IDLE_WARNING_MS / 1000);
@@ -8344,14 +8290,18 @@ function AppInner() {
 
   if (!authed) {
     if (!showLogin && !sessionNotice) {
-      return <LandingPage onIniciarSesion={() => setShowLogin(true)} onReportarFalla={() => setPublicView('reporte')} />;
+      return (
+        <LandingPage onIniciarSesion={() => { setDestinoLogin(null); setShowLogin(true); }} onReportarFalla={() => setPublicView('reporte')}
+          onIngresarModulo={(menu) => { setDestinoLogin(menu); setShowLogin(true); }} />
+      );
     }
     return (
       <LoginScreen
         notice={sessionNotice}
         onLogin={() => { setSessionNotice(''); checkSession(); }}
         onReportarFalla={() => setPublicView('reporte')}
-        onBack={sessionNotice ? undefined : () => setShowLogin(false)}
+        onBack={sessionNotice ? undefined : () => { setShowLogin(false); setDestinoLogin(null); }}
+        destinoLabel={nombreModuloDeMenu(destinoLogin)}
       />
     );
   }
@@ -8361,7 +8311,7 @@ function AppInner() {
     <AuthUserContext.Provider value={user}>
       <ReadOnlyContext.Provider value={readOnly}>
         {/* key: si cambia el usuario, MainApp se monta de cero (sin estado de otra sesión). */}
-        <MainApp key={user.id} user={user} entorno={session.entorno} onLogout={() => cerrarSesion()} readOnly={readOnly} />
+        <MainApp key={user.id} user={user} entorno={session.entorno} onLogout={() => { setDestinoLogin(null); cerrarSesion(); }} readOnly={readOnly} menuInicial={destinoLogin} />
         {sessionWarning && (
           <SessionWarningModal segundos={warningSegundos} onContinuar={() => setSessionWarning(false)} onCerrarAhora={() => cerrarSesion()} />
         )}
