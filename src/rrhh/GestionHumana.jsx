@@ -9,26 +9,22 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Users, FolderOpen, FileWarning, FileSignature, AlertCircle, LayoutDashboard, GraduationCap, Syringe,
-  ClipboardList, ChartColumn, Search, ChevronRight, Eye, Sparkles, ArrowRight, Construction, Filter,
+  Users, FolderOpen, FileWarning, FileSignature, AlertCircle, LayoutDashboard,
+  Search, ChevronRight, Eye, Sparkles, ArrowRight, Filter,
 } from 'lucide-react';
 import * as rrhh from './rrhhService';
 import Expediente from './Expediente';
 import {
-  COLOR_RRHH, ESTADO_COLABORADOR, ESTADO_DOCUMENTACION, ESTADO_DOCUMENTO, ESTADO_VACUNA, ESTADO_CONTRATO,
+  COLOR_RRHH, ESTADO_COLABORADOR, ESTADO_DOCUMENTACION, ESTADO_DOCUMENTO,
   AREAS_RRHH, TIPOS_CONTRATO, fmtFecha,
 } from './formato';
 import { Aviso, Avatar, Boton, Card, EstadoPill, Pill, Progreso, Tabla } from './ui';
 
+// Solo Inicio y Colaboradores: desde cada colaborador se abre su expediente, que ya reúne
+// documentación, estudios, vacunación y contrato, así que no hacen falta vistas aparte.
 const SECCIONES = [
   { key: 'inicio', label: 'Inicio', icon: LayoutDashboard },
   { key: 'colaboradores', label: 'Colaboradores', icon: Users },
-  { key: 'documentacion', label: 'Documentación', icon: FolderOpen },
-  { key: 'estudios', label: 'Estudios', icon: GraduationCap },
-  { key: 'vacunacion', label: 'Vacunación', icon: Syringe },
-  { key: 'contratos', label: 'Contratos', icon: FileSignature },
-  { key: 'capacitaciones', label: 'Capacitaciones', icon: ClipboardList, proximamente: true },
-  { key: 'reportes', label: 'Reportes', icon: ChartColumn, proximamente: true },
 ];
 
 // Carga asíncrona simple con recarga manual (misma forma que tendrá con la API).
@@ -89,10 +85,10 @@ function InicioRRHH({ t, ir, abrirExpediente }) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Kpi t={t} label="Colaboradores activos" valor={k.colaboradoresActivos} sub="En toda la organización" color={COLOR_RRHH} icono={Users} onClick={() => ir('colaboradores')} />
-        <Kpi t={t} label="Documentos registrados" valor={k.documentosRegistrados} sub="En expedientes digitales" color="#0D9488" icono={FolderOpen} onClick={() => ir('documentacion')} />
-        <Kpi t={t} label="Próximos a vencer" valor={k.documentosPorVencer} sub="En los próximos 60 días" color="#D97706" icono={FileWarning} onClick={() => ir('documentacion', { estado: 'por_vencer' })} />
-        <Kpi t={t} label="Contratos activos" valor={k.contratosActivos} sub="Vigentes a la fecha" color="#2563EB" icono={FileSignature} onClick={() => ir('contratos')} />
+        <Kpi t={t} label="Colaboradores activos" valor={k.colaboradoresActivos} sub="En los expedientes de la demo" color={COLOR_RRHH} icono={Users} onClick={() => ir('colaboradores')} />
+        <Kpi t={t} label="Documentos registrados" valor={k.documentosRegistrados} sub="En expedientes digitales" color="#0D9488" icono={FolderOpen} onClick={() => ir('colaboradores')} />
+        <Kpi t={t} label="Próximos a vencer" valor={k.documentosPorVencer} sub="En los próximos 60 días" color="#D97706" icono={FileWarning} onClick={() => ir('colaboradores', { documentacion: 'Por vencer' })} />
+        <Kpi t={t} label="Contratos activos" valor={k.contratosActivos} sub="Vigentes a la fecha" color="#2563EB" icono={FileSignature} onClick={() => ir('colaboradores')} />
         <Kpi t={t} label="Documentación pendiente" valor={k.documentacionPendiente} sub="Colaboradores con pendientes" color="#DC2626" icono={AlertCircle} onClick={() => ir('colaboradores', { documentacion: 'Con pendientes' })} />
       </div>
 
@@ -223,74 +219,9 @@ function Colaboradores({ t, abrirExpediente, filtroInicial }) {
 }
 
 /* ---------------------------------------------------------------- */
-/* VISTAS CONSOLIDADAS (todas las filas de una colección)           */
-/* ---------------------------------------------------------------- */
-function VistaConsolidada({ t, titulo, descripcion, cargar, columnas, campoEstado, mapaEstado, abrirExpediente, filtroInicial, textoBusqueda }) {
-  const filas = useDatos(cargar, []);
-  const [texto, setTexto] = useState('');
-  const [estado, setEstado] = useState(filtroInicial?.estado || '');
-  const filtradas = useMemo(() => (filas || []).filter(f =>
-    (!texto.trim() || textoBusqueda(f).toLowerCase().includes(texto.trim().toLowerCase()))
-    && (!estado || campoEstado(f) === estado)), [filas, texto, estado, campoEstado, textoBusqueda]);
-  return (
-    <Card t={t}>
-      <h2 className="text-base font-bold">{titulo}</h2>
-      <p className={`text-2xs mt-0.5 mb-4 ${t.muted}`}>{descripcion} {filas ? `· ${filtradas.length} registro${filtradas.length !== 1 ? 's' : ''}` : ''}</p>
-      <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-2 mb-4">
-        <Buscador t={t} value={texto} onChange={setTexto} placeholder="Buscar por colaborador, área o nombre..." />
-        <label className="block">
-          <span className="sr-only">Estado</span>
-          <select value={estado} onChange={e => setEstado(e.target.value)} className={`w-full rounded-lg border px-3 min-h-10 text-xs ${t.input}`}>
-            <option value="">Estado: todos</option>
-            {Object.entries(mapaEstado).map(([k, e]) => <option key={k} value={k}>{e.label}</option>)}
-          </select>
-        </label>
-      </div>
-      <Tabla t={t} filas={filtradas} columnas={columnas} onFila={f => abrirExpediente(f.colaboradorId)} vacio={filas ? 'Sin registros para los filtros elegidos.' : 'Cargando…'} />
-    </Card>
-  );
-}
-
-const colColaborador = { key: 'colaborador', label: 'Colaborador', render: f => (
-  <span className="flex items-center gap-2 min-w-0"><Avatar nombre={f.colaborador} size={26} /><span className="font-semibold truncate">{f.colaborador}</span></span>
-) };
-
-function Proximamente({ t, seccion, onIrPlataforma }) {
-  const textos = {
-    capacitaciones: {
-      titulo: 'Capacitaciones',
-      texto: 'Plan de formación de la organización, asistencia, evaluación y competencias por cargo, relacionado con el expediente de cada colaborador.',
-      puntos: ['Plan anual de capacitación', 'Registro de asistencia', 'Evaluación de eficacia', 'Competencias por cargo'],
-    },
-    reportes: {
-      titulo: 'Reportes',
-      texto: 'Reportes de planta de personal, documentación pendiente, vencimientos, vacunación y contratos, exportables para gerencia.',
-      puntos: ['Planta de personal por área', 'Documentación pendiente', 'Vencimientos por período', 'Contratos por vencer'],
-    },
-  }[seccion];
-  return (
-    <Card t={t}>
-      <div className="flex items-start gap-4">
-        <span className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: COLOR_RRHH + '1A', color: COLOR_RRHH }}><Construction size={22} /></span>
-        <div>
-          <div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-bold">{textos.titulo}</h2><Pill color="#64748B">Próximamente</Pill></div>
-          <p className={`text-xs mt-1 max-w-2xl ${t.muted}`}>{textos.texto}</p>
-          <ul className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {textos.puntos.map(p => <li key={p} className={`text-xs rounded-lg border border-dashed px-3 py-2 ${t.border} ${t.muted}`}>{p}</li>)}
-          </ul>
-          {seccion === 'capacitaciones' && onIrPlataforma && (
-            <div className="mt-4"><Boton icono={ArrowRight} onClick={onIrPlataforma}>Ver las capacitaciones que ya existen (Biomédica)</Boton></div>
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-/* ---------------------------------------------------------------- */
 /* MÓDULO                                                           */
 /* ---------------------------------------------------------------- */
-export default function GestionHumana({ t, user, readOnly, empresaLabel, onIrCapacitaciones }) {
+export default function GestionHumana({ t, user, readOnly, empresaLabel }) {
   const [seccion, setSeccion] = useState('inicio');
   const [filtroInicial, setFiltroInicial] = useState(null);
   const [colaboradorId, setColaboradorId] = useState(null);
@@ -331,7 +262,6 @@ export default function GestionHumana({ t, user, readOnly, empresaLabel, onIrCap
               className={`shrink-0 inline-flex items-center gap-1.5 px-3 min-h-9 rounded-lg text-xs font-semibold transition ${activa ? 'text-white shadow-sm' : `${t.muted} hover:bg-slate-500/10`}`}
               style={activa ? { background: COLOR_RRHH } : {}}>
               <Icon size={14} /> {s.label}
-              {s.proximamente && <span className={`text-3xs font-bold uppercase px-1.5 rounded ${activa ? 'bg-white/20' : 'bg-slate-500/15'}`}>Pronto</span>}
             </button>
           );
         })}
@@ -344,60 +274,6 @@ export default function GestionHumana({ t, user, readOnly, empresaLabel, onIrCap
         <>
           {seccion === 'inicio' && <InicioRRHH t={t} ir={ir} abrirExpediente={abrirExpediente} />}
           {seccion === 'colaboradores' && <Colaboradores key={JSON.stringify(filtroInicial)} t={t} abrirExpediente={abrirExpediente} filtroInicial={filtroInicial} />}
-          {seccion === 'documentacion' && (
-            <VistaConsolidada key={JSON.stringify(filtroInicial)} t={t} titulo="Documentación" descripcion="Todos los documentos de los expedientes." cargar={rrhh.listarDocumentos}
-              filtroInicial={filtroInicial} abrirExpediente={abrirExpediente} mapaEstado={ESTADO_DOCUMENTO} campoEstado={f => f.estado}
-              textoBusqueda={f => `${f.colaborador} ${f.area} ${f.nombre} ${f.tipo}`}
-              columnas={[
-                colColaborador,
-                { key: 'tipo', label: 'Tipo' },
-                { key: 'nombre', label: 'Documento', render: f => <span className="font-semibold">{f.nombre}</span> },
-                { key: 'fechaCarga', label: 'Cargado', render: f => fmtFecha(f.fechaCarga), className: 'whitespace-nowrap' },
-                { key: 'fechaVencimiento', label: 'Vence', render: f => fmtFecha(f.fechaVencimiento), className: 'whitespace-nowrap' },
-                { key: 'estado', label: 'Estado', render: f => <EstadoPill mapa={ESTADO_DOCUMENTO} valor={f.estado} /> },
-              ]} />
-          )}
-          {seccion === 'estudios' && (
-            <VistaConsolidada t={t} titulo="Estudios" descripcion="Títulos académicos y estudios complementarios." cargar={rrhh.listarEstudios}
-              abrirExpediente={abrirExpediente} mapaEstado={ESTADO_DOCUMENTO} campoEstado={f => f.estado}
-              textoBusqueda={f => `${f.colaborador} ${f.area} ${f.nombre} ${f.institucion}`}
-              columnas={[
-                colColaborador,
-                { key: 'nombre', label: 'Estudio', render: f => <span className="font-semibold">{f.nombre}</span> },
-                { key: 'categoria', label: 'Nivel / tipo' },
-                { key: 'institucion', label: 'Institución' },
-                { key: 'anio', label: 'Año' },
-                { key: 'estado', label: 'Soporte', render: f => <EstadoPill mapa={ESTADO_DOCUMENTO} valor={f.estado} /> },
-              ]} />
-          )}
-          {seccion === 'vacunacion' && (
-            <VistaConsolidada t={t} titulo="Vacunación" descripcion="Registro de vacunación de los colaboradores." cargar={rrhh.listarVacunas}
-              abrirExpediente={abrirExpediente} mapaEstado={ESTADO_VACUNA} campoEstado={f => f.estado}
-              textoBusqueda={f => `${f.colaborador} ${f.area} ${f.vacuna}`}
-              columnas={[
-                colColaborador,
-                { key: 'vacuna', label: 'Vacuna', render: f => <span className="font-semibold">{f.vacuna}</span> },
-                { key: 'dosis', label: 'Dosis' },
-                { key: 'fecha', label: 'Fecha', render: f => fmtFecha(f.fecha) },
-                { key: 'proximaDosis', label: 'Próxima dosis', render: f => fmtFecha(f.proximaDosis) },
-                { key: 'estado', label: 'Estado', render: f => <EstadoPill mapa={ESTADO_VACUNA} valor={f.estado} /> },
-              ]} />
-          )}
-          {seccion === 'contratos' && (
-            <VistaConsolidada t={t} titulo="Contratos" descripcion="Contratos laborales de los colaboradores." cargar={rrhh.listarContratos}
-              abrirExpediente={abrirExpediente} mapaEstado={ESTADO_CONTRATO} campoEstado={f => f.estado.clave}
-              textoBusqueda={f => `${f.colaborador} ${f.area} ${f.tipo} ${f.cargo}`}
-              columnas={[
-                colColaborador,
-                { key: 'tipo', label: 'Tipo', render: f => <span className="font-semibold">{f.tipo}</span> },
-                { key: 'cargo', label: 'Cargo' },
-                { key: 'area', label: 'Área' },
-                { key: 'fechaInicio', label: 'Inicio', render: f => fmtFecha(f.fechaInicio), className: 'whitespace-nowrap' },
-                { key: 'fechaFin', label: 'Terminación', render: f => (f.fechaFin ? fmtFecha(f.fechaFin) : 'No aplica'), className: 'whitespace-nowrap' },
-                { key: 'estado', label: 'Estado', render: f => <EstadoPill mapa={ESTADO_CONTRATO} valor={f.estado.clave} /> },
-              ]} />
-          )}
-          {(seccion === 'capacitaciones' || seccion === 'reportes') && <Proximamente t={t} seccion={seccion} onIrPlataforma={onIrCapacitaciones} />}
         </>
       )}
 

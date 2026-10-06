@@ -5004,8 +5004,7 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
         )}
         {moduloInfo?.key === 'rrhh' && permitidos.has('rrhh') && (
           <React.Suspense fallback={<div className={`py-24 text-center text-sm ${t.muted}`}>Cargando Gestión Humana…</div>}>
-            <GestionHumana t={t} user={user} readOnly={readOnly} empresaLabel={empresaLabel}
-              onIrCapacitaciones={puedeAbrir('capacitaciones') ? () => setMenu('capacitaciones') : undefined} />
+            <GestionHumana t={t} user={user} readOnly={readOnly} empresaLabel={empresaLabel} />
           </React.Suspense>
         )}
         {moduloInfo && !(moduloInfo.key === 'rrhh' && permitidos.has('rrhh')) && (

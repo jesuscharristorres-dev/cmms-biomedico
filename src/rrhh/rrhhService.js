@@ -14,7 +14,7 @@
 // Multiempresa: en la versión real cada consulta debe filtrarse por la empresa del usuario
 // en el servidor (igual que el resto de la plataforma, ver lib/tenancy.js).
 
-import { DATOS_DEMO, DEMO_INDICADORES } from './mockData';
+import { DATOS_DEMO } from './mockData';
 
 export const ES_DEMO = true;
 
@@ -168,22 +168,29 @@ export async function obtenerExpediente(colaboradorId) {
   });
 }
 
-// Indicadores del tablero. `indicadores` son cifras de demostración de TODA la
-// organización (en producción: un endpoint de agregados); `muestra` se calcula sobre los
-// expedientes cargados.
+// Indicadores del tablero, calculados sobre los expedientes cargados (en producción: un
+// endpoint de agregados).
 export async function obtenerResumen() {
   const colaboradores = store.colaboradores.map(resumenColaborador);
   const porArea = {};
   colaboradores.forEach(c => { porArea[c.area] = (porArea[c.area] || 0) + 1; });
   const vencimientos = [];
+  let documentosPorVencer = 0;
   colaboradores.forEach(c => documentosUnificados(c.id).forEach(d => {
+    if (d.estado === 'por_vencer') documentosPorVencer += 1;
     if (d.estado === 'por_vencer' || d.estado === 'vencido') {
       vencimientos.push({ colaboradorId: c.id, colaborador: c.nombreCompleto, documento: d.nombre, estado: d.estado, fecha: d.fechaVencimiento, dias: diasHasta(d.fechaVencimiento) });
     }
   }));
   const promedio = colaboradores.length ? Math.round(colaboradores.reduce((s, c) => s + c.completitud.porcentaje, 0) / colaboradores.length) : 0;
   return espera({
-    indicadores: { ...DEMO_INDICADORES },
+    indicadores: {
+      colaboradoresActivos: colaboradores.filter(c => c.estado === 'Activo').length,
+      documentosRegistrados: colaboradores.reduce((s, c) => s + c.documentosTotal, 0),
+      documentosPorVencer,
+      contratosActivos: store.contratos.filter(k => estadoContrato(k).clave !== 'finalizado').length,
+      documentacionPendiente: colaboradores.filter(c => c.documentacion === 'Con pendientes').length,
+    },
     muestra: {
       total: colaboradores.length,
       completitudPromedio: promedio,

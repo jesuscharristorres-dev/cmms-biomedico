@@ -30,15 +30,6 @@ export function fechaRelativa(dias) {
   return d.toISOString().slice(0, 10);
 }
 
-// Indicadores organizacionales de la DEMO (toda la organización, no solo la muestra de
-// expedientes). Cuando exista backend se reemplazan por un endpoint de agregados.
-export const DEMO_INDICADORES = {
-  colaboradoresActivos: 128,
-  documentosRegistrados: 846,
-  documentosPorVencer: 17,
-  contratosActivos: 121,
-  documentacionPendiente: 9,
-};
 
 // Documentos generales que se esperan en todo expediente.
 const DOCUMENTOS_BASE = [
@@ -366,7 +357,8 @@ function construirColecciones() {
   const experiencia = [];
   const historial = [];
 
-  ESPECIFICACION.forEach((e, idx) => {
+  // La demo muestra solo 3 personas de ejemplo.
+  ESPECIFICACION.slice(0, 3).forEach((e, idx) => {
     const n = String(idx + 1).padStart(2, '0');
     const inicial = `${e.nombres[0]}${e.apellidos[0]}`;
     const usuarioCorreo = `${slug(e.nombres.split(' ')[0]).toLowerCase()}.${slug(e.apellidos.split(' ')[0]).toLowerCase()}`;
