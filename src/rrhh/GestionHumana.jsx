@@ -27,6 +27,7 @@ const SECCIONES = [
   { key: 'inicio', label: 'Inicio', icon: LayoutDashboard },
   { key: 'colaboradores', label: 'Colaboradores', icon: Users },
   { key: 'capacitaciones', label: 'Capacitaciones de ingreso y reinducción', icon: GraduationCap },
+  { key: 'funciones', label: 'Funciones del cargo', icon: BriefcaseBusiness },
 ];
 
 // Carga asíncrona simple con recarga manual (misma forma que tendrá con la API).
@@ -298,11 +299,33 @@ function Colaboradores({ t, abrirExpediente, filtroInicial, empresa, empresas, r
 }
 
 /* ---------------------------------------------------------------- */
-/* CAPACITACIONES DE INGRESO Y REINDUCCIÓN — funciones del cargo     */
+/* CAPACITACIONES DE INGRESO Y REINDUCCIÓN                           */
+/* ---------------------------------------------------------------- */
+function CapacitacionesIngreso({ t }) {
+  return (
+    <Card t={t}>
+      <div className="flex items-start gap-3">
+        <span className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: COLOR_RRHH + '1A', color: COLOR_RRHH }}><GraduationCap size={20} /></span>
+        <div>
+          <h2 className="text-base font-bold">Capacitaciones de ingreso y reinducción</h2>
+          <p className={`text-xs mt-1 max-w-3xl ${t.muted}`}>
+            Material para la inducción de quien ingresa a la organización y para la reinducción periódica del personal.
+          </p>
+        </div>
+      </div>
+      <div className={`mt-5 rounded-xl border border-dashed px-4 py-8 text-center text-xs ${t.border} ${t.muted}`}>
+        Todavía no hay capacitaciones registradas en esta sección.
+      </div>
+    </Card>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* FUNCIONES DEL CARGO                                               */
 /* ---------------------------------------------------------------- */
 // Un documento (enlace al PDF, igual que en el expediente) por cargo: Director, Coordinador,
-// Analista, Auxiliar… Se usa en la inducción de quien ingresa y en la reinducción periódica.
-function CapacitacionesIngreso({ t, readOnly, notificar }) {
+// Analista, Auxiliar…
+function FuncionesCargo({ t, readOnly, notificar }) {
   const [version, setVersion] = useState(0);
   const cargos = useDatos(rrhh.listarFuncionesCargo, [version]);
   const [formulario, setFormulario] = useState(null);
@@ -328,18 +351,6 @@ function CapacitacionesIngreso({ t, readOnly, notificar }) {
 
   return (
     <div className="space-y-4">
-      <Card t={t}>
-        <div className="flex items-start gap-3">
-          <span className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: COLOR_RRHH + '1A', color: COLOR_RRHH }}><GraduationCap size={20} /></span>
-          <div>
-            <h2 className="text-base font-bold">Capacitaciones de ingreso y reinducción</h2>
-            <p className={`text-xs mt-1 max-w-3xl ${t.muted}`}>
-              Material para la inducción de quien ingresa a la organización y para la reinducción periódica del personal.
-            </p>
-          </div>
-        </div>
-      </Card>
-
       <Card t={t} titulo="Funciones del cargo" icono={BriefcaseBusiness} color={COLOR_RRHH}
         accion={!readOnly && <Boton pequeno icono={Plus} onClick={nuevoCargo}>Agregar cargo</Boton>}>
         <p className={`text-2xs mb-4 ${t.muted}`}>Un documento por cargo. Súbelo en PDF a Drive, OneDrive o SharePoint y pega el enlace; al dar clic en “Ver” se abre en una pestaña nueva.</p>
@@ -485,7 +496,8 @@ export default function GestionHumana({ t, user, readOnly, empresaLabel, empresa
             <Colaboradores key={JSON.stringify(filtroInicial)} t={t} abrirExpediente={abrirExpediente} filtroInicial={filtroInicial}
               empresa={empresa} empresas={empresas} readOnly={readOnly} usuario={usuario} notificar={setAviso} />
           )}
-          {seccion === 'capacitaciones' && <CapacitacionesIngreso t={t} readOnly={readOnly} notificar={setAviso} />}
+          {seccion === 'capacitaciones' && <CapacitacionesIngreso t={t} />}
+          {seccion === 'funciones' && <FuncionesCargo t={t} readOnly={readOnly} notificar={setAviso} />}
         </>
       )}
 

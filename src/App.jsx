@@ -6,7 +6,7 @@ import {
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
   IdCard, Save, SprayCan, ClipboardList, Paperclip, MoreVertical, Pencil, Filter, Zap, ExternalLink,
-  GraduationCap, RefreshCw, Users, UserPlus, Power, UserCog, Link2, LayoutGrid, Layers
+  GraduationCap, RefreshCw, Users, UserPlus, Power, UserCog, Link2, LayoutGrid, Layers, BriefcaseBusiness
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -4331,6 +4331,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
     { key: 'rrhh:inicio', label: 'Inicio', icon: LayoutDashboard, group: 'Gestión Humana', activo: rrhhNav.seccion === 'inicio' },
     { key: 'rrhh:colaboradores', label: 'Colaboradores', icon: Users, group: 'Gestión Humana', activo: rrhhNav.seccion === 'colaboradores' },
     { key: 'rrhh:capacitaciones', label: 'Capacitaciones de ingreso y reinducción', icon: GraduationCap, group: 'Gestión Humana', activo: rrhhNav.seccion === 'capacitaciones' },
+    { key: 'rrhh:funciones', label: 'Funciones del cargo', icon: BriefcaseBusiness, group: 'Gestión Humana', activo: rrhhNav.seccion === 'funciones' },
   ] : null;
   const navegarDesdeMenu = (key) => {
     if (key.startsWith('rrhh:')) {
