@@ -6,7 +6,7 @@ import {
   User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
   IdCard, Save, SprayCan, ClipboardList, Paperclip, MoreVertical, Pencil, Filter, Zap, ExternalLink,
-  GraduationCap, RefreshCw, Users, UserPlus, Power, UserCog, Link2, House, LayoutGrid, Layers
+  GraduationCap, RefreshCw, Users, UserPlus, Power, UserCog, Link2, LayoutGrid, Layers
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -21,7 +21,7 @@ import writeXlsxFile from 'write-excel-file/browser';
 import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts, aplicaCalibracionEfectiva } from './services/alertLogic';
 import { preventivoDelMes } from './services/preventivoSchedule';
 import { MODULOS, ESTADOS_MODULO, moduloPorKey, moduloDeMenu, menuDeModulo, modulosPermitidos } from './platform/modulos';
-import { PlatformHeader, PortalInicio, ModuloInfoPage, PortalPublico } from './platform/PortalInicio';
+import { PlatformHeader, ModuloInfoPage, PortalPublico } from './platform/PortalInicio';
 import { LANDING_AREAS, LANDING_OTRAS_AREAS, LANDING_ECOSISTEMA } from './platform/landing';
 // Módulo Gestión Humana (demo): se carga solo cuando alguien entra al módulo.
 const GestionHumana = React.lazy(() => import('./rrhh/GestionHumana'));
@@ -395,13 +395,12 @@ const PERIODICIDADES = ['Mensual', 'Bimestral', 'Trimestral', 'Cuatrimestral', '
 // `group`: encabezado de sección en el sidebar.
 const BIOMEDICA_MENU_KEYS = new Set(['dashboard', 'alertas', 'fallas', 'planes', 'capacitaciones', 'tecnovigilancia', 'personal', 'limpieza', 'empresas', 'inventario', 'configuracion']);
 // PLATAFORMA: el menú se organiza por módulo (`modulo` = clave en src/platform/modulos.js).
-// 'inicio' es el portal corporativo (pantalla de entrada tras el login) y 'modulos' el
-// catálogo completo. Las entradas del grupo Biomédica son exactamente las pantallas que ya
+// El portal de módulos vive en la landing pública (antes del login), así que dentro de la
+// app no hay entradas 'inicio' ni 'modulos': el inicio es la pantalla de entrada del módulo
+// en el que se está (Dashboard en Biomédica, tablero en Gestión Humana…). Las entradas del grupo Biomédica son exactamente las pantallas que ya
 // existían (mismas claves), solo agrupadas; las áreas nuevas abren su pantalla informativa
 // (`modulo_<clave>`) hasta que tengan pantallas propias.
 const MENU = [
-  { key: 'inicio', label: 'Inicio', icon: House },
-  { key: 'modulos', label: 'Módulos', icon: LayoutGrid },
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'alertas', label: 'Alertas', icon: BellRing, guestHidden: true },
   { key: 'fallas', label: 'Reportes de falla', icon: AlertTriangle, guestHidden: true },
@@ -4475,54 +4474,32 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
     return true;
   };
   const navegar = (key) => { if (puedeAbrir(key)) setMenu(key); };
-  // El módulo elegido en la landing solo se respeta si este usuario puede abrirlo; si no,
-  // se queda en el portal (una sola vez, al montar).
-  const [menuInicialRevisado, setMenuInicialRevisado] = useState(false);
-  if (!menuInicialRevisado) {
-    setMenuInicialRevisado(true);
-    if (menu !== 'inicio' && !puedeAbrir(menu)) setMenu('inicio');
+  // Inicio de cada módulo = su pantalla de entrada ('dashboard' en Biomédica, 'modulo_rrhh'
+  // en Gestión Humana…). Sin módulo elegido se entra a Biomédica o, si el usuario no la tiene,
+  // al primer módulo que pueda abrir.
+  const inicioDeModulo = (key) => moduloPorKey(key)?.entrada || (key ? menuDeModulo(key) : null);
+  const inicioPorDefecto = puedeAbrir('dashboard') ? 'dashboard'
+    : (MODULOS.map(m => m.entrada).find(e => e && puedeAbrir(e)) || 'dashboard');
+  const moduloDelMenu = (key) => moduloDeMenu(key) || menuDef(key)?.modulo || null;
+  const irAlInicioDelModulo = () => {
+    const destino = inicioDeModulo(moduloDelMenu(menu));
+    setMenu(destino && puedeAbrir(destino) ? destino : inicioPorDefecto);
+  };
+  // El módulo elegido en la landing solo se respeta si este usuario puede abrirlo; el antiguo
+  // portal ('inicio' / 'modulos') ya no existe dentro de la app y redirige al inicio del módulo.
+  if (menu === 'inicio' || menu === 'modulos' || !puedeAbrir(menu)) {
+    const destino = menu === 'inicio' || menu === 'modulos' ? inicioPorDefecto : (puedeAbrir(inicioDeModulo(moduloDelMenu(menu))) ? inicioDeModulo(moduloDelMenu(menu)) : inicioPorDefecto);
+    if (destino !== menu) setMenu(destino);
   }
 
-  // Conteo de usuarios para el resumen corporativo: solo el SUPER_ADMIN puede listarlos (la
-  // API responde 403 a cualquier otro rol), así que para el resto no se consulta.
-  const [usuariosTotal, setUsuariosTotal] = useState(null);
-  useEffect(() => {
-    if (!isSuper) return;
-    adminApi('usuarios').then(d => setUsuariosTotal(Array.isArray(d.usuarios) ? d.usuarios.length : null)).catch(() => setUsuariosTotal(null));
-  }, [isSuper, dataVersion]);
 
-  // Datos reales del portal (solo se calculan mientras el portal está en pantalla).
-  const enPortal = menu === 'inicio';
-  const equiposEmpresa = useMemo(
-    () => (activeCompany === 'TODAS' ? equipos : equipos.filter(e => e.empresa === activeCompany)),
-    [equipos, activeCompany]);
-  const alertasPortal = useMemo(() => (enPortal ? buildAlerts(equiposEmpresa) : []), [enPortal, equiposEmpresa]);
-  const fallasAbiertas = reportesFalla.filter(r => r.estado !== 'Finalizado' && (activeCompany === 'TODAS' || r.empresa === activeCompany)).length;
-  const areasActivas = MODULOS.filter(m => m.estado === 'ACTIVO' && permitidos.has(m.key)).length;
-  const resumenCorporativo = [
-    { label: 'Áreas activas', value: areasActivas, sub: `De ${MODULOS.length} áreas de la plataforma`, color: '#16A34A', onClick: () => setMenu('modulos') },
-    { label: 'Usuarios', value: isSuper && usuariosTotal !== null ? usuariosTotal : '--', sub: isSuper ? 'Registrados en la plataforma' : 'Visible solo para administración', color: '#6366F1', onClick: puedeAbrir('admin_usuarios') ? () => setMenu('admin_usuarios') : undefined },
-    { label: 'Empresas', value: isSuper ? COMPANIES.length : 1, sub: isSuper ? 'Registradas en la plataforma' : 'Tu empresa', color: '#0EA5E9', onClick: puedeAbrir('admin_empresas') ? () => setMenu('admin_empresas') : undefined },
-    { label: 'Procesos gestionados', value: '--', proximamente: true },
-    { label: 'Tareas pendientes', value: '--', proximamente: true },
-    { label: 'Documentos por vencer', value: '--', proximamente: true },
-    { label: 'Mantenimientos pendientes', value: alertasPortal.filter(a => a.tipo === 'Preventivo').length, sub: 'Preventivos vencidos o próximos · Biomédica', color: '#EA580C', onClick: puedeAbrir('alertas') ? () => setMenu('alertas') : undefined },
-    { label: 'Capacitaciones pendientes', value: '--', proximamente: true },
-  ];
-  const biomedicaStats = [
-    { label: 'Equipos', value: equiposEmpresa.length },
-    { label: 'Alertas', value: alertasPortal.length, color: '#EA580C' },
-    { label: 'Fallas abiertas', value: fallasAbiertas, color: '#EF4444' },
-  ];
   const empresaLabel = activeCompany === 'TODAS' ? 'Todas las empresas' : (companyOf(activeCompany)?.nombre || activeCompany);
   const moduloInfo = moduloPorKey(moduloDeMenu(menu));
   const menuActual = menuDef(menu);
-  const seccion = menu === 'inicio' ? ['Inicio']
-    : menu === 'modulos' ? ['Módulos']
-    : moduloInfo?.key === 'rrhh' ? ['Gestión Humana']
+  const seccion = moduloInfo?.key === 'rrhh' ? ['Gestión Humana']
     : moduloInfo ? ['Áreas', moduloInfo.menuLabel || moduloInfo.nombre]
     : menuActual?.group ? [menuActual.group, menuActual.label] : [menuActual?.label || ''];
-  const mostrarEmpresas = !menu.startsWith('admin_') && menu !== 'modulos' && !moduloInfo;
+  const mostrarEmpresas = !menu.startsWith('admin_') && !moduloInfo;
 
   const theme = themeOf(activeCompany);
   const accent = theme.solid;
@@ -4886,7 +4863,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
         notificaciones={puedeAbrir('fallas') ? nuevosReportes : null}
         onNotificaciones={puedeAbrir('fallas') ? () => setMenu('fallas') : undefined}
         modulosHabilitados={MODULOS.filter(m => permitidos.has(m.key)).length}
-        onLogout={onLogout} onOpenMenu={() => setMobileNavOpen(true)} onInicio={() => setMenu('inicio')} />
+        onLogout={onLogout} onOpenMenu={() => setMobileNavOpen(true)} onInicio={irAlInicioDelModulo} />
 
       <div className="flex flex-1 min-h-0 relative">
       {/* BACKDROP — solo mientras el drawer móvil está abierto */}
@@ -4941,10 +4918,6 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
         </div>
         )}
 
-        {(menu === 'inicio' || menu === 'modulos') && (
-          <PortalInicio vista={menu === 'modulos' ? 'catalogo' : 'inicio'} t={t} dark={dark} user={user} empresaLabel={empresaLabel}
-            permitidos={permitidos} canOpen={puedeAbrir} onNavigate={navegar} resumen={resumenCorporativo} biomedicaStats={biomedicaStats} />
-        )}
         {moduloInfo?.key === 'rrhh' && permitidos.has('rrhh') && (
           <React.Suspense fallback={<div className={`py-24 text-center text-sm ${t.muted}`}>Cargando Gestión Humana…</div>}>
             <GestionHumana t={t} user={user} readOnly={readOnly} empresaLabel={empresaLabel} empresa={activeCompany}

@@ -82,7 +82,7 @@ export function PlatformHeader({
         <Menu size={20} />
       </button>
 
-      <button onClick={onInicio} className="flex items-center gap-2.5 min-w-0 text-left" title="Ir al inicio de la plataforma">
+      <button onClick={onInicio} className="flex items-center gap-2.5 min-w-0 text-left" title="Ir al inicio del módulo">
         <img src={logo} alt="" width={30} height={30} className="shrink-0 lg:hidden" style={{ objectFit: 'contain' }} />
         <div className="min-w-0">
           <div className="text-3xs uppercase tracking-widest font-semibold truncate" style={{ color: dark ? '#5EEAD4' : '#0F766E' }}>
