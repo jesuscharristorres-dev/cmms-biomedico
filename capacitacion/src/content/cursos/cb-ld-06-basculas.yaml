@@ -1,0 +1,24 @@
+codigo: CB-LD-06
+titulo: Básculas
+equipo: basculas
+categoria: limpieza-y-desinfeccion
+servicios: []
+version: 1
+actualizado: 2026-10-07
+responsable: Ingeniería biomédica
+objetivo: Aplicar la limpieza y desinfección de básculas y tallímetros, y
+  verificar que la báscula marque cero antes de cada uso.
+laminas: 9
+pdf: null
+video: null
+video_existente: false
+pre_test: null
+pos_test: null
+slug_anterior: null
+pendientes:
+  - Crear formulario de pre test
+  - Migrar enlace de pos test
+  - Migrar PDF y láminas (npm run migrar)
+  - Grabar video
+  - Agregar texto del pos test
+  - Objetivo redactado como borrador; validar con Ingeniería biomédica

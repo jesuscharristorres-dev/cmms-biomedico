@@ -1,0 +1,14 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base titulo="Página no encontrada">
+  <div class="contenedor nf">
+    <h1>Esta página no existe</h1>
+    <p>Puede que el curso haya cambiado de dirección. Los cursos ahora están en <span class="num">/cursos/categoría/equipo/</span>.</p>
+    <div><a class="boton boton-primario" href="/">Ver todos los cursos</a></div>
+  </div>
+</Base>
+
+<style>
+  .nf { padding-top: 3rem; display: grid; gap: 1rem; }
+</style>

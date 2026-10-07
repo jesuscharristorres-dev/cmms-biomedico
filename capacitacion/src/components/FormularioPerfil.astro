@@ -1,0 +1,116 @@
+---
+// Paso de identificación. Pide el consentimiento (Ley 1581 de 2012) antes de guardar cualquier dato.
+---
+<form class="perfil" data-perfil novalidate>
+  <div class="campos">
+    <div class="campo">
+      <label for="p-nombre">Nombre completo</label>
+      <input id="p-nombre" name="nombre" autocomplete="name" required />
+      <p class="error" id="e-nombre" hidden>Escribe tu nombre completo.</p>
+    </div>
+    <div class="campo">
+      <label for="p-documento">Número de documento</label>
+      <input id="p-documento" name="documento" inputmode="numeric" pattern="[0-9]{5,12}" required aria-describedby="h-documento" />
+      <p class="ayuda" id="h-documento">Solo números, sin puntos.</p>
+      <p class="error" id="e-documento" hidden>El documento debe tener entre 5 y 12 números.</p>
+    </div>
+    <div class="campo">
+      <label for="p-cargo">Cargo</label>
+      <input id="p-cargo" name="cargo" autocomplete="organization-title" required list="cargos" />
+      <datalist id="cargos">
+        <option value="Enfermera(o) profesional"></option>
+        <option value="Auxiliar de enfermería"></option>
+        <option value="Médica(o)"></option>
+        <option value="Bacterióloga(o)"></option>
+        <option value="Auxiliar de laboratorio"></option>
+        <option value="Odontóloga(o)"></option>
+        <option value="Fisioterapeuta"></option>
+      </datalist>
+      <p class="error" id="e-cargo" hidden>Escribe tu cargo.</p>
+    </div>
+    <div class="campo">
+      <label for="p-sede">Sede</label>
+      <input id="p-sede" name="sede" required />
+      <p class="error" id="e-sede" hidden>Escribe tu sede.</p>
+    </div>
+    <div class="campo">
+      <label for="p-servicio">Servicio</label>
+      <input id="p-servicio" name="servicio" required />
+      <p class="error" id="e-servicio" hidden>Escribe el servicio donde trabajas.</p>
+    </div>
+  </div>
+  <div class="consentimiento">
+    <input type="checkbox" id="p-datos" name="aceptaDatos" required />
+    <label for="p-datos">Autorizo el tratamiento de mis datos personales para registrar mi capacitación, según la <a href="/tratamiento-de-datos/">política de tratamiento de datos</a> (Ley 1581 de 2012).</label>
+  </div>
+  <p class="error" id="e-aceptaDatos" hidden>Para continuar debes autorizar el tratamiento de tus datos.</p>
+  <p class="nota">En esta primera versión tus datos se guardan solo en este navegador y viajan a Ingeniería biomédica cuando respondes los formularios de evaluación.</p>
+  <div><button type="submit" class="boton boton-primario">Guardar mis datos</button></div>
+</form>
+
+<style>
+  .perfil { display: grid; gap: 1rem; }
+  .campos { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .campo { display: grid; gap: 0.35rem; align-content: start; }
+  .campo label { font-weight: 600; }
+  .campo input {
+    min-height: 44px;
+    padding: 0.5rem 0.75rem;
+    font: inherit;
+    font-size: max(16px, 1rem);
+    color: var(--tinta);
+    background: var(--superficie);
+    border: 1px solid var(--acero);
+    border-radius: var(--r-control);
+  }
+  .campo input:focus-visible { outline-offset: 0; border-color: var(--acento); }
+  .campo input[aria-invalid='true'] { border-color: var(--error); }
+  .ayuda, .nota { font-size: var(--t-xs); color: var(--tinta-2); }
+  .error { font-size: var(--t-xs); color: var(--error); font-weight: 600; }
+  .consentimiento { display: flex; gap: 0.6rem; align-items: flex-start; }
+  .consentimiento input { width: 1.25rem; height: 1.25rem; margin: 0.15rem 0 0; accent-color: var(--acento); flex: none; }
+</style>
+
+<script>
+  import { guardarPerfil, leerPerfil } from '../lib/progreso';
+
+  document.querySelectorAll<HTMLFormElement>('[data-perfil]').forEach((form) => {
+    const previo = leerPerfil();
+    if (previo) {
+      for (const [k, v] of Object.entries(previo)) {
+        const el = form.elements.namedItem(k);
+        if (el instanceof HTMLInputElement) {
+          if (el.type === 'checkbox') el.checked = !!v; else el.value = String(v);
+        }
+      }
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      let primero: HTMLInputElement | null = null;
+      for (const el of form.querySelectorAll<HTMLInputElement>('input[required]')) {
+        if (el.type !== 'checkbox') el.value = el.value.trim();
+        const ok = el.checkValidity();
+        el.setAttribute('aria-invalid', String(!ok));
+        const error = form.querySelector<HTMLElement>(`#e-${el.name}`);
+        if (error) {
+          error.hidden = ok;
+          if (!ok) el.setAttribute('aria-errormessage', error.id); else el.removeAttribute('aria-errormessage');
+        }
+        if (!ok && !primero) primero = el;
+      }
+      if (primero) { (primero as HTMLInputElement).focus(); return; }
+      const d = new FormData(form);
+      const ok = guardarPerfil({
+        nombre: String(d.get('nombre')),
+        documento: String(d.get('documento')),
+        cargo: String(d.get('cargo')),
+        sede: String(d.get('sede')),
+        servicio: String(d.get('servicio')),
+        aceptaDatos: true,
+        fecha: new Date().toISOString().slice(0, 10),
+      });
+      form.dispatchEvent(new CustomEvent('perfil:guardado', { bubbles: true, detail: { ok } }));
+    });
+  });
+</script>

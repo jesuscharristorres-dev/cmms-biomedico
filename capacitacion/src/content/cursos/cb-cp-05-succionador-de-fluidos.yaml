@@ -1,0 +1,23 @@
+codigo: CB-CP-05
+titulo: Succionador de fluidos
+equipo: succionador-de-fluidos
+categoria: carro-de-paro
+servicios: []
+version: 1
+actualizado: 2026-10-07
+responsable: Ingeniería biomédica
+objetivo: Ensamblar y operar el succionador de fluidos, ajustar la presión de
+  succión y aplicar la limpieza del sistema de recolección.
+laminas: 14
+pdf: null
+video: null
+video_existente: true
+pre_test: null
+pos_test: null
+slug_anterior: null
+pendientes:
+  - Crear formulario de pre test
+  - Migrar enlace de pos test
+  - Migrar PDF y láminas (npm run migrar)
+  - Migrar ID del video de YouTube
+  - Objetivo redactado como borrador; validar con Ingeniería biomédica

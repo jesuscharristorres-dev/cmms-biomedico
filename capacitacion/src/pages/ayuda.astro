@@ -1,0 +1,114 @@
+---
+import Base from '../layouts/Base.astro';
+import { SITIO } from '../lib/sitio';
+
+const minimo = Math.ceil((SITIO.notaAprobacion / 100) * SITIO.preguntasPosTest);
+const preguntas = [
+  {
+    id: 'empezar',
+    p: '¿Cómo empiezo un curso?',
+    r: [
+      'Busca el equipo en la página de cursos, por nombre o por código (por ejemplo, CB-CP-04).',
+      'Abre la placa del curso.',
+      'En el paso 1 escribe tus datos y autoriza su tratamiento. Solo se piden una vez por navegador.',
+    ],
+  },
+  {
+    id: 'ruta',
+    p: '¿Qué pasos tiene cada curso?',
+    r: [
+      'Pre test: cinco preguntas sin nota mínima, para medir lo que sabes antes.',
+      'Material: las láminas del curso; también puedes descargar el PDF.',
+      'Video, cuando el curso lo tiene.',
+      `Pos test: ${SITIO.preguntasPosTest} preguntas; apruebas con ${minimo} correctas o más. Tienes ${SITIO.intentosPosTest} intentos.`,
+      'Certificado: se habilita al aprobar.',
+    ],
+  },
+  {
+    id: 'pos-test',
+    p: '¿Cómo registro el resultado del pos test?',
+    r: [
+      'En el paso 4 pulsa "Abrir pos test" y respóndelo con el mismo documento que registraste.',
+      'Al enviarlo, el formulario muestra tu puntaje.',
+      'Vuelve a la pestaña del curso, escribe cuántas respuestas acertaste y pulsa "Registrar resultado".',
+    ],
+  },
+  {
+    id: 'no-aprobe',
+    p: 'No aprobé el pos test. ¿Qué hago?',
+    r: [
+      'Repasa el material del paso 2 y vuelve a responder el pos test.',
+      `Si agotas los ${SITIO.intentosPosTest} intentos, escribe a ${SITIO.area} para programar un refuerzo.`,
+    ],
+  },
+  {
+    id: 'certificado',
+    p: '¿Cómo descargo mi certificado?',
+    r: [
+      'En el paso 5 pulsa "Ver certificado" y luego "Imprimir o guardar PDF".',
+      'En el celular, elige "Guardar como PDF" en la ventana de impresión.',
+      `El certificado tiene un código de control y una vigencia de ${SITIO.vigenciaMeses} meses.`,
+    ],
+  },
+  {
+    id: 'otro-dispositivo',
+    p: 'Empecé en otro celular o computador y no veo mi avance',
+    r: [
+      'En esta primera versión el avance se guarda en el navegador donde hiciste el curso.',
+      'Tus resultados de los formularios sí quedan registrados en Ingeniería biomédica.',
+      'Termina el curso en el mismo dispositivo. El avance entre dispositivos llega en la siguiente versión.',
+    ],
+  },
+  {
+    id: 'sin-material',
+    p: 'Un curso dice que el material o el video está en traslado',
+    r: [
+      'Estamos pasando el contenido desde el sitio anterior. Mientras tanto, el aviso enlaza a la versión anterior del curso.',
+    ],
+  },
+];
+---
+<Base titulo="Ayuda" seccion="ayuda" descripcion="Preguntas frecuentes sobre los cursos, el pos test y el certificado.">
+  <div class="contenedor ayuda">
+    <header>
+      <h1>Ayuda</h1>
+      <p class="bajada">Respuestas cortas a las dudas más comunes.</p>
+    </header>
+
+    <nav aria-label="Preguntas" class="indice">
+      <ul>
+        {preguntas.map((q) => <li><a href={`#${q.id}`}>{q.p}</a></li>)}
+      </ul>
+    </nav>
+
+    <div class="lista">
+      {preguntas.map((q) => (
+        <section id={q.id} aria-labelledby={`t-${q.id}`}>
+          <h2 id={`t-${q.id}`}>{q.p}</h2>
+          {q.r.length > 1 ? <ol>{q.r.map((x) => <li>{x}</li>)}</ol> : <p>{q.r[0]}</p>}
+        </section>
+      ))}
+
+      <section id="contacto" aria-labelledby="t-contacto">
+        <h2 id="t-contacto">Contacto</h2>
+        {SITIO.correoArea ? (
+          <p>Escribe a {SITIO.area}: <a href={`mailto:${SITIO.correoArea}`}>{SITIO.correoArea}</a>.</p>
+        ) : (
+          <p>Comunícate con {SITIO.area} de tu sede por los canales internos de la institución.</p>
+        )}
+      </section>
+    </div>
+  </div>
+</Base>
+
+<style>
+  .ayuda { padding-top: 2.5rem; display: grid; gap: 2rem; max-width: calc(760px + 2 * var(--gutter)); margin-inline: 0; }
+  header { display: grid; gap: 0.75rem; }
+  .bajada { color: var(--tinta-2); font-size: var(--t-m); }
+  .indice ul { margin: 0; padding: 0; list-style: none; }
+  .indice li + li { border-top: 1px solid var(--linea); }
+  .indice a { display: block; padding: 0.7rem 0; }
+  .lista { display: grid; gap: 2.25rem; }
+  section { display: grid; gap: 0.6rem; scroll-margin-top: 1.5rem; }
+  ol { margin: 0; padding-left: 1.25rem; display: grid; gap: 0.35rem; max-width: 70ch; }
+</style>

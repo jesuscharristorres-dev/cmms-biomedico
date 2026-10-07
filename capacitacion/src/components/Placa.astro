@@ -1,0 +1,132 @@
+---
+import { CATEGORIAS, urlCurso, fechaCorta, type Curso } from '../lib/cursos';
+
+interface Props { curso: Curso; indice: number; }
+const { curso: c, indice } = Astro.props;
+const video = c.video ? 'Sí' : c.video_existente ? 'En migración' : 'En producción';
+const busqueda = [c.titulo, c.codigo, CATEGORIAS[c.categoria], c.equipo.replaceAll('-', ' '), ...c.servicios]
+  .join(' ')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[̀-ͯ]/g, '');
+---
+<li class="placa-item" data-categoria={c.categoria} data-busqueda={busqueda} style={`--i:${indice}`}>
+  <a class="placa" href={urlCurso(c)} data-codigo={c.codigo}>
+    <div class="placa-cabeza">
+      <span class="num">{c.codigo}</span>
+      <span class="num">v{c.version}</span>
+    </div>
+    <h3 class="placa-titulo">{c.titulo}</h3>
+    <dl class="placa-datos">
+      <div><dt>Categoría</dt><dd>{CATEGORIAS[c.categoria]}</dd></div>
+      <div><dt>Láminas</dt><dd class="num">{c.laminas}</dd></div>
+      <div><dt>Video</dt><dd>{video}</dd></div>
+      <div><dt>Vigente desde</dt><dd class="num">{fechaCorta(c.actualizado)}</dd></div>
+    </dl>
+    <div class="placa-pie">
+      <span class="estado" data-estado="pendiente">Pendiente</span>
+      {c.version > 1 && <span class="estado-nota">Actualizado</span>}
+    </div>
+  </a>
+</li>
+
+<style>
+  .placa-item { list-style: none; display: flex; }
+
+  .placa {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    background: var(--superficie);
+    border: 1px solid var(--acero);
+    border-radius: var(--r-placa);
+    color: var(--tinta);
+    text-decoration: none;
+    transition: transform 140ms var(--ease-out), border-color 160ms ease;
+  }
+  .placa:active { transform: scale(0.97); }
+  @media (hover: hover) and (pointer: fine) {
+    .placa:hover { border-color: var(--acento); }
+    .placa:hover .placa-titulo { color: var(--acento); }
+  }
+
+  .placa-cabeza {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0.9rem;
+    border-bottom: 1px solid var(--linea);
+    font-size: var(--t-xs);
+    color: var(--tinta-2);
+    letter-spacing: 0.02em;
+  }
+
+  .placa-titulo {
+    padding: 0.85rem 0.9rem 0.6rem;
+    font-size: var(--t-m);
+    transition: color 160ms ease;
+  }
+
+  .placa-datos {
+    margin: 0;
+    padding: 0 0.9rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    font-size: var(--t-xs);
+    flex: 1;
+    align-content: start;
+  }
+  .placa-datos div { padding: 0.45rem 0; border-top: 1px solid var(--linea); }
+  .placa-datos div:nth-child(odd) { padding-right: 0.75rem; }
+  .placa-datos dt { color: var(--tinta-2); }
+  .placa-datos dd { margin: 0; font-weight: 600; }
+
+  .placa-pie {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 0.9rem;
+    margin-top: 0.4rem;
+    border-top: 1px solid var(--linea);
+    font-size: var(--t-xs);
+  }
+  .estado {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 600;
+  }
+  .estado::before {
+    content: '';
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 2px;
+    border: 1.5px solid currentColor;
+  }
+  .estado[data-estado='pendiente'] { color: var(--senal-texto); }
+  .estado[data-estado='pendiente']::before { border-color: var(--senal); background: transparent; }
+  .estado[data-estado='en-progreso'] { color: var(--senal-texto); }
+  .estado[data-estado='en-progreso']::before { border-color: var(--senal); background: linear-gradient(to right, var(--senal) 50%, transparent 50%); }
+  .estado[data-estado='completado'] { color: var(--acento); }
+  .estado[data-estado='completado']::before { background: var(--acento); border-color: var(--acento); }
+  .estado-nota { color: var(--tinta-2); }
+
+  /* Entrada escalonada solo en la carga inicial: 40 ms entre placas, tope de 10 */
+  @media (prefers-reduced-motion: no-preference) {
+    :global(html.js:not(.catalogo-estable)) .placa-item {
+      animation: placa-entra 280ms var(--ease-out) both;
+      animation-delay: calc(min(var(--i), 10) * 40ms);
+    }
+  }
+  @keyframes placa-entra {
+    from { opacity: 0; transform: translateY(6px); }
+  }
+  .placa-item[hidden] { display: none; }
+
+  /* Filtros: las que salen se desvanecen (200 ms); las que vuelven entran con fundido */
+  .placa-item { transition: opacity 200ms var(--ease-out); }
+  .placa-item.saliendo { opacity: 0; }
+  @starting-style {
+    :global(html.catalogo-estable) .placa-item { opacity: 0; }
+  }
+</style>

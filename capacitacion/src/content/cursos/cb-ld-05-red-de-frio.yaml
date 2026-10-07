@@ -1,0 +1,23 @@
+codigo: CB-LD-05
+titulo: Red de frío
+equipo: red-de-frio
+categoria: limpieza-y-desinfeccion
+servicios: []
+version: 1
+actualizado: 2026-10-07
+responsable: Ingeniería biomédica
+objetivo: "Mantener la red de frío: limpiar y desinfectar neveras y termos, y
+  conservar la cadena de frío durante la limpieza."
+laminas: 20
+pdf: null
+video: null
+video_existente: true
+pre_test: null
+pos_test: null
+slug_anterior: null
+pendientes:
+  - Crear formulario de pre test
+  - Migrar enlace de pos test
+  - Migrar PDF y láminas (npm run migrar)
+  - Migrar ID del video de YouTube
+  - Objetivo tomado del sitio anterior; confirmar texto

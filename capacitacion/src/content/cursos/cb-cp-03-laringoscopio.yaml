@@ -1,0 +1,24 @@
+codigo: CB-CP-03
+titulo: Laringoscopio
+equipo: laringoscopio
+categoria: carro-de-paro
+servicios: []
+version: 1
+actualizado: 2026-10-07
+responsable: Ingeniería biomédica
+objetivo: Verificar el funcionamiento del laringoscopio antes de su uso,
+  ensamblar hoja y mango correctamente y aplicar su limpieza y desinfección.
+laminas: 15
+pdf: null
+video: null
+video_existente: false
+pre_test: null
+pos_test: null
+slug_anterior: null
+pendientes:
+  - Crear formulario de pre test
+  - Migrar enlace de pos test
+  - Migrar PDF y láminas (npm run migrar)
+  - Grabar video
+  - Corregir tilde en el material
+  - Objetivo redactado como borrador; validar con Ingeniería biomédica

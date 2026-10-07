@@ -1,0 +1,24 @@
+codigo: CB-TH-01
+titulo: Registro de temperatura y humedad
+equipo: registro-temperatura-humedad
+categoria: temperatura-y-humedad
+servicios: []
+version: 1
+actualizado: 2026-10-07
+responsable: Ingeniería biomédica
+objetivo: Registrar correctamente la temperatura y la humedad de las áreas y
+  equipos de almacenamiento, e identificar cuándo un valor fuera de rango exige
+  reportarse.
+laminas: 13
+pdf: null
+video: null
+video_existente: true
+pre_test: null
+pos_test: null
+slug_anterior: null
+pendientes:
+  - Crear formulario de pre test
+  - Migrar enlace de pos test
+  - Migrar PDF y láminas (npm run migrar)
+  - Migrar ID del video de YouTube
+  - Objetivo tomado del sitio anterior; confirmar texto

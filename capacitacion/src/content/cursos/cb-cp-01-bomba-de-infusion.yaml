@@ -1,0 +1,23 @@
+codigo: CB-CP-01
+titulo: Bomba de infusión
+equipo: bomba-de-infusion
+categoria: carro-de-paro
+servicios: []
+version: 1
+actualizado: 2026-10-07
+responsable: Ingeniería biomédica
+objetivo: Programar y verificar una bomba de infusión de forma segura, reconocer
+  sus alarmas y aplicar su limpieza entre pacientes.
+laminas: 17
+pdf: null
+video: null
+video_existente: false
+pre_test: null
+pos_test: null
+slug_anterior: null
+pendientes:
+  - Crear formulario de pre test
+  - Migrar enlace de pos test
+  - Migrar PDF y láminas (npm run migrar)
+  - Grabar video
+  - Objetivo redactado como borrador; validar con Ingeniería biomédica

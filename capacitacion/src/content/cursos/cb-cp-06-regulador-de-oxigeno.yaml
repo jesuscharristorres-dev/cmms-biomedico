@@ -1,0 +1,23 @@
+codigo: CB-CP-06
+titulo: Regulador de oxígeno
+equipo: regulador-de-oxigeno
+categoria: carro-de-paro
+servicios: []
+version: 1
+actualizado: 2026-10-07
+responsable: Ingeniería biomédica
+objetivo: Instalar y operar el regulador de oxígeno con seguridad, verificar
+  fugas y leer correctamente el manómetro y el flujómetro.
+laminas: 15
+pdf: null
+video: null
+video_existente: true
+pre_test: null
+pos_test: null
+slug_anterior: null
+pendientes:
+  - Crear formulario de pre test
+  - Migrar enlace de pos test
+  - Migrar PDF y láminas (npm run migrar)
+  - Migrar ID del video de YouTube
+  - Objetivo redactado como borrador; validar con Ingeniería biomédica

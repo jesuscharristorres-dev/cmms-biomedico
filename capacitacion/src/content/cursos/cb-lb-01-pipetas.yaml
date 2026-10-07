@@ -1,0 +1,24 @@
+codigo: CB-LB-01
+titulo: Pipetas
+equipo: pipetas
+categoria: laboratorio
+servicios: []
+version: 1
+actualizado: 2026-10-07
+responsable: Ingeniería biomédica
+objetivo: Manipular, limpiar y almacenar las pipetas de laboratorio de forma que
+  conserven su exactitud volumétrica.
+laminas: 14
+pdf: null
+video: null
+video_existente: true
+pre_test: null
+pos_test: null
+slug_anterior: null
+pendientes:
+  - Crear formulario de pre test
+  - Migrar enlace de pos test
+  - Migrar PDF y láminas (npm run migrar)
+  - Migrar ID del video de YouTube
+  - Objetivo específico (el anterior era genérico)
+  - Objetivo redactado como borrador; validar con Ingeniería biomédica

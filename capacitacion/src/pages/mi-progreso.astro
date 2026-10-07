@@ -1,0 +1,108 @@
+---
+import Base from '../layouts/Base.astro';
+import FormularioPerfil from '../components/FormularioPerfil.astro';
+import { cursosOrdenados, urlCurso, CATEGORIAS } from '../lib/cursos';
+
+const cursos = await cursosOrdenados();
+---
+<Base titulo="Mi progreso" seccion="progreso" descripcion="Tus cursos, resultados y certificados.">
+  <div class="contenedor progreso">
+    <header>
+      <h1>Mi progreso</h1>
+      <p class="bajada" data-resumen>Aún no has empezado ningún curso.</p>
+    </header>
+
+    <section aria-labelledby="t-cursos">
+      <h2 id="t-cursos">Cursos</h2>
+      <div class="tabla-envoltura">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Código</th>
+              <th scope="col">Curso</th>
+              <th scope="col">Estado</th>
+              <th scope="col">Pos test</th>
+              <th scope="col">Certificado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cursos.map((c) => (
+              <tr data-fila={c.codigo}>
+                <td class="num">{c.codigo}</td>
+                <td><a href={urlCurso(c)}>{c.titulo}</a><span class="categoria">{CATEGORIAS[c.categoria]}</span></td>
+                <td data-col="estado">Pendiente</td>
+                <td class="num" data-col="pos">Sin intentos</td>
+                <td class="num" data-col="cert">No</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section aria-labelledby="t-datos">
+      <h2 id="t-datos">Mis datos</h2>
+      <FormularioPerfil />
+      <p class="guardado" data-guardado role="status"></p>
+    </section>
+
+    <section aria-labelledby="t-borrar" class="borrar">
+      <h2 id="t-borrar">Borrar mis datos de este navegador</h2>
+      <p>Elimina tu identificación y tu avance de este dispositivo. Los resultados enviados en los formularios no se borran desde aquí.</p>
+      <div><button type="button" class="boton boton-secundario" data-borrar>Borrar mis datos</button></div>
+    </section>
+  </div>
+</Base>
+
+<style>
+  .progreso { padding-top: 2.5rem; display: grid; gap: 2.5rem; }
+  header { display: grid; gap: 0.75rem; }
+  section { display: grid; gap: 1rem; }
+  .bajada { color: var(--tinta-2); font-size: var(--t-m); }
+  .tabla-envoltura { overflow-x: auto; border: 1px solid var(--acero); border-radius: var(--r-placa); background: var(--superficie); }
+  table { width: 100%; border-collapse: collapse; font-size: var(--t-xs); min-width: 560px; }
+  th, td { text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--linea); vertical-align: top; }
+  th { color: var(--tinta-2); font-weight: 600; position: sticky; top: 0; background: var(--superficie); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td a { font-weight: 600; font-size: var(--t-s); }
+  .categoria { display: block; color: var(--tinta-2); }
+  td[data-estado='completado'] { color: var(--acento); font-weight: 600; }
+  td[data-estado='en-progreso'] { color: var(--senal-texto); font-weight: 600; }
+  .guardado { color: var(--acento); font-weight: 600; min-height: 1.5em; }
+  .borrar p { color: var(--tinta-2); }
+</style>
+
+<script>
+  import { estadoCurso, leerProgreso, borrarTodo } from '../lib/progreso';
+
+  const ETIQUETA = { 'pendiente': 'Pendiente', 'en-progreso': 'En progreso', 'completado': 'Completado' } as const;
+  let completos = 0, iniciados = 0;
+  document.querySelectorAll<HTMLTableRowElement>('[data-fila]').forEach((tr) => {
+    const codigo = tr.dataset.fila!;
+    const estado = estadoCurso(codigo);
+    const p = leerProgreso(codigo);
+    const celda = tr.querySelector<HTMLElement>('[data-col="estado"]')!;
+    celda.textContent = ETIQUETA[estado];
+    celda.dataset.estado = estado;
+    if (p.intentos.length) {
+      tr.querySelector('[data-col="pos"]')!.textContent = `${p.intentos.at(-1)}/10 (${p.intentos.length} ${p.intentos.length === 1 ? 'intento' : 'intentos'})`;
+    }
+    if (p.certificado) tr.querySelector('[data-col="cert"]')!.textContent = p.certificado;
+    if (estado === 'completado') completos++;
+    if (estado !== 'pendiente') iniciados++;
+  });
+  if (iniciados) {
+    document.querySelector('[data-resumen]')!.textContent = `${completos} ${completos === 1 ? 'curso aprobado' : 'cursos aprobados'} y ${iniciados - completos} en progreso.`;
+  }
+
+  document.addEventListener('perfil:guardado', (e) => {
+    const ok = (e as CustomEvent<{ ok: boolean }>).detail.ok;
+    document.querySelector('[data-guardado]')!.textContent = ok ? 'Datos guardados.' : 'No se pudieron guardar: el navegador bloquea el almacenamiento.';
+  });
+
+  document.querySelector('[data-borrar]')!.addEventListener('click', () => {
+    if (!confirm('¿Borrar tu identificación y tu avance de este navegador? Esta acción no se puede deshacer.')) return;
+    borrarTodo();
+    location.reload();
+  });
+</script>

@@ -1,0 +1,24 @@
+codigo: CB-LD-01
+titulo: Autoclave
+equipo: autoclave
+categoria: limpieza-y-desinfeccion
+servicios: []
+version: 1
+actualizado: 2026-10-07
+responsable: Ingeniería biomédica
+objetivo: Cargar y operar el autoclave, verificar cada ciclo con sus indicadores
+  y aplicar la limpieza de la cámara.
+laminas: 20
+pdf: null
+video: null
+video_existente: true
+pre_test: null
+pos_test: null
+slug_anterior: /centrifuga-2/
+pendientes:
+  - Crear formulario de pre test
+  - Migrar enlace de pos test
+  - Migrar PDF y láminas (npm run migrar)
+  - Migrar ID del video de YouTube
+  - Nueva URL (antes /centrifuga-2/)
+  - Objetivo tomado del sitio anterior; confirmar texto

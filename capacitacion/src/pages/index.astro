@@ -1,0 +1,260 @@
+---
+import Base from '../layouts/Base.astro';
+import Placa from '../components/Placa.astro';
+import Icono from '../components/Icono.astro';
+import { cursosOrdenados, CATEGORIAS } from '../lib/cursos';
+import { SITIO } from '../lib/sitio';
+
+const cursos = await cursosOrdenados();
+const conteo = (cat: string) => cursos.filter((c) => c.categoria === cat).length;
+---
+<Base titulo={SITIO.nombre} seccion="cursos">
+  <section class="contenedor intro" aria-labelledby="titulo-catalogo">
+    <h1 id="titulo-catalogo">Capacitación en tecnología biomédica</h1>
+    <p class="bajada"><span class="num">{cursos.length}</span> cursos para el uso seguro de los equipos. Cada uno: pre test, material, video, pos test y certificado.</p>
+
+    <form class="buscador" role="search" onsubmit="return false">
+      <label for="buscar" class="sr-only">Buscar equipo o tema</label>
+      <Icono nombre="search" />
+      <input id="buscar" type="search" placeholder="Buscar equipo o tema" autocomplete="off" enterkeyhint="search" />
+      <button type="button" class="limpiar" hidden aria-label="Borrar búsqueda"><Icono nombre="x" /></button>
+    </form>
+
+    <div class="filtros" role="group" aria-label="Filtrar por categoría">
+      <button type="button" class="chip" data-filtro="" aria-pressed="true">Todos <span class="num">{cursos.length}</span></button>
+      {Object.entries(CATEGORIAS).map(([clave, nombre]) => (
+        <button type="button" class="chip" data-filtro={clave} aria-pressed="false">{nombre} <span class="num">{conteo(clave)}</span></button>
+      ))}
+    </div>
+  </section>
+
+  <section class="contenedor" aria-labelledby="titulo-cursos">
+    <h2 id="titulo-cursos" class="sr-only">Cursos</h2>
+    <p class="resultado" aria-live="polite" id="resultado"></p>
+    <ul class="rejilla" id="rejilla">
+      {cursos.map((c, i) => <Placa curso={c} indice={i} />)}
+    </ul>
+    <div class="vacio" id="vacio" hidden>
+      <h2>No hay cursos con esa búsqueda</h2>
+      <p>Prueba con el nombre del equipo, por ejemplo <button type="button" class="enlace" data-sugerencia="monitor">monitor</button> o <button type="button" class="enlace" data-sugerencia="autoclave">autoclave</button>, o busca por código (<span class="num sin-corte">CB-CP-04</span>).</p>
+      <button type="button" class="boton boton-secundario" id="limpiar-todo">Ver todos los cursos</button>
+    </div>
+  </section>
+
+  <section class="contenedor calendario" id="calendario" aria-labelledby="titulo-calendario">
+    <h2 id="titulo-calendario">Próximas capacitaciones</h2>
+    {SITIO.calendarioUrl ? (
+      <iframe src={SITIO.calendarioUrl} title="Calendario de próximas capacitaciones" loading="lazy"></iframe>
+    ) : (
+      <div class="aviso">
+        <Icono nombre="calendar" />
+        <p>El calendario de sesiones presenciales se está trasladando desde el sitio anterior. Mientras tanto, consúltalo en <a href={SITIO.sitioAnterior}>formacionbiomedica.wordpress.com</a>.</p>
+      </div>
+    )}
+  </section>
+</Base>
+
+<style>
+  .intro { padding-top: 2.5rem; padding-bottom: 1.5rem; display: grid; gap: 1rem; }
+  .bajada { color: var(--tinta-2); font-size: var(--t-m); }
+
+  .buscador {
+    position: relative;
+    max-width: 640px;
+    margin-top: 0.5rem;
+  }
+  .buscador > :global(svg) {
+    position: absolute;
+    left: 0.9rem;
+    top: 50%;
+    translate: 0 -50%;
+    width: 1.25rem;
+    height: 1.25rem;
+    color: var(--tinta-2);
+    pointer-events: none;
+  }
+  .buscador input {
+    width: 100%;
+    min-height: 52px;
+    padding: 0.75rem 3rem 0.75rem 2.9rem;
+    font: inherit;
+    font-size: max(16px, var(--t-s));
+    color: var(--tinta);
+    background: var(--superficie);
+    border: 1px solid var(--acero);
+    border-radius: var(--r-control);
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .buscador input::placeholder { color: var(--tinta-2); opacity: 1; }
+  .buscador input:focus-visible { outline-offset: 0; border-color: var(--acento); }
+  .buscador input::-webkit-search-cancel-button { display: none; }
+  .limpiar {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    translate: 0 -50%;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    background: none;
+    border: 0;
+    color: var(--tinta-2);
+    cursor: pointer;
+    border-radius: var(--r-control);
+  }
+  .limpiar :global(svg) { width: 1.1rem; height: 1.1rem; }
+
+  .filtros { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  @media (max-width: 639px) {
+    .filtros {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none;
+      margin-inline: calc(-1 * var(--gutter));
+      padding-inline: var(--gutter);
+    }
+    .filtros::-webkit-scrollbar { display: none; }
+    .chip { flex: none; scroll-snap-align: start; }
+  }
+  .chip {
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 44px;
+    padding: 0 0.9rem;
+    border: 1px solid var(--linea);
+    border-radius: var(--r-control);
+    background: var(--superficie);
+    color: var(--tinta);
+    font: inherit;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: transform 140ms var(--ease-out), background-color 160ms ease, border-color 160ms ease;
+  }
+  .chip:active { transform: scale(0.97); }
+  .chip .num { color: var(--tinta-2); font-size: var(--t-xs); }
+  .chip[aria-pressed='true'] { background: var(--acento-suave); border-color: var(--acento); font-weight: 600; }
+  .chip[aria-pressed='true'] .num { color: var(--tinta); }
+  @media (hover: hover) and (pointer: fine) {
+    .chip:hover { border-color: var(--acero); }
+  }
+
+  .resultado { color: var(--tinta-2); font-size: var(--t-xs); min-height: 1.5em; margin-bottom: 0.75rem; }
+
+  .rejilla {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+  }
+
+  .vacio {
+    display: grid;
+    gap: 0.75rem;
+    justify-items: start;
+    padding: 2rem 0;
+  }
+  .enlace {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    color: var(--acento);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
+  }
+
+  .sin-corte { white-space: nowrap; }
+
+  .calendario { margin-top: 3.5rem; display: grid; gap: 1rem; }
+  .calendario iframe {
+    width: 100%;
+    height: 520px;
+    border: 1px solid var(--linea);
+    border-radius: var(--r-placa);
+    background: var(--superficie);
+  }
+</style>
+
+<script>
+  import { estadoCurso } from '../lib/progreso';
+
+  const ETIQUETA = { 'pendiente': 'Pendiente', 'en-progreso': 'En progreso', 'completado': 'Completado' } as const;
+
+  // Estado de cada placa desde el progreso guardado
+  document.querySelectorAll<HTMLAnchorElement>('.placa[data-codigo]').forEach((placa) => {
+    const estado = estadoCurso(placa.dataset.codigo!);
+    const marca = placa.querySelector<HTMLElement>('.estado');
+    if (marca) {
+      marca.dataset.estado = estado;
+      marca.textContent = ETIQUETA[estado];
+    }
+  });
+
+  // La entrada escalonada ocurre una sola vez
+  setTimeout(() => document.documentElement.classList.add('catalogo-estable'), 800);
+
+  const input = document.querySelector<HTMLInputElement>('#buscar')!;
+  const limpiar = document.querySelector<HTMLButtonElement>('.limpiar')!;
+  const chips = [...document.querySelectorAll<HTMLButtonElement>('.chip')];
+  const items = [...document.querySelectorAll<HTMLLIElement>('.placa-item')];
+  const resultado = document.querySelector<HTMLElement>('#resultado')!;
+  const vacio = document.querySelector<HTMLElement>('#vacio')!;
+  const reducido = matchMedia('(prefers-reduced-motion: reduce)');
+
+  let categoria = new URLSearchParams(location.search).get('categoria') ?? '';
+  const normalizar = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+  function aplicar() {
+    const q = normalizar(input.value);
+    let visibles = 0;
+    for (const li of items) {
+      const coincide = (!categoria || li.dataset.categoria === categoria) && (!q || li.dataset.busqueda!.includes(q));
+      if (coincide) {
+        visibles++;
+        li.classList.remove('saliendo');
+        li.hidden = false;
+      } else if (!li.hidden && !li.classList.contains('saliendo')) {
+        if (reducido.matches) {
+          li.hidden = true;
+        } else {
+          li.classList.add('saliendo');
+          li.addEventListener('transitionend', () => {
+            if (li.classList.contains('saliendo')) li.hidden = true;
+          }, { once: true });
+        }
+      }
+    }
+    chips.forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.filtro === categoria)));
+    limpiar.hidden = !input.value;
+    vacio.hidden = visibles > 0;
+    const filtrado = q || categoria;
+    resultado.textContent = filtrado ? `${visibles} ${visibles === 1 ? 'curso' : 'cursos'}` : '';
+
+    const url = new URL(location.href);
+    if (categoria) url.searchParams.set('categoria', categoria); else url.searchParams.delete('categoria');
+    history.replaceState(null, '', url);
+  }
+
+  input.addEventListener('input', aplicar);
+  limpiar.addEventListener('click', () => { input.value = ''; aplicar(); input.focus(); });
+  chips.forEach((c) => c.addEventListener('click', () => { categoria = c.dataset.filtro ?? ''; aplicar(); }));
+  document.querySelectorAll<HTMLButtonElement>('[data-sugerencia]').forEach((b) =>
+    b.addEventListener('click', () => { categoria = ''; input.value = b.dataset.sugerencia!; aplicar(); }),
+  );
+  document.querySelector('#limpiar-todo')!.addEventListener('click', () => { categoria = ''; input.value = ''; aplicar(); input.focus(); });
+
+  // "/" enfoca el buscador (sin animación: acción de teclado)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '/' && document.activeElement?.tagName !== 'INPUT') { e.preventDefault(); input.focus(); }
+  });
+
+  if (categoria) aplicar();
+</script>

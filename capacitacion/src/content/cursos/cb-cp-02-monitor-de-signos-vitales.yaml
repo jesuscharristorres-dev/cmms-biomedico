@@ -1,0 +1,23 @@
+codigo: CB-CP-02
+titulo: Monitor de signos vitales
+equipo: monitor-de-signos-vitales
+categoria: carro-de-paro
+servicios: []
+version: 1
+actualizado: 2026-10-07
+responsable: Ingeniería biomédica
+objetivo: Conectar al paciente, configurar los parámetros y alarmas del monitor
+  de signos vitales e interpretar las alertas técnicas más frecuentes.
+laminas: 17
+pdf: null
+video: null
+video_existente: false
+pre_test: null
+pos_test: null
+slug_anterior: null
+pendientes:
+  - Crear formulario de pre test
+  - Migrar enlace de pos test
+  - Migrar PDF y láminas (npm run migrar)
+  - Grabar video
+  - Objetivo redactado como borrador; validar con Ingeniería biomédica

@@ -1,0 +1,159 @@
+---
+import Icono from './Icono.astro';
+
+interface Props { laminas: string[]; titulo: string; }
+const { laminas, titulo } = Astro.props;
+---
+<div class="visor" data-visor data-laminas={JSON.stringify(laminas)}>
+  <div
+    class="visor-marco"
+    role="region"
+    aria-roledescription="visor de láminas"
+    aria-label={`Láminas: ${titulo}`}
+    tabindex="0"
+  >
+    <img
+      src={laminas[0]}
+      alt={`${titulo}, lámina 1 de ${laminas.length}`}
+      width="1600"
+      height="900"
+      decoding="async"
+      draggable="false"
+    />
+    <div class="visor-cargando" aria-hidden="true"></div>
+  </div>
+  <div class="visor-controles">
+    <button type="button" class="boton boton-secundario" data-accion="anterior" aria-label="Lámina anterior">
+      <Icono nombre="chevron-left" />
+    </button>
+    <p class="num visor-contador" aria-live="polite"><span data-actual>1</span> / {laminas.length}</p>
+    <button type="button" class="boton boton-secundario" data-accion="siguiente" aria-label="Lámina siguiente">
+      <Icono nombre="chevron-right" />
+    </button>
+    <button type="button" class="boton boton-secundario visor-pantalla" data-accion="pantalla" aria-label="Pantalla completa">
+      <Icono nombre="maximize" />
+    </button>
+  </div>
+  <p class="visor-ayuda">Usa las flechas del teclado o desliza para cambiar de lámina.</p>
+</div>
+
+<style>
+  .visor { display: grid; gap: 0.75rem; }
+  .visor-marco {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: var(--superficie);
+    border: 1px solid var(--acero);
+    border-radius: var(--r-placa);
+    overflow: hidden;
+    touch-action: pan-y;
+    user-select: none;
+  }
+  .visor-marco:fullscreen { border: 0; border-radius: 0; background: #0d1318; display: grid; place-items: center; }
+  .visor-marco img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    transition: opacity 100ms var(--ease-out);
+  }
+  .visor-marco img.cambiando { opacity: 0; transition-duration: 60ms; }
+  .visor-marco.sin-animacion img { transition: none; }
+  .visor-cargando {
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 2px;
+    background: var(--acento);
+    transform-origin: left;
+    transform: scaleX(0);
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+  .visor[data-cargando] .visor-cargando { opacity: 1; transition-delay: 150ms; animation: carga 900ms var(--ease-in-out) infinite; }
+  @keyframes carga {
+    0% { transform: scaleX(0); }
+    100% { transform: scaleX(1); opacity: 0; }
+  }
+  .visor-controles { display: flex; align-items: center; gap: 0.5rem; }
+  .visor-controles .boton { padding-inline: 0.75rem; }
+  .visor-contador { min-width: 5.5ch; text-align: center; font-weight: 600; }
+  .visor-pantalla { margin-left: auto; }
+  .visor-ayuda { font-size: var(--t-xs); color: var(--tinta-2); }
+  @media (hover: none) { .visor-ayuda { display: none; } }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-visor]').forEach((visor) => {
+    const laminas: string[] = JSON.parse(visor.dataset.laminas!);
+    const marco = visor.querySelector<HTMLElement>('.visor-marco')!;
+    const img = marco.querySelector('img')!;
+    const actual = visor.querySelector<HTMLElement>('[data-actual]')!;
+    const base = img.alt.replace(/, lámina.*$/, '');
+    let i = 0;
+    const precarga = new Map<number, HTMLImageElement>();
+
+    function precargar(n: number) {
+      if (n < 0 || n >= laminas.length || precarga.has(n)) return;
+      const im = new Image();
+      im.decoding = 'async';
+      im.src = laminas[n];
+      precarga.set(n, im);
+    }
+
+    async function ir(n: number, animar: boolean) {
+      n = Math.max(0, Math.min(laminas.length - 1, n));
+      if (n === i) return;
+      i = n;
+      actual.textContent = String(i + 1);
+      const sinMovimiento = !animar || matchMedia('(prefers-reduced-motion: reduce)').matches;
+      marco.classList.toggle('sin-animacion', sinMovimiento);
+      visor.toggleAttribute('data-cargando', true);
+      const sig = new Image();
+      sig.src = laminas[i];
+      try { await sig.decode(); } catch { /* se muestra igual */ }
+      if (n !== i) return;
+      const cambiar = () => {
+        img.src = laminas[i];
+        img.alt = `${base}, lámina ${i + 1} de ${laminas.length}`;
+        img.classList.remove('cambiando');
+        visor.removeAttribute('data-cargando');
+      };
+      if (sinMovimiento) cambiar();
+      else { img.classList.add('cambiando'); setTimeout(cambiar, 60); }
+      precargar(i + 1);
+      precargar(i - 1);
+      if (i === laminas.length - 1) visor.dispatchEvent(new CustomEvent('visor:final', { bubbles: true }));
+    }
+
+    visor.querySelector('[data-accion="anterior"]')!.addEventListener('click', () => ir(i - 1, true));
+    visor.querySelector('[data-accion="siguiente"]')!.addEventListener('click', () => ir(i + 1, true));
+    visor.querySelector('[data-accion="pantalla"]')!.addEventListener('click', () => {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else marco.requestFullscreen?.();
+    });
+
+    // Teclado: sin animación (acción repetida cientos de veces)
+    marco.addEventListener('keydown', (e) => {
+      const mapa: Record<string, number> = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: laminas.length - 1 };
+      if (e.key in mapa) { e.preventDefault(); ir(mapa[e.key], false); }
+    });
+
+    // Gesto: basta un deslizamiento rápido, no hace falta recorrer distancia
+    let x0 = 0, t0 = 0, activo = false;
+    marco.addEventListener('pointerdown', (e) => {
+      if (activo || e.pointerType === 'mouse') return;
+      activo = true; x0 = e.clientX; t0 = performance.now();
+    });
+    marco.addEventListener('pointerup', (e) => {
+      if (!activo) return;
+      activo = false;
+      const dx = e.clientX - x0;
+      const v = Math.abs(dx) / (performance.now() - t0);
+      if (Math.abs(dx) > 60 || (Math.abs(dx) > 15 && v > 0.11)) ir(dx < 0 ? i + 1 : i - 1, true);
+    });
+    marco.addEventListener('pointercancel', () => { activo = false; });
+
+    precargar(1);
+    if (laminas.length === 1) visor.dispatchEvent(new CustomEvent('visor:final', { bubbles: true }));
+  });
+</script>

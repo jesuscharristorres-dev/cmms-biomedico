@@ -1,0 +1,24 @@
+codigo: CB-LD-03
+titulo: Odontología
+equipo: odontologia
+categoria: limpieza-y-desinfeccion
+servicios: []
+version: 1
+actualizado: 2026-10-07
+responsable: Ingeniería biomédica
+objetivo: Aplicar la limpieza y desinfección de la unidad y los equipos de
+  odontología entre pacientes y al final de la jornada.
+laminas: 14
+pdf: null
+video: null
+video_existente: true
+pre_test: null
+pos_test: null
+slug_anterior: null
+pendientes:
+  - Crear formulario de pre test
+  - Migrar enlace de pos test
+  - Migrar PDF y láminas (npm run migrar)
+  - Migrar ID del video de YouTube
+  - Nueva URL
+  - Objetivo tomado del sitio anterior; confirmar texto

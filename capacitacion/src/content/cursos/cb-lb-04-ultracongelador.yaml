@@ -1,0 +1,24 @@
+codigo: CB-LB-04
+titulo: Ultracongelador
+equipo: ultracongelador
+categoria: laboratorio
+servicios: []
+version: 1
+actualizado: 2026-10-07
+responsable: Ingeniería biomédica
+objetivo: Operar el ultracongelador, registrar su temperatura, atender sus
+  alarmas y organizar la carga sin romper la cadena de frío.
+laminas: 12
+pdf: null
+video: null
+video_existente: true
+pre_test: null
+pos_test: null
+slug_anterior: null
+pendientes:
+  - Crear formulario de pre test
+  - Migrar enlace de pos test
+  - Migrar PDF y láminas (npm run migrar)
+  - Migrar ID del video de YouTube
+  - Objetivo específico (el anterior era genérico)
+  - Objetivo redactado como borrador; validar con Ingeniería biomédica

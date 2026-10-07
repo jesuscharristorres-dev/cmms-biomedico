@@ -1,0 +1,63 @@
+---
+import Icono from './Icono.astro';
+
+interface Props { id: string; titulo: string; }
+const { id, titulo } = Astro.props;
+---
+<div class="video" data-video={id}>
+  <button type="button" class="video-fachada" aria-label={`Reproducir video: ${titulo}`}>
+    <img src={`https://i.ytimg.com/vi/${id}/hqdefault.jpg`} alt="" width="480" height="360" loading="lazy" decoding="async" />
+    <span class="video-play"><Icono nombre="play" /></span>
+  </button>
+</div>
+
+<style>
+  .video {
+    aspect-ratio: 16 / 9;
+    border: 1px solid var(--acero);
+    border-radius: var(--r-placa);
+    overflow: hidden;
+    background: #0d1318;
+  }
+  .video-fachada {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    cursor: pointer;
+    background: none;
+  }
+  .video-fachada img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .video-play {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 64px;
+    height: 64px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--r-control);
+    background: var(--acento);
+    color: var(--sobre-acento);
+    transition: transform 140ms var(--ease-out);
+  }
+  .video-play :global(svg) { width: 28px; height: 28px; }
+  .video-fachada:active .video-play { transform: scale(0.97); }
+  .video iframe { width: 100%; height: 100%; border: 0; display: block; }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-video]').forEach((caja) => {
+    caja.querySelector('button')!.addEventListener('click', () => {
+      const f = document.createElement('iframe');
+      f.src = `https://www.youtube-nocookie.com/embed/${caja.dataset.video}?autoplay=1&rel=0`;
+      f.title = caja.querySelector('button')!.getAttribute('aria-label')!.replace('Reproducir video: ', 'Video: ');
+      f.allow = 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen';
+      f.allowFullscreen = true;
+      caja.replaceChildren(f);
+      caja.dispatchEvent(new CustomEvent('video:iniciado', { bubbles: true }));
+    }, { once: true });
+  });
+</script>

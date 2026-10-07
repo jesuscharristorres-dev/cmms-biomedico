@@ -1,0 +1,37 @@
+---
+import Base from '../layouts/Base.astro';
+import { SITIO } from '../lib/sitio';
+---
+<Base titulo="Tratamiento de datos personales" descripcion="Aviso de tratamiento de datos personales de la plataforma de capacitación (Ley 1581 de 2012).">
+  <article class="contenedor texto">
+    <h1>Tratamiento de datos personales</h1>
+    <p class="nota">Aviso de privacidad conforme a la Ley 1581 de 2012 y el Decreto 1377 de 2013. Texto base pendiente de revisión por el área jurídica de la institución.</p>
+
+    <h2>Qué datos pedimos</h2>
+    <p>Nombre completo, número de documento, cargo, sede y servicio, además de los resultados del pre test y del pos test de cada curso.</p>
+
+    <h2>Para qué los usamos</h2>
+    <ul>
+      <li>Registrar la capacitación de cada persona en el uso seguro de los equipos biomédicos.</li>
+      <li>Emitir el certificado de cada curso aprobado.</li>
+      <li>Calcular indicadores de cobertura, aprendizaje y vigencia por sede, servicio y curso.</li>
+    </ul>
+    <p>No usamos estos datos con fines comerciales ni los compartimos con terceros ajenos a la institución.</p>
+
+    <h2>Dónde se guardan</h2>
+    <p>En esta primera versión, tus datos de identificación y tu avance se guardan en el navegador del dispositivo que usas. Las respuestas de los formularios de evaluación se guardan en las hojas de registro de {SITIO.area}. Puedes borrar los datos de este navegador en cualquier momento desde <a href="/mi-progreso/">Mi progreso</a>.</p>
+
+    <h2>Tus derechos</h2>
+    <p>Puedes conocer, actualizar, rectificar y suprimir tus datos, y revocar esta autorización, salvo cuando exista un deber legal o contractual de conservarlos. Para ejercerlos, comunícate con {SITIO.area} de tu sede{SITIO.correoArea ? <> en <a href={`mailto:${SITIO.correoArea}`}>{SITIO.correoArea}</a></> : null}.</p>
+
+    <h2>Responsable del tratamiento</h2>
+    <p>La institución prestadora de servicios de salud a la que perteneces, a través de {SITIO.area}.</p>
+  </article>
+</Base>
+
+<style>
+  .texto { padding-top: 2.5rem; display: grid; gap: 0.9rem; max-width: calc(760px + 2 * var(--gutter)); margin-inline: 0; }
+  h2 { margin-top: 1.25rem; font-size: var(--t-m); }
+  .nota { color: var(--tinta-2); font-size: var(--t-xs); }
+  ul { margin: 0; padding-left: 1.25rem; display: grid; gap: 0.35rem; max-width: 70ch; }
+</style>

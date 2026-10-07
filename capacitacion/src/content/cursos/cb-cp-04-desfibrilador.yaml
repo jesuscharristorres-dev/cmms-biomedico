@@ -1,0 +1,24 @@
+codigo: CB-CP-04
+titulo: Desfibrilador
+equipo: desfibrilador
+categoria: carro-de-paro
+servicios:
+  - urgencias
+  - hospitalizacion
+version: 2
+actualizado: 2026-10-07
+responsable: Ingeniería biomédica
+objetivo: Realizar la verificación diaria del desfibrilador, operar sus modos de
+  forma segura y reconocer los errores de uso que comprometen una descarga.
+laminas: 27
+pdf: null
+video: null
+video_existente: false
+pre_test: null
+pos_test: https://forms.gle/H3yJGNohnRppsUCZ7
+slug_anterior: /desfibrilador/
+pendientes:
+  - Crear formulario de pre test
+  - Migrar PDF y láminas (npm run migrar)
+  - Grabar video
+  - Objetivo redactado como borrador; validar con Ingeniería biomédica
