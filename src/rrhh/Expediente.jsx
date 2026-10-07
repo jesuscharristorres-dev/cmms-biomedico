@@ -529,11 +529,11 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
 
         {pestana === 'contrato' && exp.contrato && (
           <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-4">
-            <section className="rounded-2xl p-6 text-white relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #312E81 0%, #4338CA 55%, #6366F1 100%)' }}>
+            <section className="rounded-2xl p-6 text-white relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #7C2D12 0%, #C2410C 55%, #E8603C 100%)' }}>
               <div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-white/10" aria-hidden="true" />
               <div className="relative">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-3xs uppercase tracking-widest font-semibold text-indigo-200">Contrato laboral</span>
+                  <span className="text-3xs uppercase tracking-widest font-semibold text-orange-100">Contrato laboral</span>
                   <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-3xs font-bold uppercase bg-white/15">
                     <span className="w-1.5 h-1.5 rounded-full" style={{ background: ESTADO_CONTRATO[exp.contrato.estado.clave].color === '#64748B' ? '#CBD5E1' : '#4ADE80' }} />
                     {ESTADO_CONTRATO[exp.contrato.estado.clave].label}
@@ -541,16 +541,16 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
                 </div>
                 <div className="mt-3 text-xl sm:text-2xl font-bold">{exp.contrato.tipoDescripcion}</div>
                 <div className="mt-5 grid grid-cols-2 gap-4 text-sm">
-                  <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Fecha de inicio</div><div className="font-semibold">{fmtFecha(exp.contrato.fechaInicio)}</div></div>
-                  <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Terminación del periodo</div><div className="font-semibold">{exp.contrato.fechaFin ? fmtFecha(exp.contrato.fechaFin) : 'No aplica'}</div></div>
-                  <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Renovación</div><div className="font-semibold">Automática cada 3 meses</div></div>
-                  <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Alarma desde</div><div className="font-semibold">{exp.contrato.estado.alarma ? fmtFecha(exp.contrato.estado.alarma) : '—'}</div></div>
-                  <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Renovaciones automáticas</div><div className="font-semibold">{exp.contrato.renovaciones || 0}</div></div>
-                  <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Cargo</div><div className="font-semibold">{exp.contrato.cargo}</div></div>
-                  <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Área</div><div className="font-semibold">{exp.contrato.area}</div></div>
-                  <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Jornada</div><div className="font-semibold">{exp.contrato.jornada}</div></div>
+                  <div><div className="text-3xs uppercase tracking-wide text-orange-100">Fecha de inicio</div><div className="font-semibold">{fmtFecha(exp.contrato.fechaInicio)}</div></div>
+                  <div><div className="text-3xs uppercase tracking-wide text-orange-100">Terminación del periodo</div><div className="font-semibold">{exp.contrato.fechaFin ? fmtFecha(exp.contrato.fechaFin) : 'No aplica'}</div></div>
+                  <div><div className="text-3xs uppercase tracking-wide text-orange-100">Renovación</div><div className="font-semibold">Automática cada 3 meses</div></div>
+                  <div><div className="text-3xs uppercase tracking-wide text-orange-100">Alarma desde</div><div className="font-semibold">{exp.contrato.estado.alarma ? fmtFecha(exp.contrato.estado.alarma) : '—'}</div></div>
+                  <div><div className="text-3xs uppercase tracking-wide text-orange-100">Renovaciones automáticas</div><div className="font-semibold">{exp.contrato.renovaciones || 0}</div></div>
+                  <div><div className="text-3xs uppercase tracking-wide text-orange-100">Cargo</div><div className="font-semibold">{exp.contrato.cargo}</div></div>
+                  <div><div className="text-3xs uppercase tracking-wide text-orange-100">Área</div><div className="font-semibold">{exp.contrato.area}</div></div>
+                  <div><div className="text-3xs uppercase tracking-wide text-orange-100">Jornada</div><div className="font-semibold">{exp.contrato.jornada}</div></div>
                   {exp.contrato.estado.dias != null && exp.contrato.estado.dias >= 0 && (
-                    <div><div className="text-3xs uppercase tracking-wide text-indigo-200">Días para terminar</div><div className="font-semibold">{exp.contrato.estado.dias}</div></div>
+                    <div><div className="text-3xs uppercase tracking-wide text-orange-100">Días para terminar</div><div className="font-semibold">{exp.contrato.estado.dias}</div></div>
                   )}
                 </div>
                 {exp.contrato.estado.clave === 'por_vencer' && (

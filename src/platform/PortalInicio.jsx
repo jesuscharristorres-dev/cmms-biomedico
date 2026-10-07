@@ -70,7 +70,7 @@ export function MarcaModulo({ modulo, size = 36 }) {
 
 // `marcaModulo`: módulo cuyo ícono se muestra en lugar del logo (ver MarcaModulo).
 export function PlatformHeader({
-  t, dark, user, rolLabel, empresaLabel, seccion, logo, marcaModulo, notificaciones, onNotificaciones,
+  t, dark, user, rolLabel, empresaLabel, seccion, logo, marcaModulo, acento, notificaciones, onNotificaciones,
   modulosHabilitados, onLogout, onOpenMenu, onInicio,
 }) {
   const [perfilAbierto, setPerfilAbierto] = useState(false);
@@ -86,6 +86,8 @@ export function PlatformHeader({
   }, [perfilAbierto]);
 
   const nombre = user?.nombre || user?.email || 'Usuario';
+  // `acento`: color propio del módulo (Gestión Humana); por defecto, el verde azulado de la plataforma.
+  const colorMarca = acento || '#0F766E';
   const hayNotificaciones = typeof notificaciones === 'number' && notificaciones > 0;
 
   return (
@@ -100,7 +102,7 @@ export function PlatformHeader({
           ? <span className="lg:hidden"><MarcaModulo modulo={marcaModulo} size={30} /></span>
           : <img src={logo} alt="" width={30} height={30} className="shrink-0 lg:hidden" style={{ objectFit: 'contain' }} />}
         <div className="min-w-0">
-          <div className="text-3xs uppercase tracking-widest font-semibold truncate" style={{ color: dark ? '#5EEAD4' : '#0F766E' }}>
+          <div className="text-3xs uppercase tracking-widest font-semibold truncate" style={{ color: dark ? (acento ? '#FDBA9C' : '#5EEAD4') : colorMarca }}>
             {PLATAFORMA_NOMBRE}
           </div>
           <div className="hidden sm:flex items-center gap-1 text-xs font-semibold truncate">
@@ -138,7 +140,7 @@ export function PlatformHeader({
         <div className="relative" ref={perfilRef}>
           <button onClick={() => setPerfilAbierto(v => !v)} aria-haspopup="menu" aria-expanded={perfilAbierto}
             className="flex items-center gap-2 h-11 pl-1 pr-2 rounded-md hover:bg-slate-500/10 transition">
-            <span className="w-8 h-8 rounded-full flex items-center justify-center text-2xs font-bold text-white shrink-0" style={{ background: '#0F766E' }}>
+            <span className="w-8 h-8 rounded-full flex items-center justify-center text-2xs font-bold text-white shrink-0" style={{ background: colorMarca }}>
               {iniciales(nombre)}
             </span>
             <span className="hidden md:block text-left min-w-0 max-w-40">
@@ -150,7 +152,7 @@ export function PlatformHeader({
           {perfilAbierto && (
             <div role="menu" className={`absolute right-0 top-12 z-50 w-72 rounded-xl border shadow-xl p-4 ${t.panel} ${t.border}`}>
               <div className="flex items-center gap-3 pb-3 border-b" style={{ borderColor: 'inherit' }}>
-                <span className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ background: '#0F766E' }}>
+                <span className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ background: colorMarca }}>
                   {iniciales(nombre)}
                 </span>
                 <div className="min-w-0">

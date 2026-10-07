@@ -3,7 +3,8 @@
 
 import { ESTADOS_MODULO } from '../platform/modulos';
 
-export const COLOR_RRHH = '#6366F1';
+export const COLOR_RRHH = '#C2410C'; // terracota: texto y botones (contraste AA sobre blanco)
+export const COLOR_RRHH_CLARO = '#E8603C'; // coral: degradados y acentos
 const VERDE = ESTADOS_MODULO.ACTIVO.color;
 const AMBAR = ESTADOS_MODULO.EN_DESARROLLO.color;
 const ROJO = '#DC2626';

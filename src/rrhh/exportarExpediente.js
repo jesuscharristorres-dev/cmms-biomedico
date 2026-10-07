@@ -21,11 +21,11 @@ export function htmlExpediente(exp, empresa) {
 <title>Expediente — ${esc(c.nombreCompleto)}</title>
 <style>
   body{font-family:'IBM Plex Sans',Arial,sans-serif;color:#0f172a;margin:32px;font-size:13px}
-  h1{font-size:22px;margin:0} h2{font-size:15px;margin:26px 0 8px;border-bottom:2px solid #6366F1;padding-bottom:4px}
+  h1{font-size:22px;margin:0} h2{font-size:15px;margin:26px 0 8px;border-bottom:2px solid #C2410C;padding-bottom:4px}
   .muted{color:#64748b} .demo{display:inline-block;background:#fef3c7;color:#92400e;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600}
   table{width:100%;border-collapse:collapse;margin-top:4px} th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:left;vertical-align:top}
   th{background:#f1f5f9;font-size:12px} .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:4px 24px}
-  .barra{height:10px;background:#e2e8f0;border-radius:6px;overflow:hidden;margin:6px 0} .barra div{height:100%;background:#6366F1}
+  .barra{height:10px;background:#e2e8f0;border-radius:6px;overflow:hidden;margin:6px 0} .barra div{height:100%;background:#C2410C}
   .vacio{color:#94a3b8} @media print{body{margin:12mm}.noprint{display:none}}
 </style></head><body>
 <p class="noprint"><button onclick="window.print()">Imprimir / Guardar como PDF</button></p>

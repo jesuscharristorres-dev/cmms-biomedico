@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { X, Loader2, Link2, ExternalLink } from 'lucide-react';
-import { colorPorTexto, iniciales, esUrlValida, abrirEnlace } from './formato';
+import { COLOR_RRHH, colorPorTexto, iniciales, esUrlValida, abrirEnlace } from './formato';
 
 
 export function Pill({ color, children, fuerte }) {
@@ -59,7 +59,7 @@ export function Progreso({ valor, color, alto = 8 }) {
   );
 }
 
-export function Boton({ children, onClick, icono: Icono, variante = 'secundario', disabled, color = '#6366F1', title, type = 'button', pequeno }) {
+export function Boton({ children, onClick, icono: Icono, variante = 'secundario', disabled, color = COLOR_RRHH, title, type = 'button', pequeno }) {
   const base = `inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed ${pequeno ? 'min-h-8 px-2.5 text-2xs' : 'min-h-10 px-3.5 text-xs'}`;
   const estilos = variante === 'primario'
     ? { className: `${base} text-white hover:brightness-110 shadow-sm`, style: { background: color } }

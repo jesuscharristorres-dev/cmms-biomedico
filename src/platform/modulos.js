@@ -58,7 +58,7 @@ export const MODULOS = [
     descripcion: 'Gestión del talento humano, colaboradores, documentación, capacitaciones y seguimiento.',
     menuLabel: 'RRHH',
     icon: Users,
-    color: '#6366F1',
+    color: '#E8603C',
     estado: 'EN_DESARROLLO',
     principal: true,
     area: 'Personas',

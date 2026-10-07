@@ -291,6 +291,14 @@ const SIDEBAR_GRADIENT_LIGHT = 'linear-gradient(180deg, #D9F7EF 0%, #E4F3FA 100%
 // diferenciarse del resto sin recurrir a un color saturado ni al acento de la empresa activa.
 const SIDEBAR_ACTIVE_GRADIENT_LIGHT = 'linear-gradient(135deg, #BFEEDF 0%, #CDE8F6 100%)';
 const SIDEBAR_ACTIVE_ACCENT_LIGHT = '#1F9C82';
+// Gestión Humana es otro módulo y tiene su propia paleta (coral cálido) para no confundirse
+// con el verde azulado de Biomédica: panel lateral, ítem activo, fondo ambiental y encabezado.
+const PALETA_RRHH = {
+  tema: { key: 'RRHH', solid: '#E8603C', bg: 'linear-gradient(135deg, #C2410C 0%, #E8603C 100%)', light: '#FDBA9C', dark: '#C2410C' },
+  acento: '#C2410C',
+  sidebar: 'linear-gradient(180deg, #FFF1EC 0%, #FFF8F4 100%)',
+  activo: 'linear-gradient(135deg, #FFDCCD 0%, #FFE9DF 100%)',
+};
 
 const MONTHS = [
   { k: 'ene', l: 'Ene', full: 'Enero', idx: 0 }, { k: 'feb', l: 'Feb', full: 'Febrero', idx: 1 }, { k: 'mar', l: 'Mar', full: 'Marzo', idx: 2 },
@@ -4060,7 +4068,7 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
               style={active
                 ? (dark
                     ? { background: accent + '1A', color: accent, borderRight: `2px solid ${accent}` }
-                    : { background: SIDEBAR_ACTIVE_GRADIENT_LIGHT, color: SIDEBAR_ACTIVE_ACCENT_LIGHT, borderRight: `2px solid ${SIDEBAR_ACTIVE_ACCENT_LIGHT}` })
+                    : (marcaModulo ? { background: PALETA_RRHH.activo, color: accent, borderRight: `2px solid ${accent}` } : { background: SIDEBAR_ACTIVE_GRADIENT_LIGHT, color: SIDEBAR_ACTIVE_ACCENT_LIGHT, borderRight: `2px solid ${SIDEBAR_ACTIVE_ACCENT_LIGHT}` }))
                 : {}}>
               <Icon size={15} /> {m.label}
               {m.key === 'fallas' && nuevosReportes > 0 && (
@@ -4370,9 +4378,10 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
     : menuActual?.group ? [menuActual.group, menuActual.label] : [menuActual?.label || ''];
   const mostrarEmpresas = !menu.startsWith('admin_') && !moduloInfo;
 
-  const theme = themeOf(activeCompany);
-  const accent = theme.solid;
+  const theme = enRRHH ? PALETA_RRHH.tema : themeOf(activeCompany);
+  const accent = enRRHH ? PALETA_RRHH.acento : theme.solid;
   const accentBg = theme.bg;
+  const fondoSidebar = enRRHH ? PALETA_RRHH.sidebar : SIDEBAR_GRADIENT_LIGHT;
 
   const t = uiTheme(dark);
 
@@ -4728,7 +4737,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
       )}
       {/* ENCABEZADO DE LA PLATAFORMA — todas las pantallas; en <lg además abre el menú lateral */}
       <PlatformHeader t={t} dark={dark} user={user} rolLabel={ROLE_LABELS[user.role] || user.role} empresaLabel={moduloDeMenu(menu) === 'rrhh' ? nombreEmpresaRRHH(rrhhEmpresa) : empresaLabel}
-        seccion={seccion} logo={logoIngenieriaClinica} marcaModulo={enRRHH ? moduloPorKey('rrhh') : null}
+        seccion={seccion} logo={logoIngenieriaClinica} marcaModulo={enRRHH ? moduloPorKey('rrhh') : null} acento={enRRHH ? PALETA_RRHH.acento : undefined}
         notificaciones={puedeAbrir('fallas') ? nuevosReportes : null}
         onNotificaciones={puedeAbrir('fallas') ? () => setMenu('fallas') : undefined}
         modulosHabilitados={MODULOS.filter(m => permitidos.has(m.key)).length}
@@ -4742,7 +4751,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
 
       {/* SIDEBAR — escritorio: columna fija en el flujo normal, oculta en <lg */}
       <div className={`hidden lg:flex lg:w-56 lg:shrink-0 border-r flex-col ${t.panel} ${t.border}`}
-        style={!dark ? { background: SIDEBAR_GRADIENT_LIGHT } : undefined}>
+        style={!dark ? { background: fondoSidebar } : undefined}>
         <SidebarNav menu={menu} onNavigate={navegarDesdeMenu} itemsModulo={itemsMenuModulo} marcaModulo={enRRHH ? moduloPorKey('rrhh') : null} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
           t={t} dark={dark} setDark={setDark} onLogout={onLogout} readOnly={readOnly} />
       </div>
@@ -4751,7 +4760,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
       <div className={`lg:hidden fixed inset-y-0 left-0 z-50 w-64 border-r flex flex-col ${t.panel} ${t.border}`}
         style={{
           transform: mobileNavOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 300ms cubic-bezier(0.23,1,0.32,1)',
-          ...(!dark ? { background: SIDEBAR_GRADIENT_LIGHT } : {}),
+          ...(!dark ? { background: fondoSidebar } : {}),
         }}>
         <SidebarNav menu={menu} onNavigate={(k) => { navegarDesdeMenu(k); setMobileNavOpen(false); }} itemsModulo={itemsMenuModulo} marcaModulo={enRRHH ? moduloPorKey('rrhh') : null} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
           t={t} dark={dark} setDark={setDark} onLogout={onLogout} readOnly={readOnly} onCloseMobile={() => setMobileNavOpen(false)} />

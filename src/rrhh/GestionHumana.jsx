@@ -16,7 +16,7 @@ import {
 import * as rrhh from './rrhhService';
 import Expediente from './Expediente';
 import {
-  COLOR_RRHH, ESTADO_COLABORADOR, ESTADO_DOCUMENTACION, ESTADO_DOCUMENTO,
+  COLOR_RRHH, COLOR_RRHH_CLARO, ESTADO_COLABORADOR, ESTADO_DOCUMENTACION, ESTADO_DOCUMENTO,
   AREAS_RRHH, TIPOS_CONTRATO, fmtFecha, abrirEnlace,
 } from './formato';
 import { Aviso, Avatar, Boton, Card, EstadoPill, FormularioModal, Modal, Pill, Progreso, Tabla } from './ui';
@@ -95,18 +95,18 @@ function InicioRRHH({ t, ir, abrirExpediente, empresa }) {
         <Kpi t={t} label="Documentación pendiente" valor={k.documentacionPendiente} sub="Colaboradores con pendientes" color="#DC2626" icono={AlertCircle} onClick={() => ir('colaboradores', { documentacion: 'Con pendientes' })} />
       </div>
 
-      <section className="rounded-2xl p-5 sm:p-6 text-white relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4F46E5 100%)' }}>
+      <section className="rounded-2xl p-5 sm:p-6 text-white relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #431407 0%, #9A3412 50%, #E8603C 100%)' }}>
         <div className="absolute -right-12 -top-12 w-56 h-56 rounded-full bg-white/10" aria-hidden="true" />
         <div className="relative grid lg:grid-cols-[1fr_auto] gap-5 items-center">
           <div>
-            <div className="text-3xs uppercase tracking-widest font-semibold text-indigo-200 flex items-center gap-1.5"><Sparkles size={12} /> Expediente digital</div>
+            <div className="text-3xs uppercase tracking-widest font-semibold text-orange-200 flex items-center gap-1.5"><Sparkles size={12} /> Expediente digital</div>
             <h2 className="mt-2 text-lg sm:text-xl font-bold">De carpetas y documentos dispersos a expedientes digitales centralizados</h2>
-            <p className="mt-2 text-xs sm:text-sm text-indigo-100 max-w-3xl">
+            <p className="mt-2 text-xs sm:text-sm text-orange-50 max-w-3xl">
               Hojas de vida, títulos, actas de grado, certificados, vacunas y contratos de cada colaborador en un solo lugar,
               con alertas de vencimiento, completitud del expediente y trazabilidad de cada cambio.
             </p>
           </div>
-          <button onClick={() => ir('colaboradores')} className="inline-flex items-center gap-2 rounded-lg px-5 min-h-11 text-sm font-semibold bg-white text-indigo-900 hover:bg-indigo-50 transition justify-self-start">
+          <button onClick={() => ir('colaboradores')} className="inline-flex items-center gap-2 rounded-lg px-5 min-h-11 text-sm font-semibold bg-white text-orange-900 hover:bg-orange-50 transition justify-self-start">
             Ver colaboradores <ArrowRight size={16} />
           </button>
         </div>
@@ -430,7 +430,7 @@ export default function GestionHumana({ t, user, readOnly, empresaLabel, empresa
       {/* ENCABEZADO DEL MÓDULO */}
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div className="flex items-start gap-3">
-          <span className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-white shadow-md" style={{ background: `linear-gradient(135deg, ${COLOR_RRHH} 0%, #818CF8 100%)` }}>
+          <span className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-white shadow-md" style={{ background: `linear-gradient(135deg, ${COLOR_RRHH} 0%, ${COLOR_RRHH_CLARO} 100%)` }}>
             <Users size={22} />
           </span>
           <div>
