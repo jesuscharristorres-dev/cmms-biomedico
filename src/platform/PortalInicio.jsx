@@ -56,8 +56,21 @@ function accionModulo(modulo, { permitido, canOpen }) {
 /* ---------------------------------------------------------------- */
 /* ENCABEZADO CORPORATIVO                                             */
 /* ---------------------------------------------------------------- */
+// Ícono del módulo en un recuadro de su color — reemplaza al logo de Ingeniería Clínica (que es
+// solo del área biomédica) dentro de módulos con identidad propia, como Gestión Humana.
+export function MarcaModulo({ modulo, size = 36 }) {
+  const Icono = modulo.icon;
+  return (
+    <span className="shrink-0 inline-flex items-center justify-center rounded-xl text-white"
+      style={{ width: size, height: size, background: modulo.color }} title={modulo.nombre}>
+      <Icono size={Math.round(size * 0.5)} />
+    </span>
+  );
+}
+
+// `marcaModulo`: módulo cuyo ícono se muestra en lugar del logo (ver MarcaModulo).
 export function PlatformHeader({
-  t, dark, user, rolLabel, empresaLabel, seccion, logo, notificaciones, onNotificaciones,
+  t, dark, user, rolLabel, empresaLabel, seccion, logo, marcaModulo, notificaciones, onNotificaciones,
   modulosHabilitados, onLogout, onOpenMenu, onInicio,
 }) {
   const [perfilAbierto, setPerfilAbierto] = useState(false);
@@ -83,7 +96,9 @@ export function PlatformHeader({
       </button>
 
       <button onClick={onInicio} className="flex items-center gap-2.5 min-w-0 text-left" title="Ir al inicio del módulo">
-        <img src={logo} alt="" width={30} height={30} className="shrink-0 lg:hidden" style={{ objectFit: 'contain' }} />
+        {marcaModulo
+          ? <span className="lg:hidden"><MarcaModulo modulo={marcaModulo} size={30} /></span>
+          : <img src={logo} alt="" width={30} height={30} className="shrink-0 lg:hidden" style={{ objectFit: 'contain' }} />}
         <div className="min-w-0">
           <div className="text-3xs uppercase tracking-widest font-semibold truncate" style={{ color: dark ? '#5EEAD4' : '#0F766E' }}>
             {PLATAFORMA_NOMBRE}

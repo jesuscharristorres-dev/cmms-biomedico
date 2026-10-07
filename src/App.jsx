@@ -21,7 +21,7 @@ import writeXlsxFile from 'write-excel-file/browser';
 import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts, aplicaCalibracionEfectiva } from './services/alertLogic';
 import { preventivoDelMes } from './services/preventivoSchedule';
 import { MODULOS, ESTADOS_MODULO, moduloPorKey, moduloDeMenu, menuDeModulo, modulosPermitidos } from './platform/modulos';
-import { PlatformHeader, ModuloInfoPage, PortalPublico } from './platform/PortalInicio';
+import { PlatformHeader, ModuloInfoPage, PortalPublico, MarcaModulo } from './platform/PortalInicio';
 import { LANDING_ECOSISTEMA } from './platform/landing';
 // Módulo Gestión Humana (demo): se carga solo cuando alguien entra al módulo.
 const GestionHumana = React.lazy(() => import('./rrhh/GestionHumana'));
@@ -4020,7 +4020,8 @@ function AmbientBackground({ theme, dark, conLogo = true }) {
 /* ---------------------------------------------------------------- */
 // `itemsModulo`: cuando se está dentro de un módulo con menú propio (Gestión Humana), el panel
 // muestra solo las opciones de ese módulo en lugar del menú completo de la plataforma.
-function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dark, setDark, onLogout, readOnly, onCloseMobile, itemsModulo }) {
+// `marcaModulo`: dentro de Gestión Humana el logo de Ingeniería Clínica (solo biomédica) se cambia por el ícono del módulo.
+function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dark, setDark, onLogout, readOnly, onCloseMobile, itemsModulo, marcaModulo }) {
   const user = useContext(AuthUserContext);
   const isSuper = user?.role === 'SUPER_ADMIN';
   const permitidos = modulosPermitidos(user);
@@ -4030,7 +4031,9 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
       <div className="h-1" style={{ background: accentBg }} />
       <div className="px-4 py-5 border-b flex items-center justify-between" style={{ borderColor: 'inherit' }}>
         <div className="flex items-center gap-2.5 min-w-0">
-          <img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={36} height={36} className="shrink-0" style={{ objectFit: 'contain' }} />
+          {marcaModulo
+            ? <MarcaModulo modulo={marcaModulo} />
+            : <img src={logoIngenieriaClinica} alt="Ingeniería Clínica" width={36} height={36} className="shrink-0" style={{ objectFit: 'contain' }} />}
           <div className="min-w-0">
             <div className="text-3xs uppercase tracking-widest truncate" style={{ color: accent }}>Plataforma Integral</div>
             <div className="text-sm font-bold mt-0.5 truncate">de Gestión</div>
@@ -4725,7 +4728,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
       )}
       {/* ENCABEZADO DE LA PLATAFORMA — todas las pantallas; en <lg además abre el menú lateral */}
       <PlatformHeader t={t} dark={dark} user={user} rolLabel={ROLE_LABELS[user.role] || user.role} empresaLabel={moduloDeMenu(menu) === 'rrhh' ? nombreEmpresaRRHH(rrhhEmpresa) : empresaLabel}
-        seccion={seccion} logo={logoIngenieriaClinica}
+        seccion={seccion} logo={logoIngenieriaClinica} marcaModulo={enRRHH ? moduloPorKey('rrhh') : null}
         notificaciones={puedeAbrir('fallas') ? nuevosReportes : null}
         onNotificaciones={puedeAbrir('fallas') ? () => setMenu('fallas') : undefined}
         modulosHabilitados={MODULOS.filter(m => permitidos.has(m.key)).length}
@@ -4740,7 +4743,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
       {/* SIDEBAR — escritorio: columna fija en el flujo normal, oculta en <lg */}
       <div className={`hidden lg:flex lg:w-56 lg:shrink-0 border-r flex-col ${t.panel} ${t.border}`}
         style={!dark ? { background: SIDEBAR_GRADIENT_LIGHT } : undefined}>
-        <SidebarNav menu={menu} onNavigate={navegarDesdeMenu} itemsModulo={itemsMenuModulo} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
+        <SidebarNav menu={menu} onNavigate={navegarDesdeMenu} itemsModulo={itemsMenuModulo} marcaModulo={enRRHH ? moduloPorKey('rrhh') : null} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
           t={t} dark={dark} setDark={setDark} onLogout={onLogout} readOnly={readOnly} />
       </div>
 
@@ -4750,7 +4753,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
           transform: mobileNavOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 300ms cubic-bezier(0.23,1,0.32,1)',
           ...(!dark ? { background: SIDEBAR_GRADIENT_LIGHT } : {}),
         }}>
-        <SidebarNav menu={menu} onNavigate={(k) => { navegarDesdeMenu(k); setMobileNavOpen(false); }} itemsModulo={itemsMenuModulo} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
+        <SidebarNav menu={menu} onNavigate={(k) => { navegarDesdeMenu(k); setMobileNavOpen(false); }} itemsModulo={itemsMenuModulo} marcaModulo={enRRHH ? moduloPorKey('rrhh') : null} nuevosReportes={nuevosReportes} accent={accent} accentBg={accentBg}
           t={t} dark={dark} setDark={setDark} onLogout={onLogout} readOnly={readOnly} onCloseMobile={() => setMobileNavOpen(false)} />
       </div>
 
