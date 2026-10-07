@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, Pencil, Eye, Download, FilePlus2, GraduationCap, Award, Syringe, FileSignature,
   AlertTriangle, AlertCircle, CheckCircle2, Link2, ExternalLink, RefreshCw, Briefcase, History,
-  IdCard, BookOpen, FolderOpen, LayoutDashboard, UserRound, HardHat, BadgeCheck, HeartPulse, FileText,
+  IdCard, BookOpen, FolderOpen, LayoutDashboard, UserRound, HardHat, HeartPulse, FileText,
   CalendarDays, MapPin, Phone, Mail, Shirt,
 } from 'lucide-react';
 import * as rrhh from './rrhhService';
@@ -372,7 +372,6 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
               <ul className="space-y-2">
                 {[
                   { icon: HardHat, color: '#EA580C', area: 'SST', texto: 'Vacunación → exámenes ocupacionales → riesgos → incidentes' },
-                  { icon: BadgeCheck, color: '#2563EB', area: 'Calidad', texto: 'Capacitaciones → competencias → certificaciones' },
                   { icon: HeartPulse, color: '#0D9488', area: 'Biomédica', texto: 'Responsable de equipos → mantenimientos → capacitaciones' },
                 ].map(x => (
                   <li key={x.area} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${t.border}`}>
