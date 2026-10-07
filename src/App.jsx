@@ -3979,7 +3979,8 @@ function ReporteFallaForm({ onBack }) {
 // así que cambiar de empresa reambienta el fondo sin ninguna lógica nueva de color.
 // Son manchas difuminadas de color sólido (no gradientes) para que el cambio entre
 // empresas transicione con un simple `transition-colors`, sin parpadeos.
-function AmbientBackground({ theme, dark }) {
+// `conLogo`: la marca de agua de Ingeniería Clínica es solo del área biomédica (no se muestra en Gestión Humana).
+function AmbientBackground({ theme, dark, conLogo = true }) {
   const isNeutral = theme.key === 'TODAS';
   const c1 = isNeutral ? '#0EA5E9' : theme.solid; // "azul tenue" neutro, o color de marca
   const c2 = isNeutral ? '#94A3B8' : theme.light; // "gris claro" neutro, o variante clara de marca
@@ -4003,10 +4004,12 @@ function AmbientBackground({ theme, dark }) {
         style={{ width: '30rem', height: '30rem', bottom: '-12rem', left: '-8rem', backgroundColor: c2, opacity: op, filter: 'blur(100px)' }} />
       <div className="absolute rounded-full transition-colors duration-500 ease-out"
         style={{ width: '26rem', height: '26rem', top: '30%', left: '42%', backgroundColor: c3, opacity: op * 0.65, filter: 'blur(110px)' }} />
-      <div className="absolute inset-0 flex items-center justify-center">
-        <img src={logoIngenieriaClinica} alt=""
-          style={{ width: 'min(112vw, 59rem)', height: 'min(112vw, 59rem)', objectFit: 'contain', opacity: logoOpacity, transition: 'opacity 500ms ease-out' }} />
-      </div>
+      {conLogo && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <img src={logoIngenieriaClinica} alt=""
+            style={{ width: 'min(112vw, 59rem)', height: 'min(112vw, 59rem)', objectFit: 'contain', opacity: logoOpacity, transition: 'opacity 500ms ease-out' }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -4753,7 +4756,7 @@ function MainApp({ user, entorno, onLogout, readOnly, menuInicial }) {
 
       {/* MAIN */}
       <div className="flex-1 relative overflow-hidden">
-        <AmbientBackground theme={theme} dark={dark} />
+        <AmbientBackground theme={theme} dark={dark} conLogo={moduloDeMenu(menu) !== 'rrhh'} />
         <div className="absolute inset-0 overflow-y-auto p-6">
         {/* Empresa pills — solo SUPER_ADMIN puede cambiar de empresa; un usuario de empresa
             ve únicamente la suya, fija. */}
