@@ -6150,6 +6150,11 @@ function PlanesProgramasPage({ planesProgramas, activeCompany, t, onUpdate, read
 // mantiene sin traducir para que coincida exactamente con lo que produce el servidor.
 const EMPRESA_LABEL = { [OTRAS_EMPRESA]: 'Otras' };
 const CAP_PAGE_SIZE = 20;
+// Nota mínima (%) para considerar aprobada una capacitación — ver "Seguimiento de aprobación"
+// más abajo. Se evalúa siempre sobre el ÚLTIMO intento de cada persona en esa capacitación,
+// nunca sobre el promedio ni la peor nota histórica (a propósito: alguien que reprobó una vez
+// pero ya aprobó no debe seguir apareciendo como pendiente).
+const UMBRAL_APROBACION = 90;
 
 // Aplica todos los filtros del dashboard de Capacitaciones excepto el que se indique en
 // `skip` — así cada gráfica que desglosa por una dimensión (empresa, sede, capacitación)
@@ -6195,9 +6200,16 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
   const [busqueda, setBusqueda] = useState('');
   const [sort, setSort] = useState({ key: 'fecha', dir: -1 });
   const [pagina, setPagina] = useState(1);
+  // '' = Todas, 'pendientes' = última nota < UMBRAL_APROBACION, 'aprobadas' = >= UMBRAL_APROBACION.
+  // No participa de `filtros`/filtrarCapacitaciones (eso filtra RESPUESTAS individuales, usadas
+  // por los KPI/gráficas de siempre) porque este filtro opera sobre PERSONAS — se aplica después,
+  // sobre el resumen por persona+capacitación (ver resumenAprobacion más abajo).
+  const [estadoAprobacion, setEstadoAprobacion] = useState('');
+  // Persona+capacitación seleccionada para ver su historial de intentos (modal "Acceso al detalle").
+  const [personaDetalle, setPersonaDetalle] = useState(null);
 
   const filtros = { empresa: activeCompany, sede, capacitacion: capacitacionSel, anio, mes, desde, hasta };
-  const hayFiltrosActivos = Boolean(activeCompany !== 'TODAS' || sede || capacitacionSel || anio || mes || desde || hasta);
+  const hayFiltrosActivos = Boolean(activeCompany !== 'TODAS' || sede || capacitacionSel || anio || mes || desde || hasta || estadoAprobacion);
 
   // Opciones de cada selector: relativas solo a la empresa activa (no a los demás filtros
   // locales), para que elegir una capacitación puntual no borre las sedes disponibles.
@@ -6288,6 +6300,50 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
     return peor;
   }, [filtrados]);
 
+  // Seguimiento de aprobación: para cada persona + capacitación (misma identidad, mismo
+  // `capacitacion`), se queda con su intento MÁS RECIENTE con nota (ignora filas sin
+  // puntaje — no hay nada que evaluar ahí) y evalúa SOLO ese último intento contra
+  // UMBRAL_APROBACION. Nunca el promedio ni la peor nota histórica: alguien que reprobó una
+  // vez pero ya aprobó en un intento posterior debe dejar de aparecer como pendiente, y el
+  // historial completo (`intentos`) se conserva para el detalle persona a persona.
+  // Se calcula sobre `filtrados` (ya respeta empresa/sede/capacitación/año/mes/rango de
+  // fechas) — el filtro de Estado de aprobación se aplica DESPUÉS, sobre este resumen.
+  const resumenAprobacion = useMemo(() => {
+    const grupos = new Map();
+    filtrados.forEach(r => {
+      if (r.porcentaje == null) return;
+      const clave = `${identidadDe(r)}|${r.capacitacion}`;
+      if (!grupos.has(clave)) grupos.set(clave, []);
+      grupos.get(clave).push(r);
+    });
+    const resumen = [];
+    grupos.forEach(intentos => {
+      const ordenados = [...intentos].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+      const ultimo = ordenados[ordenados.length - 1];
+      resumen.push({
+        identidad: identidadDe(ultimo),
+        nombre: ultimo.nombre, empresa: ultimo.empresa, sede: ultimo.sede, cargo: ultimo.cargo,
+        capacitacion: ultimo.capacitacion,
+        ultimaNota: ultimo.porcentaje, ultimaFecha: ultimo.fecha,
+        aprobado: ultimo.porcentaje >= UMBRAL_APROBACION,
+        intentos: ordenados,
+      });
+    });
+    // Pendientes primero, y entre ellos la nota más baja primero — así lo más urgente queda arriba.
+    resumen.sort((a, b) => (a.aprobado === b.aprobado ? a.ultimaNota - b.ultimaNota : a.aprobado ? 1 : -1));
+    return resumen;
+  }, [filtrados]);
+
+  const personasPendientes = useMemo(() => resumenAprobacion.filter(r => !r.aprobado), [resumenAprobacion]);
+  // KPI en personas ÚNICAS (no en pares persona+capacitación): alguien pendiente en 2 temas
+  // a la vez cuenta una sola vez acá, igual que "Personas capacitadas" más arriba.
+  const personasPendientesUnicas = useMemo(() => new Set(personasPendientes.map(r => r.identidad)).size, [personasPendientes]);
+  const resumenFiltradoPorEstado = useMemo(() => {
+    if (estadoAprobacion === 'pendientes') return resumenAprobacion.filter(r => !r.aprobado);
+    if (estadoAprobacion === 'aprobadas') return resumenAprobacion.filter(r => r.aprobado);
+    return resumenAprobacion;
+  }, [resumenAprobacion, estadoAprobacion]);
+
   // Comparación PRE/POS: cuando dos hojas comparten el mismo `capacitacion` (label) pero una
   // trae fase "pre" y la otra "pos" (evaluación antes/después de la capacitación), empareja
   // las respuestas de la MISMA persona (misma identidad) en ambas fases para mostrar la
@@ -6340,7 +6396,7 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
 
   const toggleSort = (key) => setSort(s => s.key === key ? { key, dir: -s.dir } : { key, dir: 1 });
   const limpiarFiltros = () => {
-    onChangeEmpresa('TODAS'); setSede(''); setCapacitacionSel(''); setAnio(''); setMes(''); setDesde(''); setHasta('');
+    onChangeEmpresa('TODAS'); setSede(''); setCapacitacionSel(''); setAnio(''); setMes(''); setDesde(''); setHasta(''); setEstadoAprobacion('');
   };
 
   const ActualizarBtn = !readOnly && (
@@ -6420,6 +6476,18 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
         </div>
       )}
 
+      {/* Desaparece sola en cuanto personasPendientesUnicas llega a 0 (último intento de todos
+          ≥ UMBRAL_APROBACION) — no es un estado que haya que cerrar ni ocultar a mano. */}
+      {personasPendientesUnicas > 0 && (
+        <div className="rounded-xl border p-3 mb-4 text-2xs flex items-center justify-between flex-wrap gap-2" style={{ borderColor: '#EF444455', background: '#EF444415', color: '#EF4444' }}>
+          <div>
+            <span className="font-semibold">⚠ Hay {personasPendientesUnicas} persona{personasPendientesUnicas !== 1 ? 's' : ''} que requiere{personasPendientesUnicas !== 1 ? 'n' : ''} seguimiento.</span>
+            {' '}Obtuvieron menos del {UMBRAL_APROBACION}% en su última evaluación.
+          </div>
+          <button onClick={() => setEstadoAprobacion('pendientes')} className="font-semibold underline whitespace-nowrap">Ver personas pendientes →</button>
+        </div>
+      )}
+
       <div className={`rounded-xl border p-3 mb-4 flex flex-wrap items-center gap-2 ${t.panel} ${t.border}`}>
         <Filter size={13} className={t.muted} />
         {/* Reutiliza el mismo `activeCompany` que ya gobierna el resto del CMMS (pestañas
@@ -6448,6 +6516,11 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
         <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`} title="Desde" />
         <span className={`text-2xs ${t.muted}`}>a</span>
         <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`} title="Hasta" />
+        <select value={estadoAprobacion} onChange={e => setEstadoAprobacion(e.target.value)} className={`rounded-md px-2 py-1.5 text-xs border ${t.input}`} title="Estado de aprobación">
+          <option value="">Estado: todas</option>
+          <option value="aprobadas">Aprobadas ≥ {UMBRAL_APROBACION}%</option>
+          <option value="pendientes">Pendientes &lt; {UMBRAL_APROBACION}%</option>
+        </select>
         {hayFiltrosActivos && <Button variant="ghost" t={t} icon={X} iconSize={12} onClick={limpiarFiltros}>Limpiar filtros</Button>}
       </div>
 
@@ -6457,7 +6530,7 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-4">
             <HeroStat t={t} label="Capacitaciones realizadas" value={totalCapacitaciones} sub="temas distintos con respuestas" color={accent} />
             <HeroStat t={t} label="Registros / respuestas" value={totalRegistros} sub="asistencias registradas" color="#3B82F6" />
             <HeroStat t={t} label="Personas capacitadas" value={personasUnicas} sub="identidades únicas" color="#22C55E" />
@@ -6465,7 +6538,56 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
               sub={`${conPuntaje.length} evaluaciones con puntaje`} color={promedioPct != null && promedioPct < 70 ? '#EF4444' : '#8B5CF6'} />
             <HeroStat t={t} label="Menor promedio" value={peorCapacitacion ? `${peorCapacitacion.avg}%` : '—'}
               sub={peorCapacitacion ? peorCapacitacion.name : 'Sin suficientes datos'} color="#F59E0B" />
+            <HeroStat t={t} label={`Personas por debajo del ${UMBRAL_APROBACION}%`} value={personasPendientesUnicas}
+              sub="Requieren refuerzo / nueva presentación" color="#EF4444" onClick={() => setEstadoAprobacion('pendientes')} />
           </div>
+
+          {resumenAprobacion.length > 0 && (
+            <div className={`rounded-xl border overflow-hidden mb-4 ${t.panel} ${t.border}`}>
+              <div className="p-5 pb-3">
+                <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Seguimiento de aprobación</div>
+                <p className={`text-2xs mt-1 ${t.muted}`}>Por persona + capacitación, según su último intento — no el promedio ni la peor nota histórica.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-2xs">
+                  <thead>
+                    <tr className={`text-left ${t.muted} border-t ${t.border}`}>
+                      <th className="px-5 py-2 font-mono uppercase text-3xs">Persona</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs">Empresa</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs">Sede</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs">Cargo</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs">Capacitación</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs text-right">Última nota</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs">Fecha último intento</th>
+                      <th className="px-3 py-2 font-mono uppercase text-3xs">Estado</th>
+                      <th className="px-3 py-2 pr-5 font-mono uppercase text-3xs text-right">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resumenFiltradoPorEstado.length === 0 ? (
+                      <tr><td colSpan={9} className={`text-center py-6 ${t.muted}`}>Sin personas en este estado para los filtros actuales.</td></tr>
+                    ) : resumenFiltradoPorEstado.map((f, i) => (
+                      <tr key={i} className={`border-t ${t.border}`}>
+                        <td className="px-5 py-2">{f.nombre || '—'}</td>
+                        <td className="px-3 py-2">{EMPRESA_LABEL[f.empresa] || f.empresa}</td>
+                        <td className="px-3 py-2">{f.sede || '—'}</td>
+                        <td className="px-3 py-2">{f.cargo || '—'}</td>
+                        <td className="px-3 py-2">{f.capacitacion}</td>
+                        <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: f.aprobado ? '#22C55E' : '#EF4444' }}>{f.ultimaNota}%</td>
+                        <td className="px-3 py-2 font-mono whitespace-nowrap">{f.ultimaFecha ? formatFechaCorta(f.ultimaFecha) : '—'}</td>
+                        <td className="px-3 py-2">
+                          <Badge color={f.aprobado ? '#22C55E' : '#EF4444'}>{f.aprobado ? '✓ Aprobado' : '⚠ Pendiente'}</Badge>
+                        </td>
+                        <td className="px-3 py-2 pr-5 text-right">
+                          <button onClick={() => setPersonaDetalle(f)} className="font-semibold underline" style={{ color: accent }}>Ver</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <div className="grid lg:grid-cols-3 gap-4 mb-4">
             <div className={`rounded-xl border p-5 ${t.panel} ${t.border}`}>
@@ -6627,6 +6749,54 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
           </div>
         </>
       )}
+
+      {personaDetalle && <HistorialIntentosModal persona={personaDetalle} t={t} accent={accent} onClose={() => setPersonaDetalle(null)} />}
+    </div>
+  );
+}
+
+// Modal "Acceso al detalle" — historial completo de intentos de una persona en UNA
+// capacitación puntual (section 7 del pedido), numerados cronológicamente, para verificar
+// que efectivamente mejoró antes de confiar en su último resultado.
+function HistorialIntentosModal({ persona, t, accent, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className={`animate-modal-in relative w-full max-w-lg rounded-xl border p-4 ${t.panel} ${t.border}`}>
+        <div className="flex justify-between items-start mb-3">
+          <div>
+            <div className="text-sm font-semibold">{persona.nombre || 'Sin nombre'} — {persona.capacitacion}</div>
+            <div className={`text-2xs ${t.muted}`}>{EMPRESA_LABEL[persona.empresa] || persona.empresa}{persona.sede ? ` · ${persona.sede}` : ''}</div>
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" className="flex items-center justify-center w-11 h-11 -mr-2 -mt-2"><X size={16} /></button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-2xs">
+            <thead>
+              <tr className={`text-left ${t.muted} border-t ${t.border}`}>
+                <th className="py-2 font-mono uppercase text-3xs">Intento</th>
+                <th className="py-2 font-mono uppercase text-3xs">Fecha</th>
+                <th className="py-2 font-mono uppercase text-3xs text-right">Nota</th>
+                <th className="py-2 font-mono uppercase text-3xs text-right">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {persona.intentos.map((it, i) => {
+                const aprobado = it.porcentaje >= UMBRAL_APROBACION;
+                return (
+                  <tr key={it.id} className={`border-t ${t.border}`}>
+                    <td className="py-2 font-mono">{i + 1}</td>
+                    <td className="py-2 font-mono whitespace-nowrap">{it.fecha ? formatFechaCorta(it.fecha) : '—'}</td>
+                    <td className="py-2 text-right font-mono font-semibold" style={{ color: aprobado ? '#22C55E' : '#EF4444' }}>{it.porcentaje}%</td>
+                    <td className="py-2 text-right" style={{ color: aprobado ? '#22C55E' : '#EF4444' }}>{aprobado ? '✓ Aprobado' : '✗ No aprobado'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <Button variant="outline" t={t} accent={accent} className="mt-4" onClick={onClose}>Cerrar</Button>
+      </div>
     </div>
   );
 }
