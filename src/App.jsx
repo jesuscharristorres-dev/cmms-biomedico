@@ -3,7 +3,7 @@ import {
   Search, Plus, Trash2, Copy, Download, Upload, Sun, Moon, X, Menu,
   MessageCircle, FileText, LayoutDashboard, Building2, ListTree, CalendarClock,
   ShieldCheck, Wrench, FileBarChart, Settings, ArrowUpDown, BellRing, AlertTriangle, Lock,
-  User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight,
+  User, Eye, EyeOff, Image as ImageIcon, FolderOpen, ShieldAlert, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   CheckCircle2, AlertCircle, BookOpen, MapPin, Cpu, Activity, Share2, HeartPulse, Database, ArrowRight,
   IdCard, Save, SprayCan, ClipboardList, Paperclip, MoreVertical, Pencil, Filter, Zap, ExternalLink,
   GraduationCap, RefreshCw, Users, UserPlus, Power, UserCog, Link2
@@ -6207,6 +6207,7 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
   const [estadoAprobacion, setEstadoAprobacion] = useState('');
   // Persona+capacitación seleccionada para ver su historial de intentos (modal "Acceso al detalle").
   const [personaDetalle, setPersonaDetalle] = useState(null);
+  const [aprobacionAbierta, setAprobacionAbierta] = useState(false);
 
   const filtros = { empresa: activeCompany, sede, capacitacion: capacitacionSel, anio, mes, desde, hasta };
   const hayFiltrosActivos = Boolean(activeCompany !== 'TODAS' || sede || capacitacionSel || anio || mes || desde || hasta || estadoAprobacion);
@@ -6484,7 +6485,7 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
             <span className="font-semibold">⚠ Hay {personasPendientesUnicas} persona{personasPendientesUnicas !== 1 ? 's' : ''} que requiere{personasPendientesUnicas !== 1 ? 'n' : ''} seguimiento.</span>
             {' '}Obtuvieron menos del {UMBRAL_APROBACION}% en su última evaluación.
           </div>
-          <button onClick={() => setEstadoAprobacion('pendientes')} className="font-semibold underline whitespace-nowrap">Ver personas pendientes →</button>
+          <button onClick={() => { setEstadoAprobacion('pendientes'); setAprobacionAbierta(true); }} className="font-semibold underline whitespace-nowrap">Ver personas pendientes →</button>
         </div>
       )}
 
@@ -6539,15 +6540,19 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
             <HeroStat t={t} label="Menor promedio" value={peorCapacitacion ? `${peorCapacitacion.avg}%` : '—'}
               sub={peorCapacitacion ? peorCapacitacion.name : 'Sin suficientes datos'} color="#F59E0B" />
             <HeroStat t={t} label={`Personas por debajo del ${UMBRAL_APROBACION}%`} value={personasPendientesUnicas}
-              sub="Requieren refuerzo / nueva presentación" color="#EF4444" onClick={() => setEstadoAprobacion('pendientes')} />
+              sub="Requieren refuerzo / nueva presentación" color="#EF4444" onClick={() => { setEstadoAprobacion('pendientes'); setAprobacionAbierta(true); }} />
           </div>
 
           {resumenAprobacion.length > 0 && (
             <div className={`rounded-xl border overflow-hidden mb-4 ${t.panel} ${t.border}`}>
-              <div className="p-5 pb-3">
-                <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Seguimiento de aprobación</div>
-                <p className={`text-2xs mt-1 ${t.muted}`}>Por persona + capacitación, según su último intento — no el promedio ni la peor nota histórica.</p>
-              </div>
+              <button type="button" onClick={() => setAprobacionAbierta(v => !v)} className="w-full flex items-center justify-between gap-3 p-5 pb-3 text-left">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Seguimiento de aprobación</div>
+                  <p className={`text-2xs mt-1 ${t.muted}`}>Por persona + capacitación, según su último intento — no el promedio ni la peor nota histórica.</p>
+                </div>
+                {aprobacionAbierta ? <ChevronUp size={16} className={t.muted} /> : <ChevronDown size={16} className={t.muted} />}
+              </button>
+              {aprobacionAbierta && (
               <div className="overflow-x-auto">
                 <table className="w-full text-2xs">
                   <thead>
@@ -6586,6 +6591,7 @@ function CapacitacionesPage({ capacitaciones, activeCompany, onChangeEmpresa, t,
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           )}
 
