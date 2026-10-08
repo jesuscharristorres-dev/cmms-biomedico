@@ -377,6 +377,7 @@ function tiempoRespuestaMs(r) {
 // variables de entorno AUTH_USER / AUTH_PASSWORD_HASH configuradas en Vercel.
 
 const CLASIFICACIONES = ['I', 'IIA', 'IIB', 'III', 'N/A'];
+const PROPIEDAD_OPCIONES = ['Propio', 'Comodato'];
 const ESTADOS_EQUIPO = ['Operativo', 'Fuera de servicio', 'En mantenimiento', 'Dado de baja'];
 // La vista "Mantenimientos preventivos" solo ofrece estos dos — "Dado de baja" únicamente
 // aparece seleccionable en un equipo cuando ya tiene un reporte de baja (mismo campo
@@ -438,6 +439,7 @@ function newEquipo(empresaKey) {
     empresa: c.key, sede: c.sedes[0],
     equipo: '', marca: '', modelo: '', numeroSerie: '', registroInvima: '',
     clasificacionRiesgo: 'IIB', inventario: '',
+    propiedad: 'Propio',
     fechaInstalacion: '',
     fotografiaUrl: '', ubicacion: '', estado: 'Operativo', actaEntregaUrl: '', hojaVidaUrl: '',
     periodicidadMantenimiento: 'Anual', periodicidadCalibracion: 'ANUAL',
@@ -2463,6 +2465,7 @@ function EquipoDrawer({ equipo, onClose, onUpdate, t, readOnly }) {
                 <Field dense label="Registro INVIMA"><TextInput dense t={t} disabled={readOnly} value={equipo.registroInvima} onChange={v => patch('registroInvima', v)} /></Field>
                 <Field dense label="Clasificación de riesgo"><SelectInput dense t={t} disabled={readOnly} value={equipo.clasificacionRiesgo} options={CLASIFICACIONES} onChange={v => patch('clasificacionRiesgo', v)} /></Field>
                 <Field dense label="Inventario"><TextInput dense t={t} disabled={readOnly} value={equipo.inventario} onChange={v => patch('inventario', v)} /></Field>
+                <Field dense label="Propiedad"><SelectInput dense t={t} disabled={readOnly} value={equipo.propiedad || 'Propio'} options={PROPIEDAD_OPCIONES} onChange={v => patch('propiedad', v)} /></Field>
                 <Field dense label="Estado"><TextInput dense t={t} value={equipo.estado} disabled onChange={() => {}} /></Field>
                 <Field dense label="Fecha de instalación"><TextInput dense t={t} disabled={readOnly} type="date" value={equipo.fechaInstalacion} onChange={v => patch('fechaInstalacion', v)} /></Field>
                 <Field dense label="Ubicación"><TextInput dense t={t} disabled={readOnly} value={equipo.ubicacion} onChange={v => patch('ubicacion', v)} /></Field>
