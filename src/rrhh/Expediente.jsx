@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, Pencil, Eye, Download, FilePlus2, GraduationCap, Award, Syringe, FileSignature,
-  AlertTriangle, AlertCircle, CheckCircle2, Link2, ExternalLink, RefreshCw, Briefcase, History,
+  AlertTriangle, AlertCircle, CheckCircle2, Link2, ExternalLink, RefreshCw, History,
   IdCard, BookOpen, FolderOpen, LayoutDashboard, UserRound, HardHat, HeartPulse, FileText,
   CalendarDays, MapPin, Phone, Mail, Shirt,
 } from 'lucide-react';
@@ -13,7 +13,7 @@ import * as rrhh from './rrhhService';
 import { verExpediente, descargarExpediente } from './exportarExpediente';
 import {
   COLOR_RRHH, ESTADO_DOCUMENTO, ESTADO_VACUNA, ESTADO_CONTRATO, NIVEL_ALERTA, TIPOS_DOCUMENTO, TIPOS_CONTRATO,
-  AREAS_RRHH, fmtFecha, tiempoTranscurrido, abrirEnlace,
+  AREAS_RRHH, fmtFecha, abrirEnlace,
 } from './formato';
 import { Avatar, Boton, Card, EstadoPill, FormularioModal, Pill, Progreso, Tabla } from './ui';
 
@@ -229,8 +229,6 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
 
   const activoLabel = c.estado === 'Activo' ? (c.genero === 'F' ? 'Activa' : 'Activo') : (c.genero === 'F' ? 'Inactiva' : 'Inactivo');
   const docHv = exp.documentos.find(d => d.ref.id === `${c.id}-doc-hv`);
-  const experienciaActual = exp.experiencia.filter(x => !x.fin);
-  const experienciaAnterior = exp.experiencia.filter(x => x.fin);
 
   return (
     <div className="max-w-7xl mx-auto pb-10">
@@ -610,24 +608,6 @@ export default function Expediente({ t, colaboradorId, readOnly, usuario, empres
                   </div>
                 </div>
               ) : <p className={`text-xs ${t.muted}`}>Aún no se ha registrado si el colaborador recibió dotación.</p>}
-            </Card>
-            <Card t={t} titulo="Experiencia laboral" icono={Briefcase} color={COLOR_RRHH}>
-              <Tabla t={t} filas={experienciaActual} vacio="Sin experiencia actual registrada." columnas={[
-                { key: 'empresa', label: 'Empresa', render: x => <span className="font-semibold">{x.empresa}</span> },
-                { key: 'cargo', label: 'Cargo' },
-                { key: 'inicio', label: 'Inicio' },
-                { key: 'fin', label: 'Fin', render: () => <Pill color="#16A34A">Actualidad</Pill> },
-                { key: 'tiempo', label: 'Tiempo', render: x => tiempoTranscurrido(x.inicio, x.fin) },
-              ]} />
-            </Card>
-            <Card t={t} titulo="Experiencia anterior" icono={History} color={COLOR_RRHH}>
-              <Tabla t={t} filas={experienciaAnterior} vacio="Sin experiencia anterior registrada." columnas={[
-                { key: 'empresa', label: 'Empresa', render: x => <span className="font-semibold">{x.empresa}</span> },
-                { key: 'cargo', label: 'Cargo' },
-                { key: 'inicio', label: 'Inicio' },
-                { key: 'fin', label: 'Fin' },
-                { key: 'tiempo', label: 'Tiempo', render: x => tiempoTranscurrido(x.inicio, x.fin) },
-              ]} />
             </Card>
           </div>
         )}
