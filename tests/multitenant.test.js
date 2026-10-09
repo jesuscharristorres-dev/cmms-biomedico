@@ -13,6 +13,7 @@ import reportes from '../api/reportes-falla.js';
 import planes from '../api/planes-programas.js';
 import tecnoTransversal from '../api/tecno-transversal.js';
 import tecnoReportes from '../api/tecno-reportes.js';
+import tecnoComites from '../api/tecno-comites.js';
 import limpieza from '../api/limpieza-desinfeccion.js';
 import plantillas from '../api/limpieza-plantillas.js';
 import capacitaciones from '../api/capacitaciones.js';
@@ -167,7 +168,7 @@ describe('Arquitectura multiempresa', () => {
         assert.ok(pe.body.personal.every(p => p.empresa === emp));
         const rf = await call(reportes, { cookie: c });
         assert.ok(rf.body.reportes.length === 1 && rf.body.reportes[0].empresa === emp);
-        for (const h of [planes, tecnoReportes, limpieza]) {
+        for (const h of [planes, tecnoReportes, tecnoComites, limpieza]) {
           const d = await call(h, { cookie: c });
           assert.deepEqual(Object.keys(d.body.data), [emp]);
         }
@@ -181,7 +182,7 @@ describe('Arquitectura multiempresa', () => {
       }
     });
     test('manipular ?empresa= para ver otra empresa → 403', async () => {
-      for (const h of [equipos, personal, reportes, planes, tecnoReportes, limpieza, plantillas, tecnoTransversal]) {
+      for (const h of [equipos, personal, reportes, planes, tecnoReportes, tecnoComites, limpieza, plantillas, tecnoTransversal]) {
         const r = await call(h, { cookie: cookies.MACROMED, query: { empresa: 'MEIDE' } });
         assert.equal(r.status, 403, h.name);
       }
@@ -248,6 +249,10 @@ describe('Arquitectura multiempresa', () => {
       assert.equal(b.status, 403);
       const c = await call(limpieza, { method: 'PATCH', cookie: cookies.MACROMED, body: { empresaKey: 'MEIDE', sede: 's', anio: 2026, mes: 1, url: 'https://x.co' } });
       assert.equal(c.status, 403);
+      const tc = await call(tecnoComites, { method: 'PATCH', cookie: cookies.MACROMED, body: { empresaKey: 'MEIDE', anio: 2026, trimestre: 't1', url: 'https://x.co' } });
+      assert.equal(tc.status, 403);
+      const tcd = await call(tecnoComites, { method: 'DELETE', cookie: cookies.MACROMED, body: { empresaKey: 'MEIDE', anio: 2026, trimestre: 't1' } });
+      assert.equal(tcd.status, 403);
       const d = await call(plantillas, { method: 'DELETE', cookie: cookies.MACROMED, body: { empresaKey: 'MEIDE' } });
       assert.equal(d.status, 403);
       const e = await call(tecnoTransversal, { method: 'PATCH', cookie: cookies.MACROMED, body: { docKey: 'manual', empresaKey: 'MEIDE', valor: 'x' } });
@@ -294,7 +299,7 @@ describe('Arquitectura multiempresa', () => {
 
   describe('Sesiones, estados y cambios de empresa', () => {
     test('sin sesión no hay acceso a ningún dato → 401', async () => {
-      for (const h of [equipos, personal, reportes, planes, tecnoTransversal, tecnoReportes, limpieza, plantillas, capacitaciones]) {
+      for (const h of [equipos, personal, reportes, planes, tecnoTransversal, tecnoReportes, tecnoComites, limpieza, plantillas, capacitaciones]) {
         const r = await call(h, {});
         assert.equal(r.status, 401, h.name);
       }
