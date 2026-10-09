@@ -31,6 +31,10 @@ export function datosHeredados() {
     'cmms:planesProgramas': planesProgramas,
     'cmms:tecnoTransversal': { invima: 'https://global.example/doc', manual: Object.fromEntries(EMPRESAS.map(e => [e, `https://m/${e}`])) },
     'cmms:tecnoReportes': Object.fromEntries(EMPRESAS.map(e => [e, { s: { 2026: { 1: 'x' } } }])),
+    'cmms:tecnoComites': Object.fromEntries(EMPRESAS.map(e => [e, { 2026: { t1: {
+      url: `https://meet.example/${encodeURIComponent(e)}`, nombreComite: 'Comité Q1', fechaReunion: '2026-03-15',
+      estado: 'Realizado', observaciones: '', updatedAt: '2026-03-16T00:00:00.000Z',
+    } } }])),
     'cmms:limpiezaDesinfeccion': Object.fromEntries(EMPRESAS.map(e => [e, {}])),
     'cmms:limpiezaPlantillas': {},
     'cmms:capacitaciones': { records: EMPRESAS.map((e, i) => ({ id: `c${i}`, empresa: e })).concat({ id: 'cx', empresa: 'OTRAS' }), errores: [{ id: 'z' }], capacitacionesConfiguradas: [] },
