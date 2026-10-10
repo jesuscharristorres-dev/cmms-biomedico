@@ -7,15 +7,24 @@
 // depender de un servicio externo.
 // Forma: { [empresaKey]: { nombre, tipo, tamano, archivoDatos, updatedAt } }
 //
+// ARCHIVOS FUERA DE REDIS: si el proyecto tiene un store de Vercel Blob conectado
+// (BLOB_READ_WRITE_TOKEN), las plantillas NUEVAS se suben a Blob como archivo PRIVADO y en
+// Redis solo queda su metadato ({ ..., blobPathname } sin `archivoDatos`). La descarga pasa
+// por GET ?archivo=<empresaKey>, con la misma verificación de sesión y empresa. Sin Blob
+// configurado se sigue guardando en base64 como siempre. Las plantillas antiguas en base64 no
+// se mueven ni se modifican; se siguen viendo y descargando igual.
+//
+// TRÁFICO: lectura con caché por versión y ETag (lib/coleccion.js); escrituras condicionales.
+//
 // MULTIEMPRESA: GET exige sesión y devuelve solo las plantillas de las empresas visibles para
 // el usuario; cargar, reemplazar y eliminar exigen un rol con escritura y solo se permiten
 // sobre la empresa del usuario (SUPER_ADMIN: cualquiera existente). La restricción real vive
 // aquí: aunque alguien llame a este endpoint directamente, el servidor la aplica igual.
 
-import { kv } from '../lib/db.js';
 import { requireAuth } from '../lib/auth.js';
 import { empresaFilter, scopeKeyed, assertKeyedWrite } from '../lib/tenancy.js';
-import { HttpError } from '../lib/http.js';
+import { HttpError, esLimiteBaseDatos, MENSAJE_LIMITE_BASE_DATOS } from '../lib/http.js';
+import { mutar, responderConEtag, leer } from '../lib/coleccion.js';
 
 const KV_KEY = 'cmms:limpiezaPlantillas';
 const MAX_KEY_LEN = 80;
@@ -37,12 +46,74 @@ function esTextoValido(v, maxLen) {
   return typeof v === 'string' && v.trim().length > 0 && v.trim().length <= maxLen;
 }
 
+const vacio = () => ({});
+const blobConfigurado = () => !!process.env.BLOB_READ_WRITE_TOKEN;
+
+// La ruta interna del archivo en Blob no se expone: el cliente recibe la URL de descarga
+// autenticada de esta misma API. No muta `data` (es la caché compartida).
+function paraCliente(data) {
+  const out = {};
+  for (const [k, v] of Object.entries(data || {})) {
+    if (v && v.blobPathname) {
+      const { blobPathname: _p, ...resto } = v;
+      out[k] = { ...resto, archivoUrl: `/api/limpieza-plantillas?archivo=${encodeURIComponent(k)}` };
+    } else out[k] = v;
+  }
+  return out;
+}
+
+async function subirABlob(empresaKey, nombre, tipo, archivoDatos) {
+  const { put } = await import('@vercel/blob');
+  const buffer = Buffer.from(archivoDatos.slice(archivoDatos.indexOf(',') + 1), 'base64');
+  const seguro = nombre.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'plantilla';
+  const r = await put(`limpieza-plantillas/${encodeURIComponent(empresaKey)}/${seguro}`, buffer, {
+    access: 'private', contentType: tipo, addRandomSuffix: true,
+  });
+  return { pathname: r.pathname, tamano: buffer.length };
+}
+
+async function borrarDeBlob(pathname) {
+  if (!pathname || !blobConfigurado()) return;
+  try {
+    const { del } = await import('@vercel/blob');
+    await del(pathname);
+  } catch (err) {
+    // Un archivo huérfano en Blob no rompe nada; se registra para limpiarlo a mano si hace falta.
+    console.error('[api/limpieza-plantillas] No se pudo borrar el archivo anterior de Blob:', pathname, err);
+  }
+}
+
+async function descargar(req, res, ctx) {
+  const empresaKey = String(req.query.archivo || '');
+  const { data } = await leer(KV_KEY, vacio);
+  const visible = scopeKeyed(ctx, data, null)[empresaKey];
+  if (!visible) throw new HttpError(404);
+  if (visible.archivoDatos) {
+    const buffer = Buffer.from(visible.archivoDatos.slice(visible.archivoDatos.indexOf(',') + 1), 'base64');
+    res.setHeader('Content-Type', visible.tipo || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `${req.query.descargar ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(visible.nombre || 'plantilla')}`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.status(200).end(buffer);
+  }
+  if (!visible.blobPathname || !blobConfigurado()) throw new HttpError(404);
+  const { get } = await import('@vercel/blob');
+  const r = await get(visible.blobPathname, { access: 'private' });
+  if (!r || r.statusCode !== 200) throw new HttpError(404);
+  res.setHeader('Content-Type', visible.tipo || r.blob.contentType || 'application/octet-stream');
+  res.setHeader('Content-Disposition', `${req.query.descargar ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(visible.nombre || 'plantilla')}`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  return res.status(200).end(Buffer.from(await new Response(r.stream).arrayBuffer()));
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const ctx = await requireAuth(req);
-      const data = scopeKeyed(ctx, (await kv.get(KV_KEY)) || {}, empresaFilter(ctx, req.query));
-      return res.status(200).json({ data });
+      // `return await`: dentro del try, para que sus errores (404, límite de Redis…) los maneje el catch.
+      if (req.query?.archivo) return await descargar(req, res, ctx);
+      const filtro = empresaFilter(ctx, req.query);
+      return await responderConEtag(req, res, KV_KEY, vacio, [ctx.userId, ctx.role, ctx.empresaId, filtro],
+        data => ({ data: paraCliente(scopeKeyed(ctx, data, filtro)) }));
     }
 
     // Cargar, reemplazar y eliminar: sin sesión con permiso de escritura, la petición se
@@ -65,20 +136,28 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'El archivo no es válido o supera el tamaño máximo permitido (3 MB).' });
       }
 
-      const data = (await kv.get(KV_KEY)) || {};
-      const actualizado = {
-        ...data,
-        [empresaKey]: {
-          nombre: nombre.trim(),
-          tipo,
-          tamano: archivoDatos.length,
-          archivoDatos,
-          // La fecha de actualización se calcula en el servidor — no se confía en el reloj del cliente.
-          updatedAt: new Date().toISOString(),
-        },
-      };
-      await kv.set(KV_KEY, actualizado);
-      return res.status(200).json({ data: scopeKeyed(ctx, actualizado) });
+      // La fecha de actualización se calcula en el servidor — no se confía en el reloj del cliente.
+      let registro;
+      if (blobConfigurado()) {
+        const { pathname, tamano } = await subirABlob(empresaKey, nombre.trim(), tipo, archivoDatos);
+        registro = { nombre: nombre.trim(), tipo, tamano, blobPathname: pathname, updatedAt: new Date().toISOString() };
+      } else {
+        registro = { nombre: nombre.trim(), tipo, tamano: archivoDatos.length, archivoDatos, updatedAt: new Date().toISOString() };
+      }
+      let anterior = null;
+      let actualizado;
+      try {
+        actualizado = await mutar(KV_KEY, vacio, data => {
+          anterior = data[empresaKey]?.blobPathname || null;
+          const nuevo = { ...data, [empresaKey]: registro };
+          return { nuevo, respuesta: nuevo };
+        });
+      } catch (err) {
+        await borrarDeBlob(registro.blobPathname); // no dejar el archivo nuevo huérfano
+        throw err;
+      }
+      if (anterior && anterior !== registro.blobPathname) await borrarDeBlob(anterior);
+      return res.status(200).json({ data: paraCliente(scopeKeyed(ctx, actualizado)) });
     }
 
     if (req.method === 'DELETE') {
@@ -87,18 +166,24 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Falta empresaKey.' });
       }
       await assertKeyedWrite(ctx, empresaKey);
-      const data = (await kv.get(KV_KEY)) || {};
-      const actualizado = { ...data };
-      delete actualizado[empresaKey];
-      await kv.set(KV_KEY, actualizado);
-      return res.status(200).json({ data: scopeKeyed(ctx, actualizado) });
+      let anterior = null;
+      const actualizado = await mutar(KV_KEY, vacio, data => {
+        anterior = data[empresaKey]?.blobPathname || null;
+        const nuevo = { ...data };
+        delete nuevo[empresaKey];
+        return { nuevo, respuesta: nuevo };
+      });
+      if (anterior) await borrarDeBlob(anterior);
+      return res.status(200).json({ data: paraCliente(scopeKeyed(ctx, actualizado)) });
     }
 
     res.setHeader('Allow', ['GET', 'PATCH', 'DELETE']);
     return res.status(405).json({ error: 'Método no permitido.' });
   } catch (err) {
+    res.setHeader('Cache-Control', 'no-store');
     if (err instanceof HttpError) return res.status(err.status).json({ error: err.message, ...(err.details ? { details: err.details } : {}) });
     console.error('[api/limpieza-plantillas] Error:', err);
+    if (esLimiteBaseDatos(err)) return res.status(503).json({ error: MENSAJE_LIMITE_BASE_DATOS });
     return res.status(500).json({ error: 'No se pudo acceder a la base de datos compartida de plantillas de limpieza y desinfección.' });
   }
 }

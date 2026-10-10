@@ -18,6 +18,7 @@
 //                      de empresa solo puede vaciar los de SU empresa.
 
 import { kv } from '../lib/db.js';
+import { leer } from '../lib/coleccion.js';
 import { requireAuth, allowRate, getClientIp } from '../lib/auth.js';
 import { listEmpresas, getEmpresa, empresaPublica } from '../lib/empresas.js';
 import { empresaFilter, scopeArray, findOwned, applyScopedPatch } from '../lib/tenancy.js';
@@ -32,16 +33,31 @@ function texto(v, max) {
   return typeof v === 'string' ? v.trim().slice(0, max) : '';
 }
 
-async function catalogoPublico(res) {
+// Catálogo PÚBLICO (anónimo) del formulario de reporte de falla. Antes cada visita leía el
+// inventario completo de Redis (~3 MB de transferencia). Ahora:
+//   - el inventario sale de la caché en memoria validada por versión (lib/coleccion.js);
+//   - la respuesta se cachea en el CDN de Vercel (s-maxage) — la mayoría de visitas ni
+//     siquiera llega a la función; un equipo nuevo aparece en el formulario en ≤ 5 minutos;
+//   - límite de frecuencia por IP para las que sí llegan.
+// Solo se exponen los campos de identificación que el buscador del formulario necesita.
+const MAX_CATALOGO_POR_HORA = 120;
+const CACHE_CATALOGO = 'public, max-age=0, s-maxage=300, stale-while-revalidate=3600';
+
+async function catalogoPublico(req, res) {
+  if (!(await allowRate(`catalogo:${getClientIp(req)}`, MAX_CATALOGO_POR_HORA, 60 * 60))) {
+    throw new HttpError(429, 'Demasiadas consultas desde esta conexión. Intenta más tarde.');
+  }
   const empresas = (await listEmpresas()).filter(e => e.estado === 'activo');
   const activas = new Set(empresas.map(e => e.id));
-  const equipos = ((await kv.get(EQUIPOS_KEY)) || [])
+  const { data } = await leer(EQUIPOS_KEY, () => []);
+  const equipos = data
     .filter(e => e && activas.has(e.empresa))
     .map(e => ({
       id: e.id, empresa: e.empresa, sede: e.sede,
       equipo: e.equipo || '', marca: e.marca || '', modelo: e.modelo || '',
       numeroSerie: e.numeroSerie || '', inventario: e.inventario || '',
     }));
+  res.setHeader('Cache-Control', CACHE_CATALOGO);
   return res.status(200).json({ empresas: empresas.map(empresaPublica), equipos });
 }
 
@@ -57,7 +73,8 @@ async function construirReportePublico(body) {
   const sede = texto(r.sede, 80);
   if (empresa && !empresa.sedes.includes(sede)) errores.sede = 'La sede no pertenece a la empresa.';
 
-  const equipos = (await kv.get(EQUIPOS_KEY)) || [];
+  // Validación con la caché del inventario: no descarga los ~2,4 MB si no cambiaron.
+  const { data: equipos } = await leer(EQUIPOS_KEY, () => []);
   const equipo = equipos.find(e => e && e.id === r.equipoId);
   if (!equipo || !empresa || equipo.empresa !== empresa.id || equipo.sede !== sede) {
     errores.equipoId = 'El equipo no pertenece a la empresa y sede seleccionadas.';
@@ -82,7 +99,7 @@ async function construirReportePublico(body) {
 
 export default withErrors('api/reportes-falla', 'No se pudo acceder a la base de datos compartida de reportes.', async (req, res) => {
   if (req.method === 'GET') {
-    if (req.query?.catalogo) return catalogoPublico(res);
+    if (req.query?.catalogo) return catalogoPublico(req, res);
     const ctx = await requireAuth(req);
     const reportes = scopeArray(ctx, (await kv.get(KV_KEY)) || [], empresaFilter(ctx, req.query));
     return res.status(200).json({ reportes });

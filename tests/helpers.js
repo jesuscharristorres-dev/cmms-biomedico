@@ -4,6 +4,7 @@
 
 import { createMemoryKv, setKvForTests } from '../lib/db.js';
 import { resetEnsureSchemaForTests } from '../lib/migrations.js';
+import { resetColeccionCacheForTests } from '../lib/coleccion.js';
 import { hashPassword } from '../lib/password.js';
 
 export const ADMIN_USER = 'jesus.charris';
@@ -45,6 +46,9 @@ export function setupStore(initial = datosHeredados()) {
   const store = createMemoryKv(initial);
   setKvForTests(store);
   resetEnsureSchemaForTests();
+  resetColeccionCacheForTests();
+  // Lo que devuelve la caché de colecciones se congela: cualquier mutación accidental falla.
+  process.env.CMMS_FREEZE_CACHE = '1';
   // Los datos de prueba se siembran con las claves de production (sin prefijo).
   process.env.KV_NAMESPACE = 'production';
   process.env.AUTH_USER = ADMIN_USER;
@@ -55,12 +59,13 @@ export function setupStore(initial = datosHeredados()) {
 }
 
 /** Ejecuta un handler con una petición simulada. Devuelve { status, body, headers }. */
-export async function call(handler, { method = 'GET', query = {}, body, cookie } = {}) {
-  const req = { method, query, body, headers: { cookie: cookie || '', 'x-forwarded-for': '10.0.0.1' }, socket: {} };
+export async function call(handler, { method = 'GET', query = {}, body, cookie, headers = {} } = {}) {
+  const req = { method, query, body, headers: { cookie: cookie || '', 'x-forwarded-for': '10.0.0.1', ...headers }, socket: {} };
   const out = { status: 200, body: undefined, headers: {} };
   const res = {
     status(code) { out.status = code; return res; },
     json(obj) { out.body = obj; return res; },
+    end(raw) { out.raw = raw; return res; },
     setHeader(k, v) { out.headers[k.toLowerCase()] = v; return res; },
   };
   await handler(req, res);
