@@ -195,7 +195,7 @@ const DEFAULT_COMPANIES = [
   { key: 'MEIDE', color: '#24546A', gradient: 'linear-gradient(135deg, #24546A 0%, #3B7088 100%)', sedes: ['Armenia Berlín','Armenia Fundadores','Manizales Belén','Manizales Arboleda','La Dorada','Unidad Móvil'], logo: '/logos/MEIDE.png' },
   { key: 'NP MEDICAL', color: '#3F8E6F', gradient: 'linear-gradient(135deg, #3F8E6F 0%, #63B48F 100%)', sedes: ['Bogotá Samper','Bogotá Sur','Fontibón','Girardot','Tunja'], logo: '/logos/NP_MEDICAL.png' },
   { key: 'DIAGNOSTIK', color: '#C62828', gradient: 'linear-gradient(135deg, #C62828 0%, #E53935 100%)', sedes: ['Armenia Berlín','Armenia Fundadores','Manizales Belén','Bogotá','Chapinero','Villavicencio','La Dorada'], logo: '/logos/DIAGNOSTIK.png' },
-  { key: 'AUNAR SALUD', color: '#009EB7', gradient: 'linear-gradient(135deg, #009EB7 0%, #33C4D8 100%)', sedes: ['Bogotá','Bogotá - Segundo Piso','Bogotá - Quinto Piso','Bogotá - Sexto Piso','Villavicencio','Neiva'], logo: '/logos/AUNAR.png' },
+  { key: 'AUNAR SALUD', color: '#009EB7', gradient: 'linear-gradient(135deg, #009EB7 0%, #33C4D8 100%)', sedes: ['Bogotá - Segundo Piso','Bogotá - Quinto Piso','Bogotá - Sexto Piso','Villavicencio','Neiva'], logo: '/logos/AUNAR.png' },
 ];
 const COMPANIES = [...DEFAULT_COMPANIES];
 
@@ -1396,6 +1396,46 @@ async function eliminarLimpiezaPlantillaRemota(empresaKey) {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || 'No se pudo eliminar la plantilla en la base de datos compartida.');
   cacheSet(LIMPIEZA_PLANTILLAS_KEY, body.data);
+  return body.data;
+}
+
+// Checklist de inventario de la dotación por consultorio — mismo mecanismo que la plantilla
+// de arriba (UN archivo real por empresa, Data URI base64), pero NO aplica a MACROMED (pedido
+// explícito). Endpoint propio (api/checklist-dotacion.js) para no tocar el esquema de
+// limpieza-plantillas.js, que ya tiene archivos reales cargados en producción.
+const CHECKLIST_DOTACION_KEY = 'cmms-checklist-dotacion';
+async function loadChecklistDotacion() {
+  try {
+    const res = await apiFetch('/api/checklist-dotacion');
+    if (res.ok) {
+      const { data } = await res.json();
+      cacheSet(CHECKLIST_DOTACION_KEY, data);
+      return data;
+    }
+    console.error('No se pudo consultar los checklists de dotación: respuesta', res.status);
+  } catch (err) {
+    console.error('No se pudo consultar los checklists de dotación', err);
+  }
+  return cacheGet(CHECKLIST_DOTACION_KEY, {});
+}
+async function guardarChecklistDotacion(empresaKey, { nombre, tipo, archivoDatos }) {
+  const res = await apiFetch('/api/checklist-dotacion', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ empresaKey, nombre, tipo, archivoDatos }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'No se pudo guardar el checklist en la base de datos compartida.');
+  cacheSet(CHECKLIST_DOTACION_KEY, body.data);
+  return body.data;
+}
+async function eliminarChecklistDotacionRemota(empresaKey) {
+  const res = await apiFetch('/api/checklist-dotacion', {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ empresaKey }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'No se pudo eliminar el checklist en la base de datos compartida.');
+  cacheSet(CHECKLIST_DOTACION_KEY, body.data);
   return body.data;
 }
 
@@ -4101,6 +4141,7 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
   const [personal, setPersonal] = useState([]);
   const [limpiezaDesinfeccion, setLimpiezaDesinfeccion] = useState({});
   const [limpiezaPlantillas, setLimpiezaPlantillas] = useState({});
+  const [checklistDotacion, setChecklistDotacion] = useState({});
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => { loadEquipos().then(setEquipos); }, [dataVersion]);
@@ -4280,6 +4321,16 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
   const eliminarLimpiezaPlantilla = async (empresaKey) => {
     const actualizado = await eliminarLimpiezaPlantillaRemota(empresaKey);
     setLimpiezaPlantillas(actualizado);
+  };
+
+  useEffect(() => { loadChecklistDotacion().then(setChecklistDotacion); }, []);
+  const subirChecklistDotacion = async (empresaKey, archivo) => {
+    const actualizado = await guardarChecklistDotacion(empresaKey, archivo);
+    setChecklistDotacion(actualizado);
+  };
+  const eliminarChecklistDotacion = async (empresaKey) => {
+    const actualizado = await eliminarChecklistDotacionRemota(empresaKey);
+    setChecklistDotacion(actualizado);
   };
 
   // Sedes efectivas por empresa (configuradas + en uso por los equipos): se recalculan en el
@@ -4736,7 +4787,8 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
         {menu === 'limpieza' && (
           <LimpiezaDesinfeccionPage data={limpiezaDesinfeccion} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateLimpiezaDesinfeccion}
-            plantillas={limpiezaPlantillas} onUploadPlantilla={subirLimpiezaPlantilla} onDeletePlantilla={eliminarLimpiezaPlantilla} readOnly={readOnly} />
+            plantillas={limpiezaPlantillas} onUploadPlantilla={subirLimpiezaPlantilla} onDeletePlantilla={eliminarLimpiezaPlantilla}
+            checklistDotacion={checklistDotacion} onUploadChecklist={subirChecklistDotacion} onDeleteChecklist={eliminarChecklistDotacion} readOnly={readOnly} />
         )}
         {menu === 'configuracion' && isSuper && <ConfigPage t={t} onLogout={onLogout} />}
         {menu === 'admin_empresas' && isSuper && <AdminEmpresasPage t={t} accent={accent} onDataChanged={() => setDataVersion(v => v + 1)} />}
@@ -7663,7 +7715,7 @@ const PLANTILLA_LIMPIEZA_MAX_BYTES = 3 * 1024 * 1024;
 // LECTURA no ve esos botones) Y, además, el servidor (api/limpieza-plantillas.js) rechaza esas
 // operaciones sin permiso de escritura o sobre otra empresa aunque alguien llame al endpoint
 // directamente — la restricción no depende solo de ocultar el botón.
-function PlantillaLimpiezaCard({ empresa, plantilla, onUpload, onDelete, readOnly, t }) {
+function PlantillaLimpiezaCard({ empresa, plantilla, onUpload, onDelete, readOnly, t, titulo = 'Formato de limpieza y desinfección', emptyLabel = 'Esta empresa aún no tiene una plantilla cargada.', uploadLabel = '+ Cargar plantilla' }) {
   const [subiendo, setSubiendo] = useState(false);
   const [eliminando, setEliminando] = useState(false);
   const [error, setError] = useState('');
@@ -7720,7 +7772,7 @@ function PlantillaLimpiezaCard({ empresa, plantilla, onUpload, onDelete, readOnl
       <div className="p-4">
         <div className="flex items-center gap-2 mb-3">
           <FileText size={18} style={{ color: empresa.color }} />
-          <div className="text-xs font-semibold">Formato de limpieza y desinfección</div>
+          <div className="text-xs font-semibold">{titulo}</div>
         </div>
 
         {tieneArchivo ? (
@@ -7757,10 +7809,10 @@ function PlantillaLimpiezaCard({ empresa, plantilla, onUpload, onDelete, readOnl
           </div>
         ) : (
           <div>
-            <p className={`text-2xs mb-3 ${t.muted}`}>Esta empresa aún no tiene una plantilla cargada.</p>
+            <p className={`text-2xs mb-3 ${t.muted}`}>{emptyLabel}</p>
             {!readOnly && (
               <Button variant="primary" accent={empresa.color} size="sm" icon={Upload} iconSize={12} disabled={subiendo}
-                onClick={() => inputRef.current?.click()}>{subiendo ? 'Cargando…' : '+ Cargar plantilla'}</Button>
+                onClick={() => inputRef.current?.click()}>{subiendo ? 'Cargando…' : uploadLabel}</Button>
             )}
           </div>
         )}
@@ -7785,7 +7837,13 @@ function PlantillaLimpiezaCard({ empresa, plantilla, onUpload, onDelete, readOnl
 // Un enlace externo (Drive/OneDrive/SharePoint) por sede · mes del año actual — nunca se
 // sube el documento en sí, solo su URL. Tanto el enlace del mes como la plantilla por empresa
 // respetan `readOnly` (rol LECTURA) y el aislamiento por empresa lo aplica la API.
-function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, plantillas, onUploadPlantilla, onDeletePlantilla, readOnly }) {
+// Empresas que NO tienen checklist de inventario de dotación por consultorio (pedido
+// explícito) — hoy solo MACROMED; se revisa aquí y también en el servidor
+// (api/checklist-dotacion.js), igual que el resto de exclusiones de empresa en la app.
+const CHECKLIST_DOTACION_EMPRESA_EXCLUIDA = 'MACROMED';
+
+function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, plantillas, onUploadPlantilla, onDeletePlantilla,
+  checklistDotacion, onUploadChecklist, onDeleteChecklist, readOnly }) {
   const [empresaSelLocal, setEmpresaSelLocal] = useState(null);
   const [sedeSel, setSedeSel] = useState(null);
   const [openMes, setOpenMes] = useState(null);
@@ -7842,9 +7900,16 @@ function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, pl
           {!modoGlobal && <button onClick={resetEmpresa} className={`text-2xs font-mono uppercase mb-3 hover:underline ${t.muted}`}>← Cambiar empresa</button>}
           <div className="text-sm font-bold mb-3" style={{ color: empresa.color }}>{empresa.key}</div>
 
-          <div className="mb-6">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-4 items-start mb-6">
             <PlantillaLimpiezaCard empresa={empresa} plantilla={plantillas[empresaSel]}
               onUpload={onUploadPlantilla} onDelete={onDeletePlantilla} readOnly={readOnly} t={t} />
+            {empresaSel !== CHECKLIST_DOTACION_EMPRESA_EXCLUIDA && (
+              <PlantillaLimpiezaCard empresa={empresa} plantilla={checklistDotacion[empresaSel]}
+                onUpload={onUploadChecklist} onDelete={onDeleteChecklist} readOnly={readOnly} t={t}
+                titulo="Checklist de inventario de dotación por consultorio"
+                emptyLabel="Esta empresa aún no tiene un checklist cargado."
+                uploadLabel="+ Cargar checklist" />
+            )}
           </div>
 
           <p className={`text-2xs mb-3 ${t.muted}`}>Selecciona una sede.</p>
