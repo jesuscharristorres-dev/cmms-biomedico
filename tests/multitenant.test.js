@@ -254,8 +254,10 @@ describe('Arquitectura multiempresa', () => {
       assert.equal(tc.status, 403);
       const tcd = await call(tecnoComites, { method: 'DELETE', cookie: cookies.MACROMED, body: { empresaKey: 'MEIDE', anio: 2026, trimestre: 't1' } });
       assert.equal(tcd.status, 403);
-      const d = await call(plantillas, { method: 'DELETE', cookie: cookies.MACROMED, body: { empresaKey: 'MEIDE' } });
+      const d = await call(plantillas, { method: 'PATCH', cookie: cookies.MACROMED, body: { empresaKey: 'MEIDE', url: 'https://x.co' } });
       assert.equal(d.status, 403);
+      const cd = await call(checklistDotacion, { method: 'PATCH', cookie: cookies.MACROMED, body: { empresaKey: 'MEIDE', url: 'https://x.co' } });
+      assert.equal(cd.status, 403);
       const e = await call(tecnoTransversal, { method: 'PATCH', cookie: cookies.MACROMED, body: { docKey: 'manual', empresaKey: 'MEIDE', valor: 'x' } });
       assert.equal(e.status, 403);
       const g = await call(tecnoTransversal, { method: 'PATCH', cookie: cookies.MACROMED, body: { docKey: 'invima', valor: 'x' } });

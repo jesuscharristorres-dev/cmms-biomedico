@@ -1356,13 +1356,12 @@ async function actualizarLimpiezaDesinfeccion(empresaKey, sede, anio, mes, url) 
   return data;
 }
 
-// Plantilla del formato de limpieza y desinfección: UN archivo real (PDF/Word/Excel) por
-// empresa — a diferencia de arriba (que es solo un enlace externo por sede·mes), aquí el
-// archivo se guarda tal cual en la base de datos compartida, como Data URI base64 (mismo
-// mecanismo ya usado antes para documentos de equipo vía `archivoDatos`, ver abrirDocumento()
-// más abajo), así que sí se puede ver/descargar sin depender de un servicio externo.
-// Cargar/reemplazar/eliminar requieren un rol con escritura y solo sobre la empresa propia
-// (api/limpieza-plantillas.js). Fuente de verdad: api/limpieza-plantillas.js.
+// Plantilla del formato de limpieza y desinfección: UN enlace externo (Drive/OneDrive/
+// SharePoint) por empresa — igual mecanismo que el resto de documentos de la app, nunca se
+// sube el archivo en sí. Un registro de ANTES de este cambio (cuando sí se subía el archivo
+// real, como Data URI base64) puede seguir viéndose con la forma vieja hasta que se guarde una
+// URL nueva para esa empresa — ver DocumentoLimpiezaCard, que ofrece verlo/descargarlo una
+// última vez antes de reemplazarlo. Fuente de verdad: api/limpieza-plantillas.js.
 const LIMPIEZA_PLANTILLAS_KEY = 'cmms-limpieza-plantillas';
 async function loadLimpiezaPlantillas() {
   try {
@@ -1378,31 +1377,22 @@ async function loadLimpiezaPlantillas() {
   }
   return cacheGet(LIMPIEZA_PLANTILLAS_KEY, {});
 }
-async function guardarLimpiezaPlantilla(empresaKey, { nombre, tipo, archivoDatos }) {
+async function actualizarLimpiezaPlantilla(empresaKey, url) {
   const res = await apiFetch('/api/limpieza-plantillas', {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ empresaKey, nombre, tipo, archivoDatos }),
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empresaKey, url }),
   });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || 'No se pudo guardar la plantilla en la base de datos compartida.');
-  cacheSet(LIMPIEZA_PLANTILLAS_KEY, body.data);
-  return body.data;
-}
-async function eliminarLimpiezaPlantillaRemota(empresaKey) {
-  const res = await apiFetch('/api/limpieza-plantillas', {
-    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ empresaKey }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || 'No se pudo eliminar la plantilla en la base de datos compartida.');
-  cacheSet(LIMPIEZA_PLANTILLAS_KEY, body.data);
-  return body.data;
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'No se pudo guardar el enlace en la base de datos compartida.');
+  }
+  const { data } = await res.json();
+  cacheSet(LIMPIEZA_PLANTILLAS_KEY, data);
+  return data;
 }
 
 // Checklist de inventario de la dotación por consultorio — mismo mecanismo que la plantilla
-// de arriba (UN archivo real por empresa, Data URI base64), pero NO aplica a MACROMED (pedido
-// explícito). Endpoint propio (api/checklist-dotacion.js) para no tocar el esquema de
-// limpieza-plantillas.js, que ya tiene archivos reales cargados en producción.
+// de arriba (un enlace por empresa), pero NO aplica a MACROMED (pedido explícito). Endpoint
+// propio (api/checklist-dotacion.js) para mantener cada documento en su propia colección.
 const CHECKLIST_DOTACION_KEY = 'cmms-checklist-dotacion';
 async function loadChecklistDotacion() {
   try {
@@ -1418,25 +1408,17 @@ async function loadChecklistDotacion() {
   }
   return cacheGet(CHECKLIST_DOTACION_KEY, {});
 }
-async function guardarChecklistDotacion(empresaKey, { nombre, tipo, archivoDatos }) {
+async function actualizarChecklistDotacion(empresaKey, url) {
   const res = await apiFetch('/api/checklist-dotacion', {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ empresaKey, nombre, tipo, archivoDatos }),
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empresaKey, url }),
   });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || 'No se pudo guardar el checklist en la base de datos compartida.');
-  cacheSet(CHECKLIST_DOTACION_KEY, body.data);
-  return body.data;
-}
-async function eliminarChecklistDotacionRemota(empresaKey) {
-  const res = await apiFetch('/api/checklist-dotacion', {
-    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ empresaKey }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || 'No se pudo eliminar el checklist en la base de datos compartida.');
-  cacheSet(CHECKLIST_DOTACION_KEY, body.data);
-  return body.data;
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'No se pudo guardar el enlace en la base de datos compartida.');
+  }
+  const { data } = await res.json();
+  cacheSet(CHECKLIST_DOTACION_KEY, data);
+  return data;
 }
 
 function newPersonal(empresa) {
@@ -4308,29 +4290,25 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
   };
 
   useEffect(() => { loadLimpiezaPlantillas().then(setLimpiezaPlantillas); }, []);
-  // A diferencia de los demás updateX de arriba, estas dos NO actualizan el estado de forma
-  // optimista: cargar/reemplazar/eliminar un archivo real depende de una respuesta del
-  // servidor (éxito o error de validación/permisos) que la tarjeta necesita mostrarle al
-  // usuario antes de dar por hecho el cambio, así que solo se refleja en pantalla una vez
-  // confirmado — el error, si lo hay, lo captura y muestra el propio componente que llama a
-  // estas funciones (ver PlantillaLimpiezaCard).
-  const subirLimpiezaPlantilla = async (empresaKey, archivo) => {
-    const actualizado = await guardarLimpiezaPlantilla(empresaKey, archivo);
-    setLimpiezaPlantillas(actualizado);
-  };
-  const eliminarLimpiezaPlantilla = async (empresaKey) => {
-    const actualizado = await eliminarLimpiezaPlantillaRemota(empresaKey);
-    setLimpiezaPlantillas(actualizado);
+  // Igual patrón que updateTecnoTransversal: edición optimista, con reversión silenciosa si
+  // el servidor la rechaza (validación de URL o permisos).
+  const updateLimpiezaPlantilla = (empresaKey, url) => {
+    const previous = limpiezaPlantillas;
+    setLimpiezaPlantillas(prev => ({ ...prev, [empresaKey]: url }));
+    actualizarLimpiezaPlantilla(empresaKey, url).catch(err => {
+      console.error('No se pudo sincronizar la plantilla de limpieza y desinfección con el servidor compartido', err);
+      setLimpiezaPlantillas(previous);
+    });
   };
 
   useEffect(() => { loadChecklistDotacion().then(setChecklistDotacion); }, []);
-  const subirChecklistDotacion = async (empresaKey, archivo) => {
-    const actualizado = await guardarChecklistDotacion(empresaKey, archivo);
-    setChecklistDotacion(actualizado);
-  };
-  const eliminarChecklistDotacion = async (empresaKey) => {
-    const actualizado = await eliminarChecklistDotacionRemota(empresaKey);
-    setChecklistDotacion(actualizado);
+  const updateChecklistDotacion = (empresaKey, url) => {
+    const previous = checklistDotacion;
+    setChecklistDotacion(prev => ({ ...prev, [empresaKey]: url }));
+    actualizarChecklistDotacion(empresaKey, url).catch(err => {
+      console.error('No se pudo sincronizar el checklist de dotación con el servidor compartido', err);
+      setChecklistDotacion(previous);
+    });
   };
 
   // Sedes efectivas por empresa (configuradas + en uso por los equipos): se recalculan en el
@@ -4787,8 +4765,8 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
         {menu === 'limpieza' && (
           <LimpiezaDesinfeccionPage data={limpiezaDesinfeccion} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateLimpiezaDesinfeccion}
-            plantillas={limpiezaPlantillas} onUploadPlantilla={subirLimpiezaPlantilla} onDeletePlantilla={eliminarLimpiezaPlantilla}
-            checklistDotacion={checklistDotacion} onUploadChecklist={subirChecklistDotacion} onDeleteChecklist={eliminarChecklistDotacion} readOnly={readOnly} />
+            plantillas={limpiezaPlantillas} onUpdatePlantilla={updateLimpiezaPlantilla}
+            checklistDotacion={checklistDotacion} onUpdateChecklist={updateChecklistDotacion} readOnly={readOnly} />
         )}
         {menu === 'configuracion' && isSuper && <ConfigPage t={t} onLogout={onLogout} />}
         {menu === 'admin_empresas' && isSuper && <AdminEmpresasPage t={t} accent={accent} onDataChanged={() => setDataVersion(v => v + 1)} />}
@@ -7694,78 +7672,14 @@ function PersonalFormModal({ t, accent, activeCompany, onClose, onSave }) {
 // Formatos permitidos para la plantilla del formato de limpieza y desinfección — mismo set
 // validado en el servidor (api/limpieza-plantillas.js). `accept` es lo que restringe el
 // selector de archivos del navegador; `TIPOS` es lo que de verdad se valida antes de subir.
-const PLANTILLA_LIMPIEZA_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx';
-const PLANTILLA_LIMPIEZA_TIPOS = [
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-];
-// 3 MB de archivo real: en base64 pesa ~33% más (~4 MB), quedando con margen bajo el límite
-// de 4.5 MB que Vercel impone al cuerpo de una función serverless (api/limpieza-plantillas.js
-// lo vuelve a validar del lado del servidor, no solo aquí).
-const PLANTILLA_LIMPIEZA_MAX_BYTES = 3 * 1024 * 1024;
-
-// Tarjeta de la plantilla del formato de limpieza y desinfección de UNA empresa — a
-// diferencia del resto de "documentos" de la app (que solo guardan una URL externa), aquí el
-// archivo se sube y se guarda de verdad (ver guardarLimpiezaPlantilla/loadLimpiezaPlantillas
-// más arriba), reutilizando el mecanismo de Data URI base64 que ya existía para
-// `archivoDatos`. Cargar/reemplazar/eliminar están gateados por `readOnly` en la UI (el rol
-// LECTURA no ve esos botones) Y, además, el servidor (api/limpieza-plantillas.js) rechaza esas
-// operaciones sin permiso de escritura o sobre otra empresa aunque alguien llame al endpoint
-// directamente — la restricción no depende solo de ocultar el botón.
-function PlantillaLimpiezaCard({ empresa, plantilla, onUpload, onDelete, readOnly, t, titulo = 'Formato de limpieza y desinfección', emptyLabel = 'Esta empresa aún no tiene una plantilla cargada.', uploadLabel = '+ Cargar plantilla' }) {
-  const [subiendo, setSubiendo] = useState(false);
-  const [eliminando, setEliminando] = useState(false);
-  const [error, setError] = useState('');
-  const [confirmarEliminar, setConfirmarEliminar] = useState(false);
-  const inputRef = useRef(null);
-
-  const tieneArchivo = !!plantilla?.archivoDatos;
-
-  const handleFile = (e) => {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    setError('');
-    if (!PLANTILLA_LIMPIEZA_TIPOS.includes(file.type)) {
-      setError('Formato no permitido. Solo se aceptan PDF, Word o Excel.');
-      return;
-    }
-    if (file.size > PLANTILLA_LIMPIEZA_MAX_BYTES) {
-      setError('El archivo supera el tamaño máximo permitido (3 MB).');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      setSubiendo(true);
-      setError('');
-      try {
-        await onUpload(empresa.key, { nombre: file.name, tipo: file.type, archivoDatos: ev.target.result });
-      } catch (err) {
-        setError(err.message || 'No se pudo cargar la plantilla.');
-      } finally {
-        setSubiendo(false);
-      }
-    };
-    reader.onerror = () => setError('No se pudo leer el archivo.');
-    reader.readAsDataURL(file);
-  };
-
-  const confirmarYEliminar = async () => {
-    setEliminando(true);
-    setError('');
-    try {
-      await onDelete(empresa.key);
-      setConfirmarEliminar(false);
-    } catch (err) {
-      setError(err.message || 'No se pudo eliminar la plantilla.');
-    } finally {
-      setEliminando(false);
-    }
-  };
-
+// Tarjeta de un documento de "Formatos de limpieza y desinfección" (la plantilla del formato,
+// o el checklist de dotación) de UNA empresa — reutiliza DocumentoEstadoAcciones para el
+// estado/edición del enlace, igual que el resto de "documentos" de la app (nunca se sube el
+// archivo, solo su URL). `legacyArchivo` es el registro de ANTES de este cambio (cuando sí se
+// subía el archivo real como Data URI base64): si todavía existe para esta empresa, se ofrece
+// verlo/descargarlo una última vez — desaparece solo en cuanto se guarda una URL nueva, que lo
+// reemplaza en el servidor.
+function DocumentoLimpiezaCard({ empresa, url, legacyArchivo, onChange, readOnly, t, accent, titulo }) {
   return (
     <div className={`max-w-md rounded-xl border overflow-hidden shadow-sm ${t.panel} ${t.border}`}>
       <div className="h-1" style={{ background: empresa.color }} />
@@ -7775,57 +7689,15 @@ function PlantillaLimpiezaCard({ empresa, plantilla, onUpload, onDelete, readOnl
           <div className="text-xs font-semibold">{titulo}</div>
         </div>
 
-        {tieneArchivo ? (
-          <div className="space-y-2.5">
-            <div className="flex items-start gap-2">
-              <FileText size={14} className={`mt-0.5 shrink-0 ${t.muted}`} />
-              <span className="text-xs font-medium wrap-break-word">{plantilla.nombre}</span>
-            </div>
-            {plantilla.updatedAt && (
-              <div className={`text-3xs ${t.muted}`}>Actualizado {new Date(plantilla.updatedAt).toLocaleDateString('es-CO')}</div>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" t={t} icon={Eye} iconSize={12} onClick={() => verPlantillaLimpieza(plantilla)}>Ver</Button>
-              <Button variant="outline" size="sm" t={t} icon={Download} iconSize={12} onClick={() => descargarPlantillaLimpieza(plantilla)}>Descargar</Button>
-            </div>
-            {!readOnly && (
-              <div className="flex flex-wrap items-center gap-2 pt-2 mt-1 border-t border-dashed border-slate-700/30">
-                <Button variant="ghost" size="sm" t={t} icon={Upload} iconSize={12} disabled={subiendo}
-                  onClick={() => inputRef.current?.click()}>{subiendo ? 'Cargando…' : 'Reemplazar'}</Button>
-                {!confirmarEliminar ? (
-                  <Button variant="outline" size="sm" t={t} icon={Trash2} iconSize={12} style={{ color: '#EF4444', borderColor: '#EF4444' }}
-                    onClick={() => setConfirmarEliminar(true)}>Eliminar</Button>
-                ) : (
-                  <div className="flex items-center gap-1.5">
-                    <span className={`text-3xs ${t.muted}`}>¿Eliminar?</span>
-                    <Button variant="danger" size="sm" icon={Trash2} iconSize={12} disabled={eliminando} onClick={confirmarYEliminar}>
-                      {eliminando ? 'Eliminando…' : 'Sí, eliminar'}
-                    </Button>
-                    <Button variant="outline" size="sm" t={t} disabled={eliminando} onClick={() => setConfirmarEliminar(false)}>Cancelar</Button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div>
-            <p className={`text-2xs mb-3 ${t.muted}`}>{emptyLabel}</p>
-            {!readOnly && (
-              <Button variant="primary" accent={empresa.color} size="sm" icon={Upload} iconSize={12} disabled={subiendo}
-                onClick={() => inputRef.current?.click()}>{subiendo ? 'Cargando…' : uploadLabel}</Button>
-            )}
+        {legacyArchivo && (
+          <div className="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-dashed border-slate-700/30">
+            <span className={`text-3xs ${t.muted}`}>Archivo cargado antes del enlace — {legacyArchivo.nombre}:</span>
+            <Button variant="outline" size="sm" t={t} icon={Eye} iconSize={12} onClick={() => verPlantillaLimpieza(legacyArchivo)}>Ver</Button>
+            <Button variant="outline" size="sm" t={t} icon={Download} iconSize={12} onClick={() => descargarPlantillaLimpieza(legacyArchivo)}>Descargar</Button>
           </div>
         )}
 
-        {!readOnly && (
-          <input ref={inputRef} type="file" accept={PLANTILLA_LIMPIEZA_ACCEPT} className="hidden" onChange={handleFile} />
-        )}
-
-        {error && (
-          <div className="flex items-center gap-1.5 text-3xs text-red-500 bg-red-500/10 border border-red-500/30 rounded-md px-2 py-1.5 mt-2.5">
-            <AlertTriangle size={11} className="shrink-0" /> {error}
-          </div>
-        )}
+        <DocumentoEstadoAcciones url={url} onChange={v => onChange(empresa.key, v)} readOnly={readOnly} t={t} accent={empresa.color || accent} />
       </div>
     </div>
   );
@@ -7842,8 +7714,17 @@ function PlantillaLimpiezaCard({ empresa, plantilla, onUpload, onDelete, readOnl
 // (api/checklist-dotacion.js), igual que el resto de exclusiones de empresa en la app.
 const CHECKLIST_DOTACION_EMPRESA_EXCLUIDA = 'MACROMED';
 
-function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, plantillas, onUploadPlantilla, onDeletePlantilla,
-  checklistDotacion, onUploadChecklist, onDeleteChecklist, readOnly }) {
+// Interpreta un registro de plantilla/checklist: un string es la forma NUEVA (solo la URL);
+// un objeto con `.archivoDatos` es la forma VIEJA (archivo real subido antes de este cambio;
+// ver DocumentoLimpiezaCard) — cualquier otra cosa (undefined, string vacío) es "sin cargar".
+function urlYLegacyDeDocumentoLimpieza(valor) {
+  if (typeof valor === 'string') return { url: valor, legacy: null };
+  if (valor && typeof valor === 'object' && valor.archivoDatos) return { url: '', legacy: valor };
+  return { url: '', legacy: null };
+}
+
+function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, plantillas, onUpdatePlantilla,
+  checklistDotacion, onUpdateChecklist, readOnly }) {
   const [empresaSelLocal, setEmpresaSelLocal] = useState(null);
   const [sedeSel, setSedeSel] = useState(null);
   const [openMes, setOpenMes] = useState(null);
@@ -7901,14 +7782,13 @@ function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, pl
           <div className="text-sm font-bold mb-3" style={{ color: empresa.color }}>{empresa.key}</div>
 
           <div className="flex flex-col sm:flex-row flex-wrap gap-4 items-start mb-6">
-            <PlantillaLimpiezaCard empresa={empresa} plantilla={plantillas[empresaSel]}
-              onUpload={onUploadPlantilla} onDelete={onDeletePlantilla} readOnly={readOnly} t={t} />
+            <DocumentoLimpiezaCard empresa={empresa} titulo="Formato de limpieza y desinfección"
+              {...urlYLegacyDeDocumentoLimpieza(plantillas[empresaSel])}
+              onChange={onUpdatePlantilla} readOnly={readOnly} t={t} accent={accent} />
             {empresaSel !== CHECKLIST_DOTACION_EMPRESA_EXCLUIDA && (
-              <PlantillaLimpiezaCard empresa={empresa} plantilla={checklistDotacion[empresaSel]}
-                onUpload={onUploadChecklist} onDelete={onDeleteChecklist} readOnly={readOnly} t={t}
-                titulo="Checklist de inventario de dotación por consultorio"
-                emptyLabel="Esta empresa aún no tiene un checklist cargado."
-                uploadLabel="+ Cargar checklist" />
+              <DocumentoLimpiezaCard empresa={empresa} titulo="Checklist de inventario de dotación por consultorio"
+                {...urlYLegacyDeDocumentoLimpieza(checklistDotacion[empresaSel])}
+                onChange={onUpdateChecklist} readOnly={readOnly} t={t} accent={accent} />
             )}
           </div>
 
