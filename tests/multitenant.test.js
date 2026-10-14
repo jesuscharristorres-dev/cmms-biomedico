@@ -17,6 +17,7 @@ import tecnoComites from '../api/tecno-comites.js';
 import limpieza from '../api/limpieza-desinfeccion.js';
 import plantillas from '../api/limpieza-plantillas.js';
 import checklistDotacion from '../api/checklist-dotacion.js';
+import formatoTempHumedad from '../api/formato-temperatura-humedad.js';
 import capacitaciones from '../api/capacitaciones.js';
 import { setupStore, call, cookieFrom, ADMIN_USER, ADMIN_PASS, EMPRESAS, SEDES } from './helpers.js';
 
@@ -183,7 +184,7 @@ describe('Arquitectura multiempresa', () => {
       }
     });
     test('manipular ?empresa= para ver otra empresa → 403', async () => {
-      for (const h of [equipos, personal, reportes, planes, tecnoReportes, tecnoComites, limpieza, plantillas, checklistDotacion, tecnoTransversal]) {
+      for (const h of [equipos, personal, reportes, planes, tecnoReportes, tecnoComites, limpieza, plantillas, checklistDotacion, formatoTempHumedad, tecnoTransversal]) {
         const r = await call(h, { cookie: cookies.MACROMED, query: { empresa: 'MEIDE' } });
         assert.equal(r.status, 403, h.name);
       }
@@ -258,6 +259,8 @@ describe('Arquitectura multiempresa', () => {
       assert.equal(d.status, 403);
       const cd = await call(checklistDotacion, { method: 'PATCH', cookie: cookies.MACROMED, body: { empresaKey: 'MEIDE', url: 'https://x.co' } });
       assert.equal(cd.status, 403);
+      const th = await call(formatoTempHumedad, { method: 'PATCH', cookie: cookies.MACROMED, body: { empresaKey: 'MEIDE', url: 'https://x.co' } });
+      assert.equal(th.status, 403);
       const e = await call(tecnoTransversal, { method: 'PATCH', cookie: cookies.MACROMED, body: { docKey: 'manual', empresaKey: 'MEIDE', valor: 'x' } });
       assert.equal(e.status, 403);
       const g = await call(tecnoTransversal, { method: 'PATCH', cookie: cookies.MACROMED, body: { docKey: 'invima', valor: 'x' } });
@@ -302,7 +305,7 @@ describe('Arquitectura multiempresa', () => {
 
   describe('Sesiones, estados y cambios de empresa', () => {
     test('sin sesión no hay acceso a ningún dato → 401', async () => {
-      for (const h of [equipos, personal, reportes, planes, tecnoTransversal, tecnoReportes, tecnoComites, limpieza, plantillas, checklistDotacion, capacitaciones]) {
+      for (const h of [equipos, personal, reportes, planes, tecnoTransversal, tecnoReportes, tecnoComites, limpieza, plantillas, checklistDotacion, formatoTempHumedad, capacitaciones]) {
         const r = await call(h, {});
         assert.equal(r.status, 401, h.name);
       }
