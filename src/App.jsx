@@ -1155,6 +1155,12 @@ const TECNO_DOCS = [
   { key: 'invima', label: 'ABC-Tecnovigilancia-INVIMA', icon: FileText, porEmpresa: false },
   { key: 'manual', label: 'DLC-GEB-MN-01 — Manual de Tecnovigilancia', icon: BookOpen, porEmpresa: true },
 ];
+// Acta de conformación de comités — un documento distinto por empresa, pero vive en la
+// subsección "Comités de tecnovigilancia" (no en "Documentación" junto a TECNO_DOCS) por
+// pedido explícito: temáticamente es del comité, no de la documentación general. Reutiliza
+// el mismo mecanismo de URL-por-empresa (api/tecno-transversal.js) — ni el backend ni
+// urlDeDoc() necesitan saber que este documento es "distinto" de los de TECNO_DOCS.
+const TECNO_ACTA_COMITE_DOC = { key: 'actaConformacionComites', label: 'Acta de conformación de comités', icon: FileText, porEmpresa: true };
 
 // Fuente de verdad COMPARTIDA: api/tecno-reportes.js (Vercel KV).
 const TECNO_REPORTES_KEY = 'cmms-tecno-reportes';
@@ -7115,8 +7121,34 @@ function TecnovigilanciaPage({ transversal, reportes, comites, activeCompany, t,
       )}
 
       {subTab === 'comites' && (
-        <TecnoComitesSeccion comites={comites} empresasKpi={empresasKpi} modoGlobal={modoGlobal}
-          t={t} accent={accent} onGuardar={onGuardarComite} onEliminar={onEliminarComite} readOnly={readOnly} />
+        <>
+          <div className="mb-6">
+            <div className="text-xs font-semibold uppercase tracking-wide mb-3">Acta de conformación de comités</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
+              {empresasKpi.map(c => (
+                <div key={c.key} className={`rounded-xl border overflow-hidden shadow-sm hover:shadow-md transition ${t.panel} ${t.border}`}>
+                  <div className="h-1" style={{ background: c.color }} />
+                  <div className="p-3.5 flex flex-col gap-2.5">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: c.color + '1A', color: c.color }}>
+                        <FileText size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold wrap-break-word">{TECNO_ACTA_COMITE_DOC.label}</div>
+                        <div className="text-2xs mt-0.5 font-semibold" style={{ color: c.color }}>{c.key}</div>
+                      </div>
+                    </div>
+                    <DocumentoEstadoAcciones url={urlDeDoc(TECNO_ACTA_COMITE_DOC, c.key)}
+                      onChange={v => onUpdateTransversal(TECNO_ACTA_COMITE_DOC.key, c.key, v)} readOnly={readOnly} t={t} accent={c.color} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <TecnoComitesSeccion comites={comites} empresasKpi={empresasKpi} modoGlobal={modoGlobal}
+            t={t} accent={accent} onGuardar={onGuardarComite} onEliminar={onEliminarComite} readOnly={readOnly} />
+        </>
       )}
     </div>
   );
