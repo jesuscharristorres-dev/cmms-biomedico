@@ -16,6 +16,7 @@ import tecnoReportes from '../api/tecno-reportes.js';
 import tecnoComites from '../api/tecno-comites.js';
 import limpieza from '../api/limpieza-desinfeccion.js';
 import plantillas from '../api/limpieza-plantillas.js';
+import checklistDotacion from '../api/checklist-dotacion.js';
 import capacitaciones from '../api/capacitaciones.js';
 import { setupStore, call, cookieFrom, ADMIN_USER, ADMIN_PASS, EMPRESAS, SEDES } from './helpers.js';
 
@@ -182,7 +183,7 @@ describe('Arquitectura multiempresa', () => {
       }
     });
     test('manipular ?empresa= para ver otra empresa → 403', async () => {
-      for (const h of [equipos, personal, reportes, planes, tecnoReportes, tecnoComites, limpieza, plantillas, tecnoTransversal]) {
+      for (const h of [equipos, personal, reportes, planes, tecnoReportes, tecnoComites, limpieza, plantillas, checklistDotacion, tecnoTransversal]) {
         const r = await call(h, { cookie: cookies.MACROMED, query: { empresa: 'MEIDE' } });
         assert.equal(r.status, 403, h.name);
       }
@@ -299,7 +300,7 @@ describe('Arquitectura multiempresa', () => {
 
   describe('Sesiones, estados y cambios de empresa', () => {
     test('sin sesión no hay acceso a ningún dato → 401', async () => {
-      for (const h of [equipos, personal, reportes, planes, tecnoTransversal, tecnoReportes, tecnoComites, limpieza, plantillas, capacitaciones]) {
+      for (const h of [equipos, personal, reportes, planes, tecnoTransversal, tecnoReportes, tecnoComites, limpieza, plantillas, checklistDotacion, capacitaciones]) {
         const r = await call(h, {});
         assert.equal(r.status, 401, h.name);
       }
