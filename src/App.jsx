@@ -1421,6 +1421,37 @@ async function actualizarChecklistDotacion(empresaKey, url) {
   return data;
 }
 
+// Formato de temperatura y humedad — mismo mecanismo que los dos de arriba (un enlace por
+// empresa), sin exclusiones (las 5 empresas). Endpoint propio (api/formato-temperatura-
+// humedad.js) para mantener cada documento en su propia colección.
+const FORMATO_TEMP_HUMEDAD_KEY = 'cmms-formato-temp-humedad';
+async function loadFormatoTemperaturaHumedad() {
+  try {
+    const res = await apiFetch('/api/formato-temperatura-humedad');
+    if (res.ok) {
+      const { data } = await res.json();
+      cacheSet(FORMATO_TEMP_HUMEDAD_KEY, data);
+      return data;
+    }
+    console.error('No se pudo consultar los formatos de temperatura y humedad: respuesta', res.status);
+  } catch (err) {
+    console.error('No se pudo consultar los formatos de temperatura y humedad', err);
+  }
+  return cacheGet(FORMATO_TEMP_HUMEDAD_KEY, {});
+}
+async function actualizarFormatoTemperaturaHumedad(empresaKey, url) {
+  const res = await apiFetch('/api/formato-temperatura-humedad', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empresaKey, url }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'No se pudo guardar el enlace en la base de datos compartida.');
+  }
+  const { data } = await res.json();
+  cacheSet(FORMATO_TEMP_HUMEDAD_KEY, data);
+  return data;
+}
+
 function newPersonal(empresa) {
   return {
     id: uid('per'),
@@ -4124,6 +4155,7 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
   const [limpiezaDesinfeccion, setLimpiezaDesinfeccion] = useState({});
   const [limpiezaPlantillas, setLimpiezaPlantillas] = useState({});
   const [checklistDotacion, setChecklistDotacion] = useState({});
+  const [formatoTempHumedad, setFormatoTempHumedad] = useState({});
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => { loadEquipos().then(setEquipos); }, [dataVersion]);
@@ -4308,6 +4340,16 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
     actualizarChecklistDotacion(empresaKey, url).catch(err => {
       console.error('No se pudo sincronizar el checklist de dotación con el servidor compartido', err);
       setChecklistDotacion(previous);
+    });
+  };
+
+  useEffect(() => { loadFormatoTemperaturaHumedad().then(setFormatoTempHumedad); }, []);
+  const updateFormatoTempHumedad = (empresaKey, url) => {
+    const previous = formatoTempHumedad;
+    setFormatoTempHumedad(prev => ({ ...prev, [empresaKey]: url }));
+    actualizarFormatoTemperaturaHumedad(empresaKey, url).catch(err => {
+      console.error('No se pudo sincronizar el formato de temperatura y humedad con el servidor compartido', err);
+      setFormatoTempHumedad(previous);
     });
   };
 
@@ -4766,7 +4808,8 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
         {menu === 'limpieza' && (
           <LimpiezaDesinfeccionPage data={limpiezaDesinfeccion} activeCompany={activeCompany} t={t} accent={accent} onUpdate={updateLimpiezaDesinfeccion}
             plantillas={limpiezaPlantillas} onUpdatePlantilla={updateLimpiezaPlantilla}
-            checklistDotacion={checklistDotacion} onUpdateChecklist={updateChecklistDotacion} readOnly={readOnly} />
+            checklistDotacion={checklistDotacion} onUpdateChecklist={updateChecklistDotacion}
+            formatoTempHumedad={formatoTempHumedad} onUpdateTempHumedad={updateFormatoTempHumedad} readOnly={readOnly} />
         )}
         {menu === 'configuracion' && isSuper && <ConfigPage t={t} onLogout={onLogout} />}
         {menu === 'admin_empresas' && isSuper && <AdminEmpresasPage t={t} accent={accent} onDataChanged={() => setDataVersion(v => v + 1)} />}
@@ -7724,7 +7767,7 @@ function urlYLegacyDeDocumentoLimpieza(valor) {
 }
 
 function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, plantillas, onUpdatePlantilla,
-  checklistDotacion, onUpdateChecklist, readOnly }) {
+  checklistDotacion, onUpdateChecklist, formatoTempHumedad, onUpdateTempHumedad, readOnly }) {
   const [empresaSelLocal, setEmpresaSelLocal] = useState(null);
   const [sedeSel, setSedeSel] = useState(null);
   const [openMes, setOpenMes] = useState(null);
@@ -7790,6 +7833,9 @@ function LimpiezaDesinfeccionPage({ data, activeCompany, t, accent, onUpdate, pl
                 {...urlYLegacyDeDocumentoLimpieza(checklistDotacion[empresaSel])}
                 onChange={onUpdateChecklist} readOnly={readOnly} t={t} accent={accent} />
             )}
+            <DocumentoLimpiezaCard empresa={empresa} titulo="Formato de temperatura y humedad"
+              {...urlYLegacyDeDocumentoLimpieza(formatoTempHumedad[empresaSel])}
+              onChange={onUpdateTempHumedad} readOnly={readOnly} t={t} accent={accent} />
           </div>
 
           <p className={`text-2xs mb-3 ${t.muted}`}>Selecciona una sede.</p>
