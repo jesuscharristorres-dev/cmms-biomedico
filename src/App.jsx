@@ -4118,17 +4118,35 @@ function SidebarNav({ menu, onNavigate, nuevosReportes, accent, accentBg, t, dar
 /* APP PRINCIPAL                                                     */
 /* ---------------------------------------------------------------- */
 
-function MainApp({ user, entorno, onLogout, readOnly }) {
+function MainApp({ user, entorno, onLogout, onSwitchEmpresa, readOnly }) {
   const [equipos, setEquipos] = useState([]);
   const [dark, setDark] = useState(false);
   const [menu, setMenu] = useState('dashboard');
   // MULTIEMPRESA: el SUPER_ADMIN empieza en "Todas" y puede filtrar por cualquier empresa.
-  // Un usuario de empresa queda fijo en SU empresa (la que asignó el servidor) y no puede
-  // cambiarla — y aunque lo intentara desde DevTools, la API solo le devuelve sus datos.
+  // Un usuario de empresa queda fijo en la empresa ACTIVA de su sesión (la que decide el
+  // servidor) — nunca ve dos empresas mezcladas. Si tiene varias asignadas (empresa_ids),
+  // puede cambiar cuál está activa (ver el selector más abajo); eso reinicia la sesión del
+  // componente entero (App.jsx → <MainApp key=...>), así que aquí "lockedCompany" sigue
+  // significando "la única que esta instancia conoce ahora mismo" — no cambia en caliente.
   const isSuper = user.role === 'SUPER_ADMIN';
   const lockedCompany = isSuper ? null : user.empresa_id;
+  const misEmpresas = isSuper ? null : (user.empresa_ids?.length ? user.empresa_ids : (user.empresa_id ? [user.empresa_id] : []));
   const [activeCompany, setActiveCompanyRaw] = useState(lockedCompany || 'TODAS');
-  const setActiveCompany = (k) => setActiveCompanyRaw(lockedCompany || k);
+  const [cambiandoEmpresa, setCambiandoEmpresa] = useState(false);
+  const setActiveCompany = (k) => {
+    if (isSuper) { setActiveCompanyRaw(k); return; }
+    if (k !== lockedCompany && misEmpresas.length > 1 && misEmpresas.includes(k)) {
+      setCambiandoEmpresa(true);
+      onSwitchEmpresa(k).catch(err => {
+        console.error('No se pudo cambiar de empresa activa', err);
+        setCambiandoEmpresa(false);
+      });
+      // No hace falta "deshacer" cambiandoEmpresa en el caso de éxito: App.jsx remonta este
+      // componente entero con la empresa nueva en cuanto onSwitchEmpresa confirma el cambio.
+      return;
+    }
+    setActiveCompanyRaw(lockedCompany || k);
+  };
   // Recarga completa de datos tras cambios que afectan a varias colecciones (p. ej. asignar
   // empresa a registros heredados desde Administración).
   const [dataVersion, setDataVersion] = useState(0);
@@ -4750,14 +4768,24 @@ function MainApp({ user, entorno, onLogout, readOnly }) {
       <div className="flex-1 relative overflow-hidden">
         <AmbientBackground theme={theme} dark={dark} />
         <div className="absolute inset-0 overflow-y-auto p-6">
-        {/* Empresa pills — solo SUPER_ADMIN puede cambiar de empresa; un usuario de empresa
-            ve únicamente la suya, fija. */}
+        {/* Empresa pills — un usuario de empresa ve solo las SUYAS (una fija, o varias entre
+            las que puede cambiar — nunca una vista "Todas las empresas" mezclada, eso sigue
+            siendo exclusivo de SUPER_ADMIN). */}
         {!isSuper ? (
           <div className="flex gap-2 flex-wrap mb-5">
-            <span className="px-3 min-h-11 flex items-center gap-1.5 rounded-full text-2xs font-mono border text-white font-semibold"
-              style={{ background: companyOf(activeCompany)?.gradient, borderColor: companyOf(activeCompany)?.color }}>
-              <Building2 size={12} /> {companyOf(activeCompany)?.nombre || activeCompany}
-            </span>
+            {misEmpresas.length > 1 ? COMPANIES.map(c => (
+              <button key={c.key} onClick={() => changeCompany(c.key)} disabled={cambiandoEmpresa}
+                className={`px-3 min-h-11 flex items-center gap-1.5 rounded-full text-2xs font-mono border transition ${activeCompany === c.key ? 'text-white font-semibold' : t.border} ${cambiandoEmpresa ? 'opacity-60' : ''}`}
+                style={activeCompany === c.key ? { background: c.gradient, borderColor: c.color } : {}}>
+                <Building2 size={12} /> {c.nombre || c.key}
+              </button>
+            )) : (
+              <span className="px-3 min-h-11 flex items-center gap-1.5 rounded-full text-2xs font-mono border text-white font-semibold"
+                style={{ background: companyOf(activeCompany)?.gradient, borderColor: companyOf(activeCompany)?.color }}>
+                <Building2 size={12} /> {companyOf(activeCompany)?.nombre || activeCompany}
+              </span>
+            )}
+            {cambiandoEmpresa && <span className={`text-2xs self-center ${t.muted}`}>Cambiando de empresa…</span>}
           </div>
         ) : !menu.startsWith('admin_') && (
         <div className="flex gap-2 flex-wrap mb-5">
@@ -8215,16 +8243,23 @@ const ROLES_USUARIO = ['EMPRESA', 'LECTURA', 'SUPER_ADMIN'];
 
 function UsuarioFormModal({ t, accent, usuario, empresas, onClose, onSaved }) {
   const editando = !!usuario;
-  const activas = empresas.filter(e => e.estado === 'activo' || e.id === usuario?.empresa_id);
+  // Un usuario EMPRESA/LECTURA puede tener VARIAS empresas asignadas (empresa_ids) — además
+  // de las activas, se muestran las que ya tenía (por si alguna quedó inactiva mientras tanto,
+  // para no hacerla "desaparecer" del formulario sin explicación).
+  const asignadasActuales = usuario?.empresa_ids?.length ? usuario.empresa_ids : (usuario?.empresa_id ? [usuario.empresa_id] : []);
+  const activas = empresas.filter(e => e.estado === 'activo' || asignadasActuales.includes(e.id));
   const [form, setForm] = useState(() => ({
     nombre: usuario?.nombre || '', email: usuario?.email || '', password: '',
-    role: usuario?.role || 'EMPRESA', empresa_id: usuario?.empresa_id || '', estado: usuario?.estado || 'activo',
+    role: usuario?.role || 'EMPRESA', empresa_ids: asignadasActuales, estado: usuario?.estado || 'activo',
   }));
   const [errores, setErrores] = useState({});
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
   const patch = (k, v) => { setForm(f => ({ ...f, [k]: v })); setErrores(e => ({ ...e, [k]: undefined })); };
   const requiereEmpresa = form.role !== 'SUPER_ADMIN';
+  const toggleEmpresa = (id) => {
+    patch('empresa_ids', form.empresa_ids.includes(id) ? form.empresa_ids.filter(x => x !== id) : [...form.empresa_ids, id]);
+  };
 
   const guardar = async () => {
     const locales = {};
@@ -8232,11 +8267,11 @@ function UsuarioFormModal({ t, accent, usuario, empresas, onClose, onSaved }) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.email.trim())) locales.email = 'Email no válido.';
     if (!editando && form.password.length < 8) locales.password = 'Mínimo 8 caracteres.';
     if (editando && form.password && form.password.length < 8) locales.password = 'Mínimo 8 caracteres.';
-    if (requiereEmpresa && !form.empresa_id) locales.empresa_id = 'La empresa es obligatoria para este rol.';
+    if (requiereEmpresa && form.empresa_ids.length === 0) locales.empresa_id = 'Selecciona al menos una empresa.';
     if (Object.keys(locales).length) { setErrores(locales); return; }
     setGuardando(true);
     setError('');
-    const body = { ...form, empresa_id: requiereEmpresa ? form.empresa_id : null };
+    const body = { ...form, empresa_ids: requiereEmpresa ? form.empresa_ids : [] };
     if (editando && !body.password) delete body.password;
     try {
       const data = editando
@@ -8270,23 +8305,35 @@ function UsuarioFormModal({ t, accent, usuario, empresas, onClose, onSaved }) {
           </select>
           <FieldError error={errores.role} />
         </Field>
-        <Field label={requiereEmpresa ? 'Empresa *' : 'Empresa'}>
-          <select value={requiereEmpresa ? form.empresa_id : ''} disabled={!requiereEmpresa} onChange={e => patch('empresa_id', e.target.value)}
-            className={`rounded-md border px-2.5 py-1.5 text-xs ${t.input} ${!requiereEmpresa ? 'opacity-60 cursor-not-allowed' : ''}`}>
-            <option value="">{requiereEmpresa ? 'Selecciona una empresa…' : 'Todas (acceso global)'}</option>
-            {activas.map(e => <option key={e.id} value={e.id}>{e.nombre}{e.estado !== 'activo' ? ' (inactiva)' : ''}</option>)}
-          </select>
-          <FieldError error={errores.empresa_id} />
-        </Field>
         <Field label="Estado"><SelectInput t={t} value={form.estado} options={['activo', 'inactivo']} onChange={v => patch('estado', v)} /><FieldError error={errores.estado} /></Field>
       </div>
+      {/* Empresa(s): un usuario puede tener acceso a VARIAS, no solo una — cada una la ve y
+          trabaja por separado (nunca una vista mezclada), con un selector para cambiar entre
+          ellas si tiene más de una (ver el selector de empresa de la app principal). */}
+      <Field label={requiereEmpresa ? 'Empresas *' : 'Empresas'} dense>
+        {requiereEmpresa ? (
+          <div className={`rounded-md border p-2 grid sm:grid-cols-2 gap-1.5 ${t.input}`}>
+            {activas.length === 0
+              ? <span className={`text-2xs col-span-2 ${t.muted}`}>No hay empresas activas para asignar.</span>
+              : activas.map(e => (
+                <label key={e.id} className="flex items-center gap-2 text-xs cursor-pointer select-none py-0.5">
+                  <input type="checkbox" checked={form.empresa_ids.includes(e.id)} onChange={() => toggleEmpresa(e.id)} />
+                  {e.nombre}{e.estado !== 'activo' ? ' (inactiva)' : ''}
+                </label>
+              ))}
+          </div>
+        ) : (
+          <div className={`rounded-md border px-2.5 py-1.5 text-xs opacity-60 ${t.input}`}>Todas (acceso global)</div>
+        )}
+        <FieldError error={errores.empresa_id} />
+      </Field>
       <p className={`text-3xs mt-3 ${t.muted}`}>
         {form.role === 'SUPER_ADMIN'
           ? 'El super administrador tiene acceso global a todas las empresas y al módulo de administración.'
           : form.role === 'LECTURA'
-            ? 'Solo puede consultar la información de su empresa; no puede crear ni modificar registros.'
-            : 'Puede consultar y gestionar únicamente la información de su empresa.'}
-        {editando && ' Si cambias la empresa, el rol, el estado o la contraseña, sus sesiones abiertas se cierran.'}
+            ? 'Solo puede consultar la información de sus empresas (cada una por separado); no puede crear ni modificar registros.'
+            : 'Puede consultar y gestionar la información de sus empresas asignadas, cada una por separado.'}
+        {editando && ' Si cambias las empresas asignadas, el rol, el estado o la contraseña, sus sesiones abiertas se cierran.'}
       </p>
     </AdminModal>
   );
@@ -8329,8 +8376,9 @@ function AdminUsuariosPage({ t, accent, currentUserId }) {
   };
 
   const q = busqueda.trim().toLowerCase();
+  const empresaIdsDeUi = (u) => (u.empresa_ids?.length ? u.empresa_ids : (u.empresa_id ? [u.empresa_id] : []));
   const lista = (usuarios || [])
-    .filter(u => !filtroEmpresa || (filtroEmpresa === '__global' ? !u.empresa_id : u.empresa_id === filtroEmpresa))
+    .filter(u => !filtroEmpresa || (filtroEmpresa === '__global' ? empresaIdsDeUi(u).length === 0 : empresaIdsDeUi(u).includes(filtroEmpresa)))
     .filter(u => !q || [u.nombre, u.email, u.username].filter(Boolean).join(' ').toLowerCase().includes(q))
     .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
 
@@ -8385,7 +8433,11 @@ function AdminUsuariosPage({ t, accent, currentUserId }) {
                   <tr key={u.id} className={`border-b last:border-0 ${t.border}`}>
                     <td className="px-3 py-2 font-semibold">{u.nombre}{esYo && <span className={`ml-1 text-3xs ${t.muted}`}>(tú)</span>}</td>
                     <td className="px-3 py-2">{u.email || u.username}</td>
-                    <td className="px-3 py-2">{u.empresa_id ? nombreEmpresa(u.empresa_id) : <span className={t.muted}>Todas</span>}</td>
+                    <td className="px-3 py-2">
+                      {empresaIdsDeUi(u).length === 0
+                        ? <span className={t.muted}>Todas</span>
+                        : empresaIdsDeUi(u).map(id => nombreEmpresa(id)).join(', ')}
+                    </td>
                     <td className="px-3 py-2"><Badge color={u.role === 'SUPER_ADMIN' ? '#7C3AED' : u.role === 'LECTURA' ? '#64748B' : '#0EA5E9'}>{u.role}</Badge></td>
                     <td className="px-3 py-2"><Badge color={ESTADO_HEX[u.estado] || '#94A3B8'}>{u.estado}</Badge></td>
                     <td className="px-3 py-2 whitespace-nowrap">{u.created_at ? formatFechaCorta(u.created_at) : '—'}</td>
@@ -8480,6 +8532,29 @@ function AppInner() {
 
   useEffect(() => { checkSession(); }, []);
 
+  // Cambia la empresa ACTIVA de la sesión (un usuario EMPRESA/LECTURA puede tener varias
+  // asignadas — ver api/login.js ?action=switch-empresa). Reutiliza checkSession() para
+  // releer user/empresas ya actualizados del servidor — MainApp se vuelve a montar entero
+  // (ver su `key` más abajo) y así todos sus datos, cargados cada uno con su propio useEffect
+  // de una sola vez, quedan recargados ya con el alcance de la empresa nueva.
+  const cambiarEmpresaActiva = async (empresaId) => {
+    const res = await fetch('/api/login?action=switch-empresa', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ empresa_id: empresaId }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || 'No se pudo cambiar de empresa.');
+    }
+    // La caché local guarda la última respuesta de cada loadX() bajo una clave fija (p. ej.
+    // "cmms-equipos"), sin importar de qué empresa era — correcto cuando un mismo usuario solo
+    // tenía una, pero ahora que puede cambiar de empresa activa, esa caché quedaría con datos
+    // de la empresa ANTERIOR. Se limpia aquí mismo (no solo en claimDataCaches, que solo actúa
+    // si cambia el userId) para que, si justo después falla la recarga por red, el fallback de
+    // loadX() no muestre por error datos de la otra empresa en vez de un estado vacío/erróneo.
+    clearDataCaches();
+    checkSession();
+  };
+
   // Cierre de sesión REAL: POST /api/logout destruye el token en Vercel KV y borra la cookie.
   // `motivo` (opcional) se muestra luego en la pantalla de login.
   const cerrarSesion = async (motivo = '') => {
@@ -8546,8 +8621,11 @@ function AppInner() {
   return (
     <AuthUserContext.Provider value={user}>
       <ReadOnlyContext.Provider value={readOnly}>
-        {/* key: si cambia el usuario, MainApp se monta de cero (sin estado de otra sesión). */}
-        <MainApp key={user.id} user={user} entorno={session.entorno} onLogout={() => cerrarSesion()} readOnly={readOnly} />
+        {/* key: si cambia el usuario, o la empresa activa de su sesión (ver
+            cambiarEmpresaActiva), MainApp se monta de cero — sin estado de otra sesión ni de
+            otra empresa a medio cargar. */}
+        <MainApp key={`${user.id}:${user.empresa_id || ''}`} user={user} entorno={session.entorno}
+          onLogout={() => cerrarSesion()} onSwitchEmpresa={cambiarEmpresaActiva} readOnly={readOnly} />
         {sessionWarning && (
           <SessionWarningModal segundos={warningSegundos} onContinuar={() => setSessionWarning(false)} onCerrarAhora={() => cerrarSesion()} />
         )}
