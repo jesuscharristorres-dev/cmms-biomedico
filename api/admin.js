@@ -21,7 +21,7 @@
 import { kv } from '../lib/db.js';
 import { requireAuth, requireSuperAdmin, destroyUserSessions } from '../lib/auth.js';
 import { listEmpresas, crearEmpresa, actualizarEmpresa } from '../lib/empresas.js';
-import { listUsuarios, crearUsuario, actualizarUsuario, eliminarUsuario, usuarioPublico } from '../lib/usuarios.js';
+import { listUsuarios, crearUsuario, actualizarUsuario, eliminarUsuario, usuarioPublico, empresaIdsDe } from '../lib/usuarios.js';
 import { auditarSinEmpresa, COLECCIONES_ARRAY } from '../lib/migrations.js';
 import { resolveEmpresaForWrite } from '../lib/tenancy.js';
 import { HttpError, withErrors, methodNotAllowed } from '../lib/http.js';
@@ -35,10 +35,13 @@ function idParam(req) {
 async function empresas(req, res) {
   if (req.method === 'GET') {
     const ctx = await requireAuth(req);
-    if (!ctx.isSuperAdmin) return res.status(200).json({ empresas: [ctx.empresa] });
+    if (!ctx.isSuperAdmin) {
+      const lista = await listEmpresas();
+      return res.status(200).json({ empresas: lista.filter(e => ctx.empresaIds.includes(e.id)) });
+    }
     const [lista, usuarios] = await Promise.all([listEmpresas(), listUsuarios()]);
     const conteo = {};
-    usuarios.forEach(u => { if (u.empresa_id) conteo[u.empresa_id] = (conteo[u.empresa_id] || 0) + 1; });
+    usuarios.forEach(u => { empresaIdsDe(u).forEach(eid => { conteo[eid] = (conteo[eid] || 0) + 1; }); });
     return res.status(200).json({ empresas: lista.map(e => ({ ...e, usuarios: conteo[e.id] || 0 })) });
   }
   await requireSuperAdmin(req);
@@ -58,7 +61,7 @@ async function usuarios(req, res) {
   if (req.method === 'GET') {
     let lista = await listUsuarios();
     const { empresa } = req.query || {};
-    if (typeof empresa === 'string' && empresa) lista = lista.filter(u => u.empresa_id === empresa);
+    if (typeof empresa === 'string' && empresa) lista = lista.filter(u => empresaIdsDe(u).includes(empresa));
     return res.status(200).json({ usuarios: lista.map(usuarioPublico) });
   }
   if (req.method === 'POST') {
@@ -71,9 +74,10 @@ async function usuarios(req, res) {
     // Cualquier cambio de privilegios o credenciales invalida las sesiones abiertas del
     // usuario afectado: tras cambiar de empresa ya no conserva acceso a la anterior ni
     // siquiera en una pestaña que tuviera abierta.
+    const empresasIguales = (a, b) => a.length === b.length && a.every(x => b.includes(x));
     const cambioSensible = anterior.estado !== actualizado.estado
       || anterior.role !== actualizado.role
-      || anterior.empresa_id !== actualizado.empresa_id
+      || !empresasIguales(empresaIdsDe(anterior), empresaIdsDe(actualizado))
       || anterior.password_hash !== actualizado.password_hash;
     if (cambioSensible && id !== ctx.userId) await destroyUserSessions(id);
     return res.status(200).json({ usuario: usuarioPublico(actualizado) });
