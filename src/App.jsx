@@ -1154,6 +1154,7 @@ async function actualizarTecnoTransversal(docKey, empresaKey, valor) {
 const TECNO_DOCS = [
   { key: 'invima', label: 'ABC-Tecnovigilancia-INVIMA', icon: FileText, porEmpresa: false },
   { key: 'manual', label: 'DLC-GEB-MN-01 — Manual de Tecnovigilancia', icon: BookOpen, porEmpresa: true },
+  { key: 'seguimientoAlertasSanitarias', label: 'Seguimiento de alertas sanitarias', icon: ShieldAlert, porEmpresa: true },
 ];
 // Acta de conformación de comités — un documento distinto por empresa, pero vive en la
 // subsección "Comités de tecnovigilancia" (no en "Documentación" junto a TECNO_DOCS) por
