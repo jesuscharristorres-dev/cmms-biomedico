@@ -1154,7 +1154,6 @@ async function actualizarTecnoTransversal(docKey, empresaKey, valor) {
 const TECNO_DOCS = [
   { key: 'invima', label: 'ABC-Tecnovigilancia-INVIMA', icon: FileText, porEmpresa: false },
   { key: 'manual', label: 'DLC-GEB-MN-01 — Manual de Tecnovigilancia', icon: BookOpen, porEmpresa: true },
-  { key: 'seguimientoAlertasSanitarias', label: 'Seguimiento de alertas sanitarias', icon: ShieldAlert, porEmpresa: true },
 ];
 // Acta de conformación de comités — un documento distinto por empresa, pero vive en la
 // subsección "Comités de tecnovigilancia" (no en "Documentación" junto a TECNO_DOCS) por
@@ -1162,6 +1161,9 @@ const TECNO_DOCS = [
 // el mismo mecanismo de URL-por-empresa (api/tecno-transversal.js) — ni el backend ni
 // urlDeDoc() necesitan saber que este documento es "distinto" de los de TECNO_DOCS.
 const TECNO_ACTA_COMITE_DOC = { key: 'actaConformacionComites', label: 'Acta de conformación de comités', icon: FileText, porEmpresa: true };
+// Seguimiento de alertas sanitarias — mismo caso que el acta de arriba: un documento por
+// empresa que vive en "Comités de tecnovigilancia" en vez de "Documentación".
+const TECNO_SEGUIMIENTO_ALERTAS_DOC = { key: 'seguimientoAlertasSanitarias', label: 'Seguimiento de alertas sanitarias', icon: ShieldAlert, porEmpresa: true };
 
 // Fuente de verdad COMPARTIDA: api/tecno-reportes.js (Vercel KV).
 const TECNO_REPORTES_KEY = 'cmms-tecno-reportes';
@@ -7224,29 +7226,34 @@ function TecnovigilanciaPage({ transversal, reportes, comites, activeCompany, t,
 
       {subTab === 'comites' && (
         <>
-          <div className="mb-6">
-            <div className="text-xs font-semibold uppercase tracking-wide mb-3">Acta de conformación de comités</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
-              {empresasKpi.map(c => (
-                <div key={c.key} className={`rounded-xl border overflow-hidden shadow-sm hover:shadow-md transition ${t.panel} ${t.border}`}>
-                  <div className="h-1" style={{ background: c.color }} />
-                  <div className="p-3.5 flex flex-col gap-2.5">
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: c.color + '1A', color: c.color }}>
-                        <FileText size={16} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-semibold wrap-break-word">{TECNO_ACTA_COMITE_DOC.label}</div>
-                        <div className="text-2xs mt-0.5 font-semibold" style={{ color: c.color }}>{c.key}</div>
+          {[TECNO_ACTA_COMITE_DOC, TECNO_SEGUIMIENTO_ALERTAS_DOC].map(doc => {
+            const DocIcon = doc.icon;
+            return (
+              <div key={doc.key} className="mb-6">
+                <div className="text-xs font-semibold uppercase tracking-wide mb-3">{doc.label}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
+                  {empresasKpi.map(c => (
+                    <div key={c.key} className={`rounded-xl border overflow-hidden shadow-sm hover:shadow-md transition ${t.panel} ${t.border}`}>
+                      <div className="h-1" style={{ background: c.color }} />
+                      <div className="p-3.5 flex flex-col gap-2.5">
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: c.color + '1A', color: c.color }}>
+                            <DocIcon size={16} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold wrap-break-word">{doc.label}</div>
+                            <div className="text-2xs mt-0.5 font-semibold" style={{ color: c.color }}>{c.key}</div>
+                          </div>
+                        </div>
+                        <DocumentoEstadoAcciones url={urlDeDoc(doc, c.key)}
+                          onChange={v => onUpdateTransversal(doc.key, c.key, v)} readOnly={readOnly} t={t} accent={c.color} />
                       </div>
                     </div>
-                    <DocumentoEstadoAcciones url={urlDeDoc(TECNO_ACTA_COMITE_DOC, c.key)}
-                      onChange={v => onUpdateTransversal(TECNO_ACTA_COMITE_DOC.key, c.key, v)} readOnly={readOnly} t={t} accent={c.color} />
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
+            );
+          })}
 
           <TecnoComitesSeccion comites={comites} empresasKpi={empresasKpi} modoGlobal={modoGlobal}
             t={t} accent={accent} onGuardar={onGuardarComite} onEliminar={onEliminarComite} readOnly={readOnly} />
