@@ -7226,34 +7226,38 @@ function TecnovigilanciaPage({ transversal, reportes, comites, activeCompany, t,
 
       {subTab === 'comites' && (
         <>
-          {[TECNO_ACTA_COMITE_DOC, TECNO_SEGUIMIENTO_ALERTAS_DOC].map(doc => {
-            const DocIcon = doc.icon;
-            return (
-              <div key={doc.key} className="mb-6">
-                <div className="text-xs font-semibold uppercase tracking-wide mb-3">{doc.label}</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
-                  {empresasKpi.map(c => (
-                    <div key={c.key} className={`rounded-xl border overflow-hidden shadow-sm hover:shadow-md transition ${t.panel} ${t.border}`}>
-                      <div className="h-1" style={{ background: c.color }} />
-                      <div className="p-3.5 flex flex-col gap-2.5">
-                        <div className="flex items-start gap-2.5">
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: c.color + '1A', color: c.color }}>
-                            <DocIcon size={16} />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-xs font-semibold wrap-break-word">{doc.label}</div>
-                            <div className="text-2xs mt-0.5 font-semibold" style={{ color: c.color }}>{c.key}</div>
-                          </div>
+          {/* Un solo bloque para los dos documentos por empresa (acta + seguimiento de
+              alertas) en vez de una sección completa por documento — con una sola empresa
+              activa eso dejaba cada tarjeta sola en su propia fila, una debajo de la otra,
+              ocupando mucho más alto de lo necesario para dos campos de URL. */}
+          <div className="mb-6">
+            <div className="text-xs font-semibold uppercase tracking-wide mb-3">Documentos del comité</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
+              {[TECNO_ACTA_COMITE_DOC, TECNO_SEGUIMIENTO_ALERTAS_DOC].flatMap(doc =>
+                empresasKpi.map(c => ({ doc, c })),
+              ).map(({ doc, c }) => {
+                const DocIcon = doc.icon;
+                return (
+                  <div key={`${doc.key}-${c.key}`} className={`rounded-xl border overflow-hidden shadow-sm hover:shadow-md transition ${t.panel} ${t.border}`}>
+                    <div className="h-1" style={{ background: c.color }} />
+                    <div className="p-3.5 flex flex-col gap-2.5">
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: c.color + '1A', color: c.color }}>
+                          <DocIcon size={16} />
                         </div>
-                        <DocumentoEstadoAcciones url={urlDeDoc(doc, c.key)}
-                          onChange={v => onUpdateTransversal(doc.key, c.key, v)} readOnly={readOnly} t={t} accent={c.color} />
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold wrap-break-word">{doc.label}</div>
+                          <div className="text-2xs mt-0.5 font-semibold" style={{ color: c.color }}>{c.key}</div>
+                        </div>
                       </div>
+                      <DocumentoEstadoAcciones url={urlDeDoc(doc, c.key)}
+                        onChange={v => onUpdateTransversal(doc.key, c.key, v)} readOnly={readOnly} t={t} accent={c.color} />
                     </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
           <TecnoComitesSeccion comites={comites} empresasKpi={empresasKpi} modoGlobal={modoGlobal}
             t={t} accent={accent} onGuardar={onGuardarComite} onEliminar={onEliminarComite} readOnly={readOnly} />
