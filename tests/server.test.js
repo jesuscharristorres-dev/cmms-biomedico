@@ -16,14 +16,18 @@ import { setupStore, ADMIN_USER, ADMIN_PASS } from './helpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, '..', 'dist');
+const DIST_BACKUP = path.join(__dirname, '..', '.dist-backup-tmp');
 
 describe('server.js (adaptador Express)', () => {
-  let server, baseUrl;
+  let server, baseUrl, habiaDistReal;
 
   before(async () => {
     setupStore();
-    // Fixture mínimo de "build" para probar el fallback a index.html (dist/ no se versiona;
-    // se borra en after()).
+    // Fixture mínimo de "build" para probar el fallback a index.html. dist/ no se versiona,
+    // pero si ya existe un build real (p. ej. recién corrido `npm run build`) se guarda a un
+    // lado y se restaura en after() — este test no debe borrar un build real de nadie.
+    habiaDistReal = fs.existsSync(DIST_DIR);
+    if (habiaDistReal) fs.renameSync(DIST_DIR, DIST_BACKUP);
     fs.mkdirSync(DIST_DIR, { recursive: true });
     fs.writeFileSync(path.join(DIST_DIR, 'index.html'), '<!doctype html><title>CMMS</title>');
 
@@ -35,6 +39,7 @@ describe('server.js (adaptador Express)', () => {
   after(async () => {
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(DIST_DIR, { recursive: true, force: true });
+    if (habiaDistReal) fs.renameSync(DIST_BACKUP, DIST_DIR);
   });
 
   function cookieFrom(res) {
