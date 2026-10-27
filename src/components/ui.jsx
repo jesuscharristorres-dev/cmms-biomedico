@@ -5,7 +5,7 @@
 // tal cual, sin ningún cambio de comportamiento.
 
 import { useState, useRef, useMemo } from 'react';
-import { CalendarClock, FileText, Plus, Trash2 } from 'lucide-react';
+import { CalendarClock, FileText, Plus, Trash2, Save, X, Pencil, Upload } from 'lucide-react';
 import { formatFechaCorta } from '../utils/fechas.js';
 
 // Botón compartido — variantes primary/outline/danger/ghost. Reemplaza las
@@ -287,5 +287,90 @@ export function RecordList({ t, records, fields, onAdd, onRemove, onUpdate, rend
         ))}
       </div>
     </div>
+  );
+}
+
+// Tarjeta de estadística compartida por casi todas las páginas (Dashboard, Alertas, Reportes
+// de falla, Capacitaciones, Tecnovigilancia, Personal) — un número grande con etiqueta y
+// subtítulo, opcionalmente clicable.
+export function HeroStat({ t, label, value, sub, color, onClick, brandBg }) {
+  return (
+    <div onClick={onClick} className={`rounded-xl p-4 border relative overflow-hidden ${t.panel} ${t.border} ${onClick ? 'cursor-pointer' : ''}`}>
+      {brandBg && <div className="absolute top-0 left-0 w-full h-[3px]" style={{ background: brandBg }} />}
+      <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full opacity-[0.07]" style={{ background: color }} />
+      <div className={`text-3xs uppercase tracking-wide mb-1 ${t.muted}`}>{label}</div>
+      <div className="flex items-end gap-2">
+        <span className="text-3xl font-bold font-mono" style={{ color }}>{value}</span>
+      </div>
+      <div className={`text-2xs mt-1 ${t.muted}`}>{sub}</div>
+    </div>
+  );
+}
+
+export function ClusterCard({ t, title, color, children, onClick, brandBg }) {
+  return (
+    <div onClick={onClick} className={`rounded-xl border p-4 relative overflow-hidden ${t.panel} ${t.border} ${onClick ? 'cursor-pointer' : ''}`}>
+      {brandBg && <div className="absolute top-0 left-0 w-full h-[3px]" style={{ background: brandBg }} />}
+      <div className="flex items-center gap-2 mb-3">
+        <span className="w-2 h-2 rounded-full" style={{ background: color }} />
+        <span className="text-xs font-semibold uppercase tracking-wide">{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+export function MiniRow({ label, value, t, color, noTranslate }) {
+  return (
+    <div className="flex items-center justify-between py-1 text-2xs">
+      <span className={t.muted} {...(noTranslate ? { translate: 'no', lang: 'es' } : {})}>{label}</span>
+      <span className="font-mono font-semibold" style={color ? { color } : {}}>{value}</span>
+    </div>
+  );
+}
+
+// Estado + acciones de un documento con URL externa (Planes y programas, Tecnovigilancia,
+// Limpieza y desinfección...) — "Sin documento"/"Documento disponible", y editar/cargar la
+// URL. Reutilizado por varias páginas de dominio distintas, por eso vive aquí y no en una
+// de ellas.
+export function DocumentoEstadoAcciones({ url, onChange, readOnly, t, accent }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(url || '');
+  const tieneDocumento = Boolean((url || '').trim());
+
+  const abrirEdicion = () => { setDraft(url || ''); setEditing(true); };
+  const guardar = () => { onChange(draft.trim()); setEditing(false); };
+  const cancelar = () => { setDraft(url || ''); setEditing(false); };
+
+  return (
+    <>
+      <div className="flex items-center gap-1.5 text-2xs">
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: tieneDocumento ? '#22C55E' : '#94A3B8' }} />
+        <span className={tieneDocumento ? 'font-medium' : t.muted}>{tieneDocumento ? 'Documento disponible' : 'Sin documento'}</span>
+      </div>
+
+      {editing ? (
+        <div className="flex flex-col gap-2 pt-1 border-t border-dashed border-slate-700/30">
+          <TextInput t={t} value={draft} placeholder="https://drive.google.com/..." onChange={setDraft} />
+          <div className="flex gap-2">
+            <Button variant="primary" size="sm" accent={accent} icon={Save} iconSize={12} onClick={guardar}>Guardar</Button>
+            <Button variant="outline" size="sm" t={t} icon={X} iconSize={12} onClick={cancelar}>Cancelar</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-2 flex-wrap pt-1">
+          {tieneDocumento && (
+            <Button variant="outline" size="sm" t={t} icon={FileText} iconSize={12}
+              onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>Ver documento</Button>
+          )}
+          {!readOnly && (
+            <Button variant={tieneDocumento ? 'ghost' : 'primary'} size="sm" accent={accent} t={t}
+              icon={tieneDocumento ? Pencil : Upload} iconSize={12} onClick={abrirEdicion}>
+              {tieneDocumento ? 'Reemplazar' : 'Cargar documento'}
+            </Button>
+          )}
+        </div>
+      )}
+    </>
   );
 }
