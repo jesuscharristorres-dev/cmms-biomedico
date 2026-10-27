@@ -201,7 +201,73 @@ sudo ln -s /etc/nginx/sites-available/cmms-biomedico /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-## 10. Verificación final (antes de apagar Vercel)
+## 10. Respaldos automáticos (pg_dump)
+
+Con Vercel, los respaldos de la base de datos los garantizaba el proveedor. En el servidor
+propio, eso pasa a ser responsabilidad de la empresa — por eso el proyecto trae
+`scripts/respaldo-postgres.sh`, probado de punta a punta (generar el respaldo, verificar que es
+válido, y restaurarlo en una base nueva y confirmar que los datos quedan idénticos) antes de
+entregar esta guía.
+
+```bash
+DATABASE_URL=postgresql://cmms_app:CAMBIA_ESTA_CLAVE@localhost:5432/cmms \
+  ./scripts/respaldo-postgres.sh
+```
+
+Por defecto guarda en `/var/backups/cmms-biomedico/` y borra lo que tenga más de 14 días
+(ajustable con `BACKUP_DIR` y `RETENTION_DAYS`). Si `pg_dump` falla o el archivo generado no es
+un dump válido, el script termina con error y **no** borra nada — así cron/systemd lo reportan
+como fallo en vez de quedar en silencio.
+
+**Con cron** (más simple):
+
+```bash
+# crontab -e del usuario que corre la app (p. ej. `cmms`) — todos los días a las 2:30 a.m.
+30 2 * * * DATABASE_URL=postgresql://cmms_app:CAMBIA_ESTA_CLAVE@localhost:5432/cmms /ruta/a/cmms-biomedico/scripts/respaldo-postgres.sh >> /var/log/cmms-respaldo.log 2>&1
+```
+
+**Con systemd timer** (si ya se eligió systemd para la app en el paso 8):
+
+```ini
+# /etc/systemd/system/cmms-respaldo.service
+[Unit]
+Description=Respaldo de PostgreSQL del CMMS Biomédico
+
+[Service]
+Type=oneshot
+EnvironmentFile=/ruta/a/cmms-biomedico/.env.produccion
+ExecStart=/ruta/a/cmms-biomedico/scripts/respaldo-postgres.sh
+User=cmms
+```
+
+```ini
+# /etc/systemd/system/cmms-respaldo.timer
+[Unit]
+Description=Respaldo diario del CMMS Biomédico
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+sudo systemctl enable --now cmms-respaldo.timer
+systemctl list-timers cmms-respaldo.timer   # confirma cuándo corre el próximo
+```
+
+**Cómo restaurar un respaldo** (probado: ver arriba). Nunca con `psql` — el formato es binario
+comprimido (`--format=custom`), se restaura con `pg_restore`:
+
+```bash
+# en una base NUEVA y vacía (nunca sobre la base en uso, salvo que sea justo lo que quieres)
+createdb -h localhost -U cmms_app cmms_restaurada
+pg_restore -h localhost -U cmms_app -d cmms_restaurada --no-owner /var/backups/cmms-biomedico/cmms-AAAAMMDD-HHMMSS.dump
+```
+
+## 11. Verificación final (antes de apagar Vercel)
 
 1. Desde un equipo conectado por VPN: abre `https://cmms.interno.empresa` y confirma que carga.
 2. Inicia sesión con un usuario real y revisa que sus datos (equipos, empresas, etc.) son los
@@ -209,3 +275,6 @@ sudo nginx -t && sudo systemctl reload nginx
 3. Prueba crear/editar un registro y confirma que persiste tras recargar.
 4. Deja el proyecto de Vercel sin tráfico (DNS/VPN ya apuntando al servidor nuevo) pero **sin
    eliminarlo** durante unos días, como respaldo (Fase 6 del plan de migración).
+5. Confirma que el respaldo automático (paso 10) ya corrió al menos una vez y dejó un archivo en
+   `/var/backups/cmms-biomedico/` — no esperes al primer problema real para descubrir que no
+   estaba programado.
