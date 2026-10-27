@@ -16,12 +16,17 @@ import { createPostgresKv } from '../lib/db-postgres.js';
  * con la misma semántica que se validó contra Postgres real: SET NX solo entra si la clave no
  * existe o ya venció; get() ignora claves vencidas; sadd solo cuenta los miembros nuevos.
  */
-function fakePool({ now = () => Date.now() } = {}) {
+function fakePool({ now = () => Date.now(), onCreateTables } = {}) {
   const store = new Map(); // key -> { value, expiresAt: number|null }
   const sets = new Map(); // key -> Set<string>
 
   async function query(text, params) {
     const t = now();
+
+    if (text.includes('CREATE TABLE')) {
+      onCreateTables?.();
+      return { rows: [], rowCount: 0 };
+    }
 
     if (text.includes('SELECT value FROM kv_store')) {
       const [key] = params;
@@ -80,6 +85,26 @@ function fakePool({ now = () => Date.now() } = {}) {
 
   return { query, store, sets };
 }
+
+describe('createPostgresKv — crea las tablas sola en el primer uso', () => {
+  test('no crea las tablas al construir el objeto, solo en la primera operación real', async () => {
+    let llamadas = 0;
+    const kv = createPostgresKv(fakePool({ onCreateTables: () => { llamadas++; } }));
+    assert.equal(llamadas, 0, 'construir createPostgresKv(pool) no debe tocar la base');
+    await kv.get('algo');
+    assert.equal(llamadas, 1);
+  });
+
+  test('solo ejecuta el CREATE TABLE una vez, aunque se llame get/set/sadd varias veces', async () => {
+    let llamadas = 0;
+    const kv = createPostgresKv(fakePool({ onCreateTables: () => { llamadas++; } }));
+    await kv.set('a', 1);
+    await kv.get('a');
+    await kv.sadd('s', 'm1');
+    await kv.del('a');
+    assert.equal(llamadas, 1, 'memoizado: un despliegue nuevo no repite el CREATE TABLE en cada operación');
+  });
+});
 
 describe('createPostgresKv — get/set', () => {
   test('set + get hacen roundtrip con JSON anidado', async () => {
