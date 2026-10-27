@@ -12,3 +12,13 @@ export function formatFechaCorta(fecha) {
   if (isNaN(d.getTime())) return '';
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
+
+// Fecha de HOY en formato AAAA-MM-DD, usando el reloj LOCAL del navegador. A propósito
+// no usa `new Date().toISOString()` (que da la fecha en UTC): Colombia es UTC-5, así que
+// entre las 7:00 p. m. y la medianoche locales, el UTC ya cayó en el día siguiente — con
+// toISOString(), cualquier registro nuevo (preventivo, correctivo, reporte de falla, etc.)
+// creado en esa ventana horaria se guardaba fechado un día por delante.
+export const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};

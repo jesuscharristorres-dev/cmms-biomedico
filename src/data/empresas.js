@@ -84,3 +84,13 @@ export const companyOf = (key) => COMPANIES.find(c => c.key === key) || (key && 
   key, nombre: `${key} (sin empresa válida)`, estado: 'inactivo', color: UNKNOWN_COMPANY_COLOR,
   gradient: `linear-gradient(135deg, ${UNKNOWN_COMPANY_COLOR} 0%, #CBD5E1 100%)`, sedes: [], logo: '', desconocida: true,
 } : undefined);
+
+// Tema único por empresa: todos los componentes reutilizan estos mismos valores.
+// Para cambiar la identidad visual de una empresa, basta con editar COMPANIES arriba.
+export function themeOf(companyKey) {
+  if (!companyKey || companyKey === 'TODAS') {
+    return { key: 'TODAS', solid: NEUTRAL_ACCENT, bg: NEUTRAL_ACCENT, light: shade(NEUTRAL_ACCENT, 0.4), dark: shade(NEUTRAL_ACCENT, -0.25), shades: [0.45, 0.25, 0.05, -0.15, -0.32, -0.48].map(p => shade(NEUTRAL_ACCENT, p)) };
+  }
+  const c = companyOf(companyKey) || COMPANIES[0];
+  return { key: c.key, solid: c.color, bg: c.gradient, light: shade(c.color, 0.4), dark: shade(c.color, -0.25), shades: [0.5, 0.3, 0.12, -0.1, -0.28, -0.45, -0.58].map(p => shade(c.color, p)) };
+}
