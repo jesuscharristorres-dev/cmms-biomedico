@@ -25,6 +25,8 @@ import { readPlanMejora, estaVencido as pmEstaVencido, grupoEstado as pmGrupoEst
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
 import logoIngenieriaClinica from './assets/logo-ingenieria-clinica.png';
 import logoMacromed from './assets/logo-macromed.jpg';
+// Logo de Salud Central UT — identidad visual del dashboard de Plan de mejora continua.
+import logoSaludCentralUT from './assets/logo-salud-central-ut.jpg';
 // Fotos reales de equipos por especialidad — landing pública únicamente (sección
 // "Especialidades"), tomadas del mismo banco de imágenes del proyecto v1.
 import fotoHospitalizacion from './assets/equipos/hospitalizacion.webp';
@@ -4836,7 +4838,7 @@ function MainApp({ user, entorno, onLogout, onSwitchEmpresa, readOnly }) {
           <CapacitacionesPage capacitaciones={capacitaciones} activeCompany={activeCompany} onChangeEmpresa={setActiveCompany} t={t} accent={accent}
             onActualizar={actualizarCapacitaciones} sincronizando={capSincronizando} syncStatus={capSyncStatus} readOnly={readOnly || !isSuper} />
         )}
-        {menu === 'planMejora' && <PlanMejoraPage t={t} accent={accent} dark={dark} />}
+        {menu === 'planMejora' && <PlanMejoraPage t={t} dark={dark} />}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} comites={tecnoComites} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} onGuardarComite={guardarComiteTecno} onEliminarComite={eliminarComiteTecno} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
         {menu === 'limpieza' && (
@@ -5352,12 +5354,39 @@ function MiniRow({ label, value, t, color, noTranslate }) {
 // El Excel se procesa completamente en el navegador (services/planMejoraExcel.js) y el
 // resultado se guarda solo en el localStorage de este navegador — no se sube al servidor.
 const PM_STORAGE_KEY = 'cmms.planMejora.v1';
-const PM_GRUPO_HEX = { 'Cerrado': '#22C55E', 'En gestión': '#F59E0B', 'Re-apertura / sin gestión': '#EF4444', 'No aplica': '#64748B' };
-const PM_ESTADO_HEX = {
-  'CERRADO - CALIDAD': '#16A34A', 'CERRADO - MESA DE TRABAJO': '#4ADE80', 'EN GESTION': '#F59E0B', 'EN PROCESO': '#FBBF24',
-  'RE-APERTURA': '#EF4444', 'SIN GESTION': '#B91C1C', 'NO APLICA': '#64748B',
+// Paleta tomada del logo de Salud Central UT (azul marino, morado, azul y turquesa).
+const PM_BRAND = {
+  navy: '#1B2A61', purple: '#59277C', blue: '#3D6D9E', teal: '#26C4D0', tealDark: '#1B9AAA',
+  gradient: 'linear-gradient(120deg, #1B2A61 0%, #3B2A72 35%, #3D6D9E 70%, #26C4D0 100%)',
+  strip: 'linear-gradient(90deg, #59277C 0%, #3D6D9E 50%, #26C4D0 100%)',
 };
-const PM_FALTA_HEX = ['#0EA5E9', '#A855F7', '#F97316', '#94A3B8'];
+const PM_GRUPO_HEX = { 'Cerrado': '#1FB2C1', 'En gestión': '#3D6D9E', 'Re-apertura / sin gestión': '#B4235F', 'No aplica': '#A3ADC2' };
+const PM_ESTADO_HEX = {
+  'CERRADO - CALIDAD': '#1B9AAA', 'CERRADO - MESA DE TRABAJO': '#6FD6DF', 'EN GESTION': '#3D6D9E', 'EN PROCESO': '#7397C4',
+  'RE-APERTURA': '#B4235F', 'SIN GESTION': '#59277C', 'NO APLICA': '#A3ADC2',
+};
+const PM_FALTA_HEX = ['#1B2A61', '#59277C', '#26C4D0', '#3D6D9E'];
+
+// Encabezado institucional (degradado del logo + logo sobre insignia blanca).
+function PmBanner({ children }) {
+  return (
+    <div className="rounded-2xl mb-5 overflow-hidden shadow-sm text-white relative" style={{ background: PM_BRAND.gradient }}>
+      <div className="absolute -right-16 -top-20 w-72 h-72 rounded-full opacity-10 bg-white pointer-events-none" />
+      <div className="absolute right-24 -bottom-24 w-56 h-56 rounded-full opacity-10 bg-white pointer-events-none" />
+      <div className="relative flex flex-wrap items-center gap-4 sm:gap-5 px-5 py-5 sm:px-7">
+        <div className="shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white p-1 shadow-md ring-2 ring-white/40">
+          <img src={logoSaludCentralUT} alt="Salud Central UT" className="w-full h-full object-contain rounded-full" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-3xs uppercase tracking-[0.2em] text-white/70 font-semibold">Salud Central UT · Gestión de Calidad</div>
+          <h1 className="text-lg sm:text-2xl font-bold leading-tight">Plan de Mejora Continua</h1>
+          <div className="text-2xs text-white/80 mt-0.5">Formato UT-GGC-F-09 · Seguimiento de hallazgos de auditoría · <span className="italic">Humanizando la salud</span></div>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
 const PM_FILTROS = [
   { key: 'establecimiento', label: 'Establecimiento' },
   { key: 'ente', label: 'Ente auditor' },
@@ -5369,6 +5398,17 @@ const PM_FILTROS = [
 const PM_POR_PAGINA = 20;
 const pmMes = (idx) => (idx >= 0 ? PM_MESES[idx][0].toUpperCase() + PM_MESES[idx].slice(1) : 'Sin mes');
 const pmValorFiltro = (key, v) => (key === 'mesIdx' ? pmMes(Number(v)) : v);
+
+// Título de tarjeta: barra con el degradado del logo + texto en azul marino institucional.
+function PmTitulo({ color, className = 'mb-4', children }) {
+  return (
+    <div className={`flex items-center gap-2 ${className}`}>
+      <span className="w-1 h-4 rounded-full shrink-0" style={{ background: PM_BRAND.strip }} />
+      <span className="text-xs font-bold uppercase tracking-wide" style={{ color }}>{children}</span>
+    </div>
+  );
+}
+const PmStrip = () => <div className="absolute top-0 left-0 w-full h-[3px]" style={{ background: PM_BRAND.strip }} />;
 
 function loadPlanMejoraGuardado() {
   try {
@@ -5394,7 +5434,8 @@ function pmContarPorGrupo(registros, campo) {
   return [...map.values()].sort((a, b) => b.total - a.total);
 }
 
-function PlanMejoraPage({ t, accent, dark }) {
+function PlanMejoraPage({ t, dark }) {
+  const accent = PM_BRAND.blue;
   const [datos, setDatos] = useState(loadPlanMejoraGuardado);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
@@ -5537,9 +5578,9 @@ function PlanMejoraPage({ t, accent, dark }) {
 
   const tick = { fontSize: 10, fill: dark ? '#94a3b8' : '#64748b' };
   const gridStroke = dark ? '#334155' : '#e2e8f0';
-  const tooltipStyle = { background: '#1e293b', border: 'none', borderRadius: 8, fontSize: 12, color: '#f1f5f9' };
-  const cardCls = `rounded-xl border p-5 ${t.panel} ${t.border}`;
-  const tituloCls = 'text-xs font-semibold mb-3 uppercase tracking-wide';
+  const tooltipStyle = { background: PM_BRAND.navy, border: 'none', borderRadius: 8, fontSize: 12, color: '#f1f5f9', boxShadow: '0 8px 24px rgba(27,42,97,.25)' };
+  const cardCls = `rounded-xl border p-5 shadow-sm relative overflow-hidden ${t.panel} ${t.border}`;
+  const tituloColor = dark ? '#7FD8E2' : PM_BRAND.navy;
 
   const input = (
     <input ref={inputRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden"
@@ -5555,6 +5596,7 @@ function PlanMejoraPage({ t, accent, dark }) {
     return (
       <div>
         {input}
+        <PmBanner />
         <div {...dropProps} onClick={() => !cargando && inputRef.current?.click()}
           className={`rounded-xl border-2 border-dashed p-10 text-center cursor-pointer transition ${t.panel} ${dragOver ? '' : t.border}`}
           style={dragOver ? { borderColor: accent, background: accent + '0D' } : {}}>
@@ -5578,30 +5620,34 @@ function PlanMejoraPage({ t, accent, dark }) {
     <div {...dropProps}>
       {input}
       {/* Archivo cargado + acciones */}
-      <div className={`rounded-xl border px-4 py-3 mb-4 flex flex-wrap items-center gap-3 ${t.panel} ${t.border}`}
-        style={dragOver ? { borderColor: accent, background: accent + '0D' } : {}}>
-        <FileBarChart size={18} style={{ color: accent }} className="shrink-0" />
-        <div className="min-w-0 flex-1">
-          <div className="text-xs font-semibold truncate" title={datos.fileName}>{datos.fileName}</div>
-          <div className={`text-2xs ${t.muted}`}>
-            Hoja «{datos.sheetName}» · {registros.length} hallazgos · cargado el {formatFechaHora(datos.cargadoEn)}
+      <PmBanner>
+        <div className="w-full lg:w-auto flex flex-col gap-2 lg:items-end">
+          <div className="rounded-lg px-3 py-2 bg-white/10 border border-white/20 min-w-0 max-w-full"
+            style={dragOver ? { background: 'rgba(255,255,255,.25)' } : {}}>
+            <div className="flex items-center gap-1.5 text-xs font-semibold" title={datos.fileName}>
+              <FileBarChart size={13} className="shrink-0" /> <span className="truncate">{datos.fileName}</span>
+            </div>
+            <div className="text-3xs text-white/75">
+              Hoja «{datos.sheetName}» · {registros.length} hallazgos · cargado el {formatFechaHora(datos.cargadoEn)}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="custom" icon={cargando ? RefreshCw : Upload} disabled={cargando} onClick={() => inputRef.current?.click()}
+              className="bg-white shadow-sm" style={{ color: PM_BRAND.navy }}>
+              {cargando ? 'Procesando…' : 'Cargar otro Excel'}
+            </Button>
+            <Button variant="custom" icon={Trash2} onClick={quitar} className="border border-white/40 text-white hover:bg-white/10">Quitar</Button>
           </div>
         </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-          <Button t={t} icon={cargando ? RefreshCw : Upload} disabled={cargando} onClick={() => inputRef.current?.click()}>
-            {cargando ? 'Procesando…' : 'Cargar otro Excel'}
-          </Button>
-          <Button variant="ghost" t={t} icon={Trash2} onClick={quitar}>Quitar</Button>
-        </div>
-      </div>
+      </PmBanner>
       {error && <div className="mb-4 rounded-xl px-4 py-3 border text-xs" style={{ background: '#EF44441A', borderColor: '#EF4444', color: '#EF4444' }}>{error}</div>}
       {aviso && <div className="mb-4 rounded-xl px-4 py-3 border text-xs" style={{ background: '#F59E0B1A', borderColor: '#F59E0B', color: '#B45309' }}>{aviso}</div>}
 
       {/* Filtros */}
-      <div className={`rounded-xl border p-4 mb-5 ${t.panel} ${t.border}`}>
-        <div className="flex items-center gap-2 mb-3">
+      <div className={`rounded-xl border p-4 mb-5 shadow-sm ${t.panel} ${t.border}`}>
+        <div className="flex flex-wrap items-center gap-2 mb-3">
           <Filter size={13} style={{ color: accent }} />
-          <span className="text-xs font-semibold uppercase tracking-wide">Filtros</span>
+          <span className="text-xs font-bold uppercase tracking-wide" style={{ color: tituloColor }}>Filtros</span>
           <span className={`text-2xs ${t.muted}`}>— también puedes hacer clic en las barras de los gráficos</span>
           {filtrosActivos.length > 0 && (
             <button className="ml-auto text-2xs underline" style={{ color: accent }} onClick={() => { setFiltros({}); setPagina(0); }}>Limpiar filtros</button>
@@ -5633,10 +5679,10 @@ function PlanMejoraPage({ t, accent, dark }) {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        <HeroStat t={t} label="Hallazgos" value={kpi.total} sub={`${kpi.establecimientos} establecimiento${kpi.establecimientos !== 1 ? 's' : ''}`} color={accent} />
-        <HeroStat t={t} label="Cumplimiento (cierre)" value={kpi.pctCierre + '%'} sub={`${kpi.cerrados} cerrados de ${kpi.aplican} que aplican`} color="#22C55E" />
-        <HeroStat t={t} label="Abiertos" value={kpi.abiertos} sub={`${kpi.reapertura} re-apertura / sin gestión · ${kpi.enGestion} en gestión`} color="#EF4444" />
-        <HeroStat t={t} label="Vencidos" value={kpi.vencidos} sub="abiertos con fecha final ya cumplida" color="#F59E0B" />
+        <HeroStat t={t} label="Hallazgos" value={kpi.total} sub={`${kpi.establecimientos} establecimiento${kpi.establecimientos !== 1 ? 's' : ''}`} color={dark ? '#7FA6D6' : PM_BRAND.navy} brandBg={PM_BRAND.strip} />
+        <HeroStat t={t} label="Cumplimiento (cierre)" value={kpi.pctCierre + '%'} sub={`${kpi.cerrados} cerrados de ${kpi.aplican} que aplican`} color={PM_BRAND.tealDark} brandBg={PM_BRAND.strip} />
+        <HeroStat t={t} label="Abiertos" value={kpi.abiertos} sub={`${kpi.reapertura} re-apertura / sin gestión · ${kpi.enGestion} en gestión`} color={dark ? '#B98AD6' : PM_BRAND.purple} brandBg={PM_BRAND.strip} />
+        <HeroStat t={t} label="Vencidos" value={kpi.vencidos} sub="abiertos con fecha final ya cumplida" color="#B4235F" brandBg={PM_BRAND.strip} />
       </div>
 
       {kpi.total === 0 ? (
@@ -5645,7 +5691,8 @@ function PlanMejoraPage({ t, accent, dark }) {
         <>
           <div className="grid lg:grid-cols-3 gap-4 mb-4">
             <div className={cardCls}>
-              <div className={tituloCls} style={{ color: accent }}>Estado del plan</div>
+              <PmStrip />
+              <PmTitulo color={tituloColor}>Estado del plan</PmTitulo>
               <div className="relative">
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
@@ -5674,7 +5721,8 @@ function PlanMejoraPage({ t, accent, dark }) {
             </div>
 
             <div className={`lg:col-span-2 ${cardCls}`}>
-              <div className={tituloCls} style={{ color: accent }}>Hallazgos por mes de auditoría</div>
+              <PmStrip />
+              <PmTitulo color={tituloColor}>Hallazgos por mes de auditoría</PmTitulo>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={graficos.porMes} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
@@ -5692,7 +5740,8 @@ function PlanMejoraPage({ t, accent, dark }) {
 
           <div className="grid lg:grid-cols-2 gap-4 mb-4">
             <div className={cardCls}>
-              <div className={tituloCls} style={{ color: accent }}>Por ente auditor</div>
+              <PmStrip />
+              <PmTitulo color={tituloColor}>Por ente auditor</PmTitulo>
               <ResponsiveContainer width="100%" height={Math.max(160, graficos.porEnte.length * 34 + 50)}>
                 <BarChart data={graficos.porEnte} layout="vertical" margin={{ top: 0, right: 15, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
@@ -5708,7 +5757,8 @@ function PlanMejoraPage({ t, accent, dark }) {
             </div>
 
             <div className={cardCls}>
-              <div className={tituloCls} style={{ color: accent }}>Por plazo</div>
+              <PmStrip />
+              <PmTitulo color={tituloColor}>Por plazo</PmTitulo>
               <ResponsiveContainer width="100%" height={Math.max(160, graficos.porPlazo.length * 34 + 50)}>
                 <BarChart data={graficos.porPlazo} layout="vertical" margin={{ top: 0, right: 15, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
@@ -5726,7 +5776,8 @@ function PlanMejoraPage({ t, accent, dark }) {
 
           <div className="grid lg:grid-cols-2 gap-4 mb-4">
             <div className={cardCls}>
-              <div className={tituloCls} style={{ color: accent }}>Por establecimiento</div>
+              <PmStrip />
+              <PmTitulo color={tituloColor}>Por establecimiento</PmTitulo>
               <ResponsiveContainer width="100%" height={graficos.porEstablecimiento.length * 26 + 60}>
                 <BarChart data={graficos.porEstablecimiento} layout="vertical" margin={{ top: 0, right: 15, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
@@ -5742,7 +5793,8 @@ function PlanMejoraPage({ t, accent, dark }) {
             </div>
 
             <div className={cardCls}>
-              <div className={tituloCls} style={{ color: accent }}>Por subcomponente / servicio{graficos.porServicio.length === 15 ? ' (top 15)' : ''}</div>
+              <PmStrip />
+              <PmTitulo color={tituloColor}>Por subcomponente / servicio{graficos.porServicio.length === 15 ? ' (top 15)' : ''}</PmTitulo>
               <ResponsiveContainer width="100%" height={graficos.porServicio.length * 26 + 60}>
                 <BarChart data={graficos.porServicio} layout="vertical" margin={{ top: 0, right: 15, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
@@ -5760,7 +5812,8 @@ function PlanMejoraPage({ t, accent, dark }) {
 
           <div className="grid lg:grid-cols-2 gap-4 mb-5">
             <div className={cardCls}>
-              <div className={tituloCls} style={{ color: accent }}>Tipo de falta</div>
+              <PmStrip />
+              <PmTitulo color={tituloColor}>Tipo de falta</PmTitulo>
               <div className="flex flex-col sm:flex-row items-center gap-4">
                 <div className="w-full sm:w-1/2">
                   <ResponsiveContainer width="100%" height={180}>
@@ -5785,9 +5838,9 @@ function PlanMejoraPage({ t, accent, dark }) {
               </div>
             </div>
 
-            <ClusterCard t={t} title="Responsables con más hallazgos abiertos" color="#EF4444">
+            <ClusterCard t={t} title="Responsables con más hallazgos abiertos" color={PM_BRAND.purple} brandBg={PM_BRAND.strip}>
               {graficos.sinResponsable > 0 && (
-                <div className="text-2xs mb-2" style={{ color: '#EF4444' }}>
+                <div className="text-2xs mb-2" style={{ color: '#B4235F' }}>
                   {graficos.sinResponsable} hallazgo{graficos.sinResponsable !== 1 ? 's' : ''} abierto{graficos.sinResponsable !== 1 ? 's' : ''} sin responsable asignado (vacío o N/A).
                 </div>
               )}
@@ -5799,7 +5852,7 @@ function PlanMejoraPage({ t, accent, dark }) {
                     <div key={nombre} className="flex items-center gap-3 py-1">
                       <div className={`w-40 text-2xs truncate ${t.muted}`} title={nombre}>{nombre}</div>
                       <div className={`flex-1 h-2.5 rounded-full overflow-hidden ${t.panel3}`}>
-                        <div className="h-full rounded-full" style={{ width: `${(n / max) * 100}%`, background: '#EF4444' }} />
+                        <div className="h-full rounded-full" style={{ width: `${(n / max) * 100}%`, background: PM_BRAND.strip }} />
                       </div>
                       <div className="w-8 text-right text-2xs font-mono font-semibold">{n}</div>
                     </div>
@@ -5810,8 +5863,9 @@ function PlanMejoraPage({ t, accent, dark }) {
 
           {/* Listado de hallazgos */}
           <div className={cardCls}>
+            <PmStrip />
             <div className="flex flex-wrap items-center gap-3 mb-3">
-              <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Listado de hallazgos</div>
+              <PmTitulo color={tituloColor} className="">Listado de hallazgos</PmTitulo>
               <span className={`text-2xs font-mono ${t.muted}`}>{listado.length}</span>
               <label className={`ml-auto flex items-center gap-1.5 text-2xs cursor-pointer ${t.muted}`}>
                 <input type="checkbox" checked={soloAbiertos} onChange={e => { setSoloAbiertos(e.target.checked); setPagina(0); }} />
@@ -5826,7 +5880,7 @@ function PlanMejoraPage({ t, accent, dark }) {
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className={`border-b ${t.border}`}>
+                  <tr className={`border-b ${t.border}`} style={{ background: dark ? '#1B2A6133' : '#1B2A610A' }}>
                     {['N°', 'Establecimiento', 'Fecha auditoría', 'Ente', 'Servicio', 'Hallazgo', 'Responsable', 'Fecha final', 'Estado'].map(h => (
                       <th key={h} className={`text-left px-2 py-2 font-mono text-3xs uppercase whitespace-nowrap ${t.muted}`}>{h}</th>
                     ))}
@@ -5868,6 +5922,10 @@ function PlanMejoraPage({ t, accent, dark }) {
           </div>
         </>
       )}
+      <div className={`flex items-center justify-center gap-2 mt-6 text-3xs uppercase tracking-[0.15em] ${t.muted}`}>
+        <img src={logoSaludCentralUT} alt="" className="w-5 h-5 rounded-full object-contain bg-white" />
+        Salud Central UT · Humanizando la salud
+      </div>
     </div>
   );
 }
