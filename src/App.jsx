@@ -20,6 +20,7 @@ import { readSheet } from 'read-excel-file/browser';
 import writeXlsxFile from 'write-excel-file/browser';
 import { PREVENTIVO_ALERTA_DIAS, CALIBRACION_ALERTA_DIAS, calibStatus, buildAlerts, aplicaCalibracionEfectiva } from './services/alertLogic';
 import { preventivoDelMes } from './services/preventivoSchedule';
+import { readPlanMejora, estaVencido as pmEstaVencido, grupoEstado as pmGrupoEstado, GRUPOS_ESTADO as PM_GRUPOS_ESTADO, MESES as PM_MESES, norm as pmNorm } from './services/planMejoraExcel';
 // Logo institucional real (ring + wordmark ya integrados en el PNG) — reemplaza al
 // LogoMark generado por código únicamente en la pantalla de inicio de sesión.
 import logoIngenieriaClinica from './assets/logo-ingenieria-clinica.png';
@@ -396,6 +397,7 @@ const MENU = [
   { key: 'planes', label: 'Planes y programas', icon: FolderOpen },
   { key: 'capacitaciones', label: 'Capacitaciones', icon: GraduationCap },
   { key: 'tecnovigilancia', label: 'Tecnovigilancia', icon: ShieldAlert },
+  { key: 'planMejora', label: 'Plan de mejora', icon: FileBarChart },
   { key: 'personal', label: 'Hojas de vida personal', icon: IdCard },
   { key: 'limpieza', label: 'Formatos de limpieza y desinfección', icon: SprayCan },
   { key: 'empresas', label: 'Empresas', icon: Building2, superOnly: true },
@@ -4834,6 +4836,7 @@ function MainApp({ user, entorno, onLogout, onSwitchEmpresa, readOnly }) {
           <CapacitacionesPage capacitaciones={capacitaciones} activeCompany={activeCompany} onChangeEmpresa={setActiveCompany} t={t} accent={accent}
             onActualizar={actualizarCapacitaciones} sincronizando={capSincronizando} syncStatus={capSyncStatus} readOnly={readOnly || !isSuper} />
         )}
+        {menu === 'planMejora' && <PlanMejoraPage t={t} accent={accent} dark={dark} />}
         {menu === 'tecnovigilancia' && <TecnovigilanciaPage transversal={tecnoTransversal} reportes={tecnoReportes} comites={tecnoComites} activeCompany={activeCompany} t={t} accent={accent} onUpdateTransversal={updateTecnoTransversal} onUpdateReporte={updateTecnoReporte} onGuardarComite={guardarComiteTecno} onEliminarComite={eliminarComiteTecno} readOnly={readOnly} />}
         {menu === 'personal' && <PersonalPage personal={personal} activeCompany={activeCompany} t={t} accent={accent} onAdd={addPersonal} onUpdate={updatePersonal} readOnly={readOnly} />}
         {menu === 'limpieza' && (
@@ -5339,6 +5342,532 @@ function MiniRow({ label, value, t, color, noTranslate }) {
     <div className="flex items-center justify-between py-1 text-2xs">
       <span className={t.muted} {...(noTranslate ? { translate: 'no', lang: 'es' } : {})}>{label}</span>
       <span className="font-mono font-semibold" style={color ? { color } : {}}>{value}</span>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* PÁGINA: PLAN DE MEJORA (dashboard a partir del Excel UT-GGC-F-09)  */
+/* ---------------------------------------------------------------- */
+// El Excel se procesa completamente en el navegador (services/planMejoraExcel.js) y el
+// resultado se guarda solo en el localStorage de este navegador — no se sube al servidor.
+const PM_STORAGE_KEY = 'cmms.planMejora.v1';
+const PM_GRUPO_HEX = { 'Cerrado': '#22C55E', 'En gestión': '#F59E0B', 'Re-apertura / sin gestión': '#EF4444', 'No aplica': '#64748B' };
+const PM_ESTADO_HEX = {
+  'CERRADO - CALIDAD': '#16A34A', 'CERRADO - MESA DE TRABAJO': '#4ADE80', 'EN GESTION': '#F59E0B', 'EN PROCESO': '#FBBF24',
+  'RE-APERTURA': '#EF4444', 'SIN GESTION': '#B91C1C', 'NO APLICA': '#64748B',
+};
+const PM_FALTA_HEX = ['#0EA5E9', '#A855F7', '#F97316', '#94A3B8'];
+const PM_FILTROS = [
+  { key: 'establecimiento', label: 'Establecimiento' },
+  { key: 'ente', label: 'Ente auditor' },
+  { key: 'servicio', label: 'Subcomponente / servicio' },
+  { key: 'estado', label: 'Estado del plan' },
+  { key: 'plazo', label: 'Plazo' },
+  { key: 'mesIdx', label: 'Mes de auditoría' },
+];
+const PM_POR_PAGINA = 20;
+const pmMes = (idx) => (idx >= 0 ? PM_MESES[idx][0].toUpperCase() + PM_MESES[idx].slice(1) : 'Sin mes');
+const pmValorFiltro = (key, v) => (key === 'mesIdx' ? pmMes(Number(v)) : v);
+
+function loadPlanMejoraGuardado() {
+  try {
+    const raw = localStorage.getItem(PM_STORAGE_KEY);
+    const d = raw ? JSON.parse(raw) : null;
+    return d && Array.isArray(d.registros) ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+// [{ name, total, Cerrado, 'En gestión', … }] de mayor a menor total.
+function pmContarPorGrupo(registros, campo) {
+  const map = new Map();
+  for (const r of registros) {
+    // Ojo: mesIdx 0 (enero) es un valor válido, no un vacío.
+    const name = r[campo] === '' || r[campo] == null ? 'SIN DATO' : r[campo];
+    if (!map.has(name)) map.set(name, { name, total: 0, ...Object.fromEntries(PM_GRUPOS_ESTADO.map(g => [g, 0])) });
+    const row = map.get(name);
+    row.total++;
+    row[r.grupo]++;
+  }
+  return [...map.values()].sort((a, b) => b.total - a.total);
+}
+
+function PlanMejoraPage({ t, accent, dark }) {
+  const [datos, setDatos] = useState(loadPlanMejoraGuardado);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+  const [aviso, setAviso] = useState('');
+  const [dragOver, setDragOver] = useState(false);
+  const [filtros, setFiltros] = useState({});
+  const [busqueda, setBusqueda] = useState('');
+  const [soloAbiertos, setSoloAbiertos] = useState(false);
+  const [pagina, setPagina] = useState(0);
+  const inputRef = useRef(null);
+  const hoy = todayISO();
+
+  const cargarArchivo = async (file) => {
+    if (!file) return;
+    if (!/\.xlsx$/i.test(file.name)) {
+      setError('Selecciona un archivo de Excel en formato .xlsx.');
+      return;
+    }
+    setCargando(true);
+    setError('');
+    setAviso('');
+    try {
+      const buf = await file.arrayBuffer();
+      // Cede un cuadro para que se pinte "Procesando…" antes del trabajo síncrono.
+      await new Promise(r => setTimeout(r, 30));
+      const { sheetName, registros } = readPlanMejora(buf);
+      const nuevo = { fileName: file.name, sheetName, cargadoEn: new Date().toISOString(), registros };
+      setDatos(nuevo);
+      setFiltros({});
+      setBusqueda('');
+      setPagina(0);
+      try {
+        localStorage.setItem(PM_STORAGE_KEY, JSON.stringify(nuevo));
+      } catch {
+        setAviso('El archivo se cargó, pero es demasiado grande para guardarlo en este navegador: al recargar la página tendrás que volver a cargarlo.');
+      }
+    } catch (e) {
+      console.error('[PlanMejora] Error leyendo el Excel:', e);
+      setError(e?.message || 'No se pudo leer el archivo.');
+    } finally {
+      setCargando(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  const quitar = () => {
+    if (!window.confirm('¿Quitar el Excel cargado de este dashboard?')) return;
+    try { localStorage.removeItem(PM_STORAGE_KEY); } catch { /* sin almacenamiento disponible */ }
+    setDatos(null);
+    setFiltros({});
+    setAviso('');
+  };
+
+  const registros = useMemo(() => datos?.registros || [], [datos]);
+
+  const opciones = useMemo(() => {
+    const out = {};
+    for (const { key } of PM_FILTROS) {
+      const vals = [...new Set(registros.map(r => String(r[key])))];
+      out[key] = key === 'mesIdx' ? vals.sort((a, b) => Number(a) - Number(b)) : vals.sort((a, b) => a.localeCompare(b, 'es'));
+    }
+    return out;
+  }, [registros]);
+
+  const filtrados = useMemo(() => registros.filter(r =>
+    PM_FILTROS.every(({ key }) => !filtros[key] || String(r[key]) === filtros[key])), [registros, filtros]);
+
+  const setFiltro = (key, value) => { setFiltros(f => ({ ...f, [key]: value })); setPagina(0); };
+  const toggleFiltro = (key, value) => {
+    if (value === undefined || value === null) return;
+    setFiltros(f => ({ ...f, [key]: f[key] === String(value) ? '' : String(value) }));
+    setPagina(0);
+  };
+  const barClick = (key) => (d) => toggleFiltro(key, d?.payload?.name ?? d?.name);
+  const filtrosActivos = PM_FILTROS.filter(f => filtros[f.key]);
+
+  const kpi = useMemo(() => {
+    const total = filtrados.length;
+    const cuenta = (g) => filtrados.filter(r => r.grupo === g).length;
+    const cerrados = cuenta('Cerrado');
+    const noAplica = cuenta('No aplica');
+    const enGestion = cuenta('En gestión');
+    const reapertura = cuenta('Re-apertura / sin gestión');
+    const aplican = total - noAplica;
+    return {
+      total, cerrados, noAplica, enGestion, reapertura, aplican,
+      abiertos: enGestion + reapertura,
+      pctCierre: aplican ? Math.round((cerrados / aplican) * 100) : 0,
+      vencidos: filtrados.filter(r => pmEstaVencido(r, hoy)).length,
+      establecimientos: new Set(filtrados.map(r => r.establecimiento)).size,
+    };
+  }, [filtrados, hoy]);
+
+  const graficos = useMemo(() => {
+    const estadoMap = new Map();
+    filtrados.forEach(r => estadoMap.set(r.estado, (estadoMap.get(r.estado) || 0) + 1));
+    const porEstado = [...estadoMap.entries()].sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value, fill: PM_ESTADO_HEX[name] || PM_GRUPO_HEX[pmGrupoEstado(name)] }));
+
+    const porMes = pmContarPorGrupo(filtrados, 'mesIdx')
+      .sort((a, b) => Number(a.name) - Number(b.name))
+      .map(m => ({ ...m, mes: pmMes(Number(m.name)).slice(0, 3), mesLargo: pmMes(Number(m.name)) }));
+
+    const faltaMap = new Map();
+    filtrados.forEach(r => {
+      const k = r.tipoFalta && r.tipoFalta.toUpperCase() !== 'N/A' ? r.tipoFalta : 'Sin dato';
+      faltaMap.set(k, (faltaMap.get(k) || 0) + 1);
+    });
+    const porFalta = [...faltaMap.entries()].sort((a, b) => b[1] - a[1])
+      .map(([name, value], i) => ({ name, value, fill: name === 'Sin dato' ? '#94A3B8' : PM_FALTA_HEX[i % PM_FALTA_HEX.length] }));
+
+    // Los abiertos sin responsable (vacío o "N/A") se cuentan aparte para que no tapen el ranking.
+    const respMap = new Map();
+    let sinResponsable = 0;
+    filtrados.filter(r => r.grupo === 'En gestión' || r.grupo === 'Re-apertura / sin gestión').forEach(r => {
+      if (!r.responsable || /^n\/?a$/i.test(r.responsable)) { sinResponsable++; return; }
+      respMap.set(r.responsable, (respMap.get(r.responsable) || 0) + 1);
+    });
+    const topResponsables = [...respMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+    return {
+      porEstado, porMes, porFalta, topResponsables, sinResponsable,
+      porEnte: pmContarPorGrupo(filtrados, 'ente'),
+      porEstablecimiento: pmContarPorGrupo(filtrados, 'establecimiento'),
+      porServicio: pmContarPorGrupo(filtrados, 'servicio').slice(0, 15),
+      porPlazo: pmContarPorGrupo(filtrados, 'plazo'),
+    };
+  }, [filtrados]);
+
+  const listado = useMemo(() => {
+    const q = pmNorm(busqueda);
+    return filtrados.filter(r => {
+      if (soloAbiertos && r.grupo !== 'En gestión' && r.grupo !== 'Re-apertura / sin gestión') return false;
+      if (!q) return true;
+      return pmNorm(`${r.hallazgo} ${r.accion} ${r.responsable} ${r.establecimiento} ${r.servicio} ${r.numero}`).includes(q);
+    });
+  }, [filtrados, busqueda, soloAbiertos]);
+  const totalPaginas = Math.max(1, Math.ceil(listado.length / PM_POR_PAGINA));
+  const paginaActual = Math.min(pagina, totalPaginas - 1);
+
+  const tick = { fontSize: 10, fill: dark ? '#94a3b8' : '#64748b' };
+  const gridStroke = dark ? '#334155' : '#e2e8f0';
+  const tooltipStyle = { background: '#1e293b', border: 'none', borderRadius: 8, fontSize: 12, color: '#f1f5f9' };
+  const cardCls = `rounded-xl border p-5 ${t.panel} ${t.border}`;
+  const tituloCls = 'text-xs font-semibold mb-3 uppercase tracking-wide';
+
+  const input = (
+    <input ref={inputRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden"
+      onChange={e => cargarArchivo(e.target.files?.[0])} />
+  );
+  const dropProps = {
+    onDragOver: (e) => { e.preventDefault(); setDragOver(true); },
+    onDragLeave: () => setDragOver(false),
+    onDrop: (e) => { e.preventDefault(); setDragOver(false); cargarArchivo(e.dataTransfer.files?.[0]); },
+  };
+
+  if (!datos) {
+    return (
+      <div>
+        {input}
+        <div {...dropProps} onClick={() => !cargando && inputRef.current?.click()}
+          className={`rounded-xl border-2 border-dashed p-10 text-center cursor-pointer transition ${t.panel} ${dragOver ? '' : t.border}`}
+          style={dragOver ? { borderColor: accent, background: accent + '0D' } : {}}>
+          {cargando
+            ? <RefreshCw size={32} className="mx-auto mb-3 animate-spin" style={{ color: accent }} />
+            : <Upload size={32} className="mx-auto mb-3" style={{ color: accent }} />}
+          <h2 className="text-sm font-bold mb-1">{cargando ? 'Procesando el Excel…' : 'Carga el Excel del plan de mejora continua'}</h2>
+          <p className={`text-xs mb-5 max-w-md mx-auto ${t.muted}`}>
+            Arrastra aquí el archivo .xlsx (formato UT-GGC-F-09) o haz clic para seleccionarlo. Se lee la hoja de hallazgos
+            (columnas Establecimiento, Ente Auditor, Subcomponente, HALLAZGOS, PLAZO, ESTADO DE PLAN…) y se grafica al instante.
+            El archivo se procesa en tu navegador y no se sube al servidor.
+          </p>
+          {!cargando && <Button variant="primary" accent={accent} icon={Upload} onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}>Seleccionar Excel</Button>}
+        </div>
+        {error && <div className="mt-4 rounded-xl px-4 py-3 border text-xs" style={{ background: '#EF44441A', borderColor: '#EF4444', color: '#EF4444' }}>{error}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div {...dropProps}>
+      {input}
+      {/* Archivo cargado + acciones */}
+      <div className={`rounded-xl border px-4 py-3 mb-4 flex flex-wrap items-center gap-3 ${t.panel} ${t.border}`}
+        style={dragOver ? { borderColor: accent, background: accent + '0D' } : {}}>
+        <FileBarChart size={18} style={{ color: accent }} className="shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-semibold truncate" title={datos.fileName}>{datos.fileName}</div>
+          <div className={`text-2xs ${t.muted}`}>
+            Hoja «{datos.sheetName}» · {registros.length} hallazgos · cargado el {formatFechaHora(datos.cargadoEn)}
+          </div>
+        </div>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Button t={t} icon={cargando ? RefreshCw : Upload} disabled={cargando} onClick={() => inputRef.current?.click()}>
+            {cargando ? 'Procesando…' : 'Cargar otro Excel'}
+          </Button>
+          <Button variant="ghost" t={t} icon={Trash2} onClick={quitar}>Quitar</Button>
+        </div>
+      </div>
+      {error && <div className="mb-4 rounded-xl px-4 py-3 border text-xs" style={{ background: '#EF44441A', borderColor: '#EF4444', color: '#EF4444' }}>{error}</div>}
+      {aviso && <div className="mb-4 rounded-xl px-4 py-3 border text-xs" style={{ background: '#F59E0B1A', borderColor: '#F59E0B', color: '#B45309' }}>{aviso}</div>}
+
+      {/* Filtros */}
+      <div className={`rounded-xl border p-4 mb-5 ${t.panel} ${t.border}`}>
+        <div className="flex items-center gap-2 mb-3">
+          <Filter size={13} style={{ color: accent }} />
+          <span className="text-xs font-semibold uppercase tracking-wide">Filtros</span>
+          <span className={`text-2xs ${t.muted}`}>— también puedes hacer clic en las barras de los gráficos</span>
+          {filtrosActivos.length > 0 && (
+            <button className="ml-auto text-2xs underline" style={{ color: accent }} onClick={() => { setFiltros({}); setPagina(0); }}>Limpiar filtros</button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          {PM_FILTROS.map(({ key, label }) => (
+            <Field key={key} label={label} dense>
+              <select value={filtros[key] || ''} onChange={e => setFiltro(key, e.target.value)}
+                className={`w-full rounded-md border px-2 py-1.5 text-xs ${t.input}`}>
+                <option value="">Todos</option>
+                {opciones[key].map(v => <option key={v} value={v}>{pmValorFiltro(key, v)}</option>)}
+              </select>
+            </Field>
+          ))}
+        </div>
+        {filtrosActivos.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {filtrosActivos.map(({ key, label }) => (
+              <button key={key} onClick={() => setFiltro(key, '')}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs border"
+                style={{ borderColor: accent, color: accent, background: accent + '12' }}>
+                {label}: {pmValorFiltro(key, filtros[key])} <X size={11} />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <HeroStat t={t} label="Hallazgos" value={kpi.total} sub={`${kpi.establecimientos} establecimiento${kpi.establecimientos !== 1 ? 's' : ''}`} color={accent} />
+        <HeroStat t={t} label="Cumplimiento (cierre)" value={kpi.pctCierre + '%'} sub={`${kpi.cerrados} cerrados de ${kpi.aplican} que aplican`} color="#22C55E" />
+        <HeroStat t={t} label="Abiertos" value={kpi.abiertos} sub={`${kpi.reapertura} re-apertura / sin gestión · ${kpi.enGestion} en gestión`} color="#EF4444" />
+        <HeroStat t={t} label="Vencidos" value={kpi.vencidos} sub="abiertos con fecha final ya cumplida" color="#F59E0B" />
+      </div>
+
+      {kpi.total === 0 ? (
+        <div className={`${cardCls} text-center text-xs ${t.muted}`}>Ningún hallazgo coincide con los filtros seleccionados.</div>
+      ) : (
+        <>
+          <div className="grid lg:grid-cols-3 gap-4 mb-4">
+            <div className={cardCls}>
+              <div className={tituloCls} style={{ color: accent }}>Estado del plan</div>
+              <div className="relative">
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={graficos.porEstado} dataKey="value" nameKey="name" innerRadius={58} outerRadius={85} paddingAngle={2}
+                      onClick={(d) => toggleFiltro('estado', d?.payload?.name ?? d?.name)} className="cursor-pointer">
+                      {graficos.porEstado.map((e) => <Cell key={e.name} fill={e.fill} />)}
+                    </Pie>
+                    <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: '#f1f5f9' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <div className="text-xl font-bold font-mono">{kpi.pctCierre}%</div>
+                  <div className={`text-3xs uppercase ${t.muted}`}>cierre</div>
+                </div>
+              </div>
+              <div className="mt-2">
+                {graficos.porEstado.map(e => (
+                  <div key={e.name} className="flex items-center gap-2 py-0.5 text-2xs">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: e.fill }} />
+                    <span className={`truncate ${t.muted}`}>{e.name}</span>
+                    <span className="ml-auto font-mono font-semibold">{e.value}</span>
+                    <span className={`w-10 text-right font-mono ${t.muted}`}>{Math.round((e.value / kpi.total) * 100)}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className={`lg:col-span-2 ${cardCls}`}>
+              <div className={tituloCls} style={{ color: accent }}>Hallazgos por mes de auditoría</div>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={graficos.porMes} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+                  <XAxis dataKey="mes" tick={tick} />
+                  <YAxis tick={tick} allowDecimals={false} />
+                  <Tooltip contentStyle={tooltipStyle} cursor={{ fill: accent + '14' }} labelFormatter={(_, p) => p?.[0]?.payload?.mesLargo || ''} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {PM_GRUPOS_ESTADO.map(g => (
+                    <Bar key={g} dataKey={g} stackId="a" fill={PM_GRUPO_HEX[g]} className="cursor-pointer" onClick={barClick('mesIdx')} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-4 mb-4">
+            <div className={cardCls}>
+              <div className={tituloCls} style={{ color: accent }}>Por ente auditor</div>
+              <ResponsiveContainer width="100%" height={Math.max(160, graficos.porEnte.length * 34 + 50)}>
+                <BarChart data={graficos.porEnte} layout="vertical" margin={{ top: 0, right: 15, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
+                  <XAxis type="number" tick={tick} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" tick={tick} width={120} />
+                  <Tooltip contentStyle={tooltipStyle} cursor={{ fill: accent + '14' }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {PM_GRUPOS_ESTADO.map(g => (
+                    <Bar key={g} dataKey={g} stackId="a" fill={PM_GRUPO_HEX[g]} className="cursor-pointer" onClick={barClick('ente')} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className={cardCls}>
+              <div className={tituloCls} style={{ color: accent }}>Por plazo</div>
+              <ResponsiveContainer width="100%" height={Math.max(160, graficos.porPlazo.length * 34 + 50)}>
+                <BarChart data={graficos.porPlazo} layout="vertical" margin={{ top: 0, right: 15, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
+                  <XAxis type="number" tick={tick} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" tick={tick} width={130} />
+                  <Tooltip contentStyle={tooltipStyle} cursor={{ fill: accent + '14' }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {PM_GRUPOS_ESTADO.map(g => (
+                    <Bar key={g} dataKey={g} stackId="a" fill={PM_GRUPO_HEX[g]} className="cursor-pointer" onClick={barClick('plazo')} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-4 mb-4">
+            <div className={cardCls}>
+              <div className={tituloCls} style={{ color: accent }}>Por establecimiento</div>
+              <ResponsiveContainer width="100%" height={graficos.porEstablecimiento.length * 26 + 60}>
+                <BarChart data={graficos.porEstablecimiento} layout="vertical" margin={{ top: 0, right: 15, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
+                  <XAxis type="number" tick={tick} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" tick={tick} width={170} interval={0} />
+                  <Tooltip contentStyle={tooltipStyle} cursor={{ fill: accent + '14' }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {PM_GRUPOS_ESTADO.map(g => (
+                    <Bar key={g} dataKey={g} stackId="a" fill={PM_GRUPO_HEX[g]} className="cursor-pointer" onClick={barClick('establecimiento')} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className={cardCls}>
+              <div className={tituloCls} style={{ color: accent }}>Por subcomponente / servicio{graficos.porServicio.length === 15 ? ' (top 15)' : ''}</div>
+              <ResponsiveContainer width="100%" height={graficos.porServicio.length * 26 + 60}>
+                <BarChart data={graficos.porServicio} layout="vertical" margin={{ top: 0, right: 15, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
+                  <XAxis type="number" tick={tick} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" tick={tick} width={170} interval={0} />
+                  <Tooltip contentStyle={tooltipStyle} cursor={{ fill: accent + '14' }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {PM_GRUPOS_ESTADO.map(g => (
+                    <Bar key={g} dataKey={g} stackId="a" fill={PM_GRUPO_HEX[g]} className="cursor-pointer" onClick={barClick('servicio')} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-4 mb-5">
+            <div className={cardCls}>
+              <div className={tituloCls} style={{ color: accent }}>Tipo de falta</div>
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <div className="w-full sm:w-1/2">
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie data={graficos.porFalta} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={2}>
+                        {graficos.porFalta.map(e => <Cell key={e.name} fill={e.fill} />)}
+                      </Pie>
+                      <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: '#f1f5f9' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="w-full sm:w-1/2">
+                  {graficos.porFalta.map(e => (
+                    <div key={e.name} className="flex items-center gap-2 py-1 text-2xs">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: e.fill }} />
+                      <span className={`truncate ${t.muted}`}>{e.name}</span>
+                      <span className="ml-auto font-mono font-semibold">{e.value}</span>
+                      <span className={`w-10 text-right font-mono ${t.muted}`}>{Math.round((e.value / kpi.total) * 100)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <ClusterCard t={t} title="Responsables con más hallazgos abiertos" color="#EF4444">
+              {graficos.sinResponsable > 0 && (
+                <div className="text-2xs mb-2" style={{ color: '#EF4444' }}>
+                  {graficos.sinResponsable} hallazgo{graficos.sinResponsable !== 1 ? 's' : ''} abierto{graficos.sinResponsable !== 1 ? 's' : ''} sin responsable asignado (vacío o N/A).
+                </div>
+              )}
+              {graficos.topResponsables.length === 0
+                ? <div className={`text-2xs ${t.muted}`}>{graficos.sinResponsable > 0 ? 'Ningún hallazgo abierto tiene responsable asignado.' : 'No hay hallazgos abiertos con los filtros actuales.'}</div>
+                : graficos.topResponsables.map(([nombre, n]) => {
+                  const max = graficos.topResponsables[0][1];
+                  return (
+                    <div key={nombre} className="flex items-center gap-3 py-1">
+                      <div className={`w-40 text-2xs truncate ${t.muted}`} title={nombre}>{nombre}</div>
+                      <div className={`flex-1 h-2.5 rounded-full overflow-hidden ${t.panel3}`}>
+                        <div className="h-full rounded-full" style={{ width: `${(n / max) * 100}%`, background: '#EF4444' }} />
+                      </div>
+                      <div className="w-8 text-right text-2xs font-mono font-semibold">{n}</div>
+                    </div>
+                  );
+                })}
+            </ClusterCard>
+          </div>
+
+          {/* Listado de hallazgos */}
+          <div className={cardCls}>
+            <div className="flex flex-wrap items-center gap-3 mb-3">
+              <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: accent }}>Listado de hallazgos</div>
+              <span className={`text-2xs font-mono ${t.muted}`}>{listado.length}</span>
+              <label className={`ml-auto flex items-center gap-1.5 text-2xs cursor-pointer ${t.muted}`}>
+                <input type="checkbox" checked={soloAbiertos} onChange={e => { setSoloAbiertos(e.target.checked); setPagina(0); }} />
+                Solo abiertos
+              </label>
+              <div className="relative w-full sm:w-64">
+                <Search size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 ${t.muted}`} />
+                <input value={busqueda} onChange={e => { setBusqueda(e.target.value); setPagina(0); }} placeholder="Buscar hallazgo, acción, responsable…"
+                  className={`w-full rounded-md border pl-8 pr-2.5 py-1.5 text-xs ${t.input}`} />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className={`border-b ${t.border}`}>
+                    {['N°', 'Establecimiento', 'Fecha auditoría', 'Ente', 'Servicio', 'Hallazgo', 'Responsable', 'Fecha final', 'Estado'].map(h => (
+                      <th key={h} className={`text-left px-2 py-2 font-mono text-3xs uppercase whitespace-nowrap ${t.muted}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {listado.slice(paginaActual * PM_POR_PAGINA, (paginaActual + 1) * PM_POR_PAGINA).map((r, i) => (
+                    <tr key={`${paginaActual}-${i}`} className={`border-b align-top ${t.border}`}>
+                      <td className="px-2 py-2 font-mono">{r.numero}</td>
+                      <td className="px-2 py-2 whitespace-nowrap">{r.establecimiento}</td>
+                      <td className="px-2 py-2 font-mono whitespace-nowrap">{formatFechaCorta(r.fechaAuditoria)}</td>
+                      <td className="px-2 py-2 whitespace-nowrap">{r.ente}</td>
+                      <td className="px-2 py-2">{r.servicio}</td>
+                      <td className="px-2 py-2 min-w-[260px] max-w-[420px]">
+                        <div className="line-clamp-3" title={r.hallazgo}>{r.hallazgo}</div>
+                        {r.accion && !/^n\/?a$/i.test(r.accion) && <div className={`line-clamp-2 mt-1 text-2xs ${t.muted}`} title={r.accion}>Acción: {r.accion}</div>}
+                      </td>
+                      <td className="px-2 py-2 min-w-[140px]">{r.responsable}</td>
+                      <td className="px-2 py-2 font-mono whitespace-nowrap">{formatFechaCorta(r.fechaFinal)}</td>
+                      <td className="px-2 py-2">
+                        <div className="flex flex-col items-start gap-1">
+                          <Badge color={PM_ESTADO_HEX[r.estado] || PM_GRUPO_HEX[r.grupo]}>{r.estado}</Badge>
+                          {pmEstaVencido(r, hoy) && <Badge color="#F59E0B">Vencido</Badge>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {listado.length === 0 && <div className={`text-center text-xs py-6 ${t.muted}`}>Sin resultados.</div>}
+            {totalPaginas > 1 && (
+              <div className="flex items-center justify-end gap-2 mt-3">
+                <span className={`text-2xs ${t.muted}`}>Página {paginaActual + 1} de {totalPaginas}</span>
+                <Button t={t} size="sm" icon={ChevronLeft} disabled={paginaActual === 0} onClick={() => setPagina(paginaActual - 1)} aria-label="Página anterior" />
+                <Button t={t} size="sm" icon={ChevronRight} disabled={paginaActual >= totalPaginas - 1} onClick={() => setPagina(paginaActual + 1)} aria-label="Página siguiente" />
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
