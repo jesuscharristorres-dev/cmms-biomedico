@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "start": "node server.js",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node --test tests/*.test.js",
@@ -14,7 +15,9 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@vercel/kv": "^3.0.0",
+    "express": "^4.22.3",
     "lucide-react": "^1.26.0",
+    "pg": "^8.23.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "read-excel-file": "^9.3.10",
