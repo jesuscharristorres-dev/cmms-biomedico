@@ -347,7 +347,17 @@ export default function CapacitacionesPage({ capacitaciones, activeCompany, onCh
             No se pudieron sincronizar {capacitaciones.errores.length} formulario{capacitaciones.errores.length !== 1 ? 's' : ''}:
           </div>
           <ul className="list-disc list-inside space-y-0.5">
-            {capacitaciones.errores.map(e => <li key={e.id}>{e.label}: {e.error}</li>)}
+            {capacitaciones.errores.map(e => (
+              <li key={e.id}>
+                {e.label}: {e.error}
+                {e.url && (
+                  <>
+                    {' — '}
+                    <a href={e.url} target="_blank" rel="noopener noreferrer" className="underline font-semibold">Abrir hoja en Google Sheets</a>
+                  </>
+                )}
+              </li>
+            ))}
           </ul>
         </div>
       )}
