@@ -144,10 +144,15 @@ export default function InventarioPage({ mode, equipos, t, accentBg, filters, se
       )}
 
       {mode === 'inventario' && (
-        <div className={`rounded-xl border overflow-x-auto ${t.panel} ${t.border}`}>
+        // Alto acotado + scroll propio (vertical y horizontal): con muchos equipos la tabla
+        // podía crecer hasta ocupar varias pantallas, dejando la barra de desplazamiento
+        // horizontal hasta el final — obligando a bajar toda la página para poder mover el
+        // inventario hacia los lados. Con el scroll contenido acá, esa barra queda siempre a
+        // un desplazamiento corto, y el encabezado queda fijo (sticky) mientras se baja.
+        <div className={`rounded-xl border overflow-auto max-h-[70vh] ${t.panel} ${t.border}`}>
           <table className="w-full text-xs whitespace-nowrap">
-            <thead>
-              <tr className={`border-b ${t.border}`}>
+            <thead className="sticky top-0 z-10">
+              <tr className={`border-b ${t.border} ${t.panel}`}>
                 {INVENTORY_HEAD.map(h => (
                   <th key={h.key} onClick={() => toggleSort(h.key)} className={`text-left px-3 py-2.5 font-mono text-3xs uppercase cursor-pointer select-none ${t.muted}`}>
                     <span className="inline-flex items-center gap-1">{h.label}<ArrowUpDown size={10} /></span>
@@ -176,9 +181,13 @@ export default function InventarioPage({ mode, equipos, t, accentBg, filters, se
                 // así que el resaltado sigue automáticamente al abrir/cerrar/cambiar de equipo.
                 const isSelected = selectedId === e.id;
                 const isDimmed = Boolean(selectedId) && !isSelected;
+                // Equipo dado de baja: fondo rojo sutil que lo identifica de un vistazo en toda
+                // la tabla (no solo al abrirlo) — más intenso si además está seleccionado.
+                const isBaja = e.estado === 'Dado de baja';
+                const rowBg = isBaja ? (isSelected ? '#EF44442E' : '#EF44441A') : (isSelected ? `${co.color}1F` : undefined);
                 return (
-                  <tr key={e.id} className={`border-b cursor-pointer transition-opacity duration-150 ${t.border} ${isSelected ? '' : 'hover:bg-white/5'} ${isDimmed ? 'opacity-40' : ''}`}
-                    style={{ borderLeft: `3px solid ${co.color}`, background: isSelected ? `${co.color}1F` : undefined }} onClick={() => onOpen(e.id)}>
+                  <tr key={e.id} className={`border-b cursor-pointer transition-opacity duration-150 ${t.border} ${isSelected || isBaja ? '' : 'hover:bg-white/5'} ${isDimmed ? 'opacity-40' : ''}`}
+                    style={{ borderLeft: `3px solid ${co.color}`, background: rowBg }} onClick={() => onOpen(e.id)}>
                     <td className="px-3 py-2 font-semibold">{e.equipo || '—'}</td>
                     <td className="px-3 py-2">{e.marca || '—'}</td>
                     <td className="px-3 py-2">{e.modelo || '—'}</td>
