@@ -21,7 +21,14 @@ const KV_KEY = 'cmms:capacitaciones';
 
 function scopeSnapshot(ctx, data) {
   if (!data || ctx.isSuperAdmin) return data;
-  return { ...data, records: scopeArray(ctx, data.records), errores: [] };
+  return {
+    ...data,
+    records: scopeArray(ctx, data.records),
+    errores: [],
+    // `sheetId`/`gid` de cada hoja configurada son solo para SUPER_ADMIN (ver comentario en
+    // buildCapacitacionesSnapshot) — el resto de usuarios sigue viendo únicamente id/label.
+    capacitacionesConfiguradas: (data.capacitacionesConfiguradas || []).map(c => ({ id: c.id, label: c.label })),
+  };
 }
 
 export default withErrors('api/capacitaciones', 'No se pudo sincronizar las capacitaciones.', async (req, res) => {
