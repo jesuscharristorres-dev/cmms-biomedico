@@ -280,3 +280,66 @@ prefijo de entorno, fallan.
   **No se encontraron vías** para que la empresa A obtenga, modifique, elimine o infiera datos de
   B mediante ids, URL, query, body, cookie, sesión o endpoints. Los riesgos residuales siguen
   siendo los de la sección anterior.
+
+---
+
+## AUDITORÍA 2026-11-08 — revisión completa tras la migración a Postgres/servidor interno y el
+## reparto de equipos/personal/reportes de falla en claves individuales
+
+Alcance: todo `api/*.js`, `lib/*.js`, `server.js`, `src/` (frontend), `vercel.json`,
+`package.json`, `npm audit`, scripts de despliegue/respaldo. Metodología: lectura completa del
+código vigente (no de versiones anteriores de esta auditoría), grep dirigido, `npm audit`,
+verificación de que cada endpoint nuevo desde la última auditoría (`checklist-dotacion`,
+`limpieza-plantillas`, `formato-temperatura-humedad`, `tecno-comites`, `capacitaciones`) exige
+sesión igual que el resto.
+
+### Hallazgo corregido en esta pasada
+
+| Severidad | Vulnerabilidad | Archivo | Impacto | Corrección |
+|---|---|---|---|---|
+| 🔴 Alta | XSS almacenado en el `<title>` del reporte técnico de equipos | `src/components/equipos/ReporteTecnico.jsx:121` | El nombre del equipo (`equipo.equipo`, editable por cualquier usuario `EMPRESA` o `SUPER_ADMIN` al crear/editar un equipo) se interpolaba en `<title>` **sin pasar por `esc()`**, a diferencia de todos los demás campos de ese mismo reporte. Un valor como `X</title><script>...</script>` cierra la etiqueta `<title>` antes de lo esperado e inyecta HTML/JS arbitrario en el documento que se abre con `document.write(...)`. Como cualquier usuario con permiso de escritura de SU empresa puede nombrar un equipo, esto permite que un usuario de rol `EMPRESA` ejecute script en el navegador de quien abra o imprima ese reporte — incluido un `SUPER_ADMIN` de otra sesión: **cruza un límite de privilegio real**, no solo autoXSS | Se envuelve con el mismo `esc()` que ya usa el resto del reporte (una línea) |
+
+Los otros 2 generadores de reporte mencionados en la auditoría de agosto (informe mensual, F140)
+ya no usan `document.write` (fueron refactorizados) — revisé el único archivo que aún lo usa y
+no encontré más interpolaciones sin `esc()` en él.
+
+### Hallazgos para decidir (no corregidos — requieren una decisión de producto/infra, no un
+### parche de una línea)
+
+| Severidad | Hallazgo | Detalle |
+|---|---|---|
+| 🟠 Alta (condicional) | `X-Forwarded-For` se confía sin validar su origen (`lib/auth.js` → `getClientIp`), usado para el bloqueo de fuerza bruta por IP y el límite de 30 reportes/hora del formulario público | **En el Vercel actual no es explotable** (Vercel siempre pone ese header de forma confiable, el cliente no puede falsificarlo). **Si se despliega con `server.js`** (el camino documentado para salir de Vercel) sin un proxy reverso correctamente configurado delante, o si ese servidor queda expuesto directo a internet, cualquiera puede mandar su propia cabecera `X-Forwarded-For` y evadir ambos límites por completo. El comentario en `server.js` ya advierte que el proxy debe configurarse así, pero el código no lo verifica ni falla si no es el caso |
+| 🟡 Media | `cmms:alertEmails`/`api/send-email.js` son una función huérfana: no existe ninguna pantalla para cargar esa lista de correos (no hay `api/alert-emails.js`, no hay nada en Configuración) y `src/services/emailService.js` no se importa desde ningún componente. Hoy falla seguro (lista vacía → nunca envía), pero es código que alguien podría reactivar sin darse cuenta de que ya no hay forma de llenar la lista, reabriendo sin querer una superficie que ya se cerró una vez (ver auditoría de agosto, hallazgo del relay abierto) | Decidir: conectarlo a una pantalla real en Configuración, o eliminar `api/send-email.js` + `emailService.js` si el envío de alertas por correo ya no es parte del producto |
+| 🟡 Media | `allowRate`/`bumpCounter` (`lib/auth.js`) leen y escriben el contador en dos pasos, no con un `INCR` atómico — bajo ráfagas casi simultáneas desde la misma IP, el límite (fuerza bruta de login, 30 reportes/hora) se puede exceder ligeramente | Cambiar a `INCR` + `EXPIRE` atómico de Upstash si se quiere un límite exacto; impacto bajo porque es un *rate limit*, no un control de acceso |
+| 🟡 Media | Sin Content-Security-Policy (deliberado desde agosto, por los estilos inline) | Sigue siendo la capa de defensa en profundidad que falta contra cualquier XSS futuro como el de arriba. Recomiendo CSP en modo `Report-Only` como primer paso medible, antes de aplicarla de verdad |
+| 🟢 Baja | `npm audit`: 2 altas (`vite`, `source-map-js`, herramientas de build, no corren en producción) — **corregidas en esta pasada** con `npm audit fix`. Queda 1 moderada (`minimatch`, vía `eslint`) que solo se arregla con `--force` (sube `eslint` de versión mayor) | No lo hice automático por ser un cambio con posibles roturas de lint; hacerlo cuando haya ventana para revisar reglas nuevas de eslint |
+| 🟢 Baja | `scripts/respaldo-postgres.sh` recibe `DATABASE_URL` como variable de entorno (no como argumento, así que no aparece en `ps aux` — correcto), pero igual vale confirmar que `BACKUP_DIR` (`/var/backups/cmms-biomedico` por defecto, contiene TODO el dump: usuarios, hashes de contraseña, datos de las 5 empresas) tenga permisos restringidos (`chmod 700`) en el servidor real | Verificar permisos del directorio en el servidor donde corra el cron/systemd timer |
+
+### Verificado sin hallazgos nuevos
+- Los 5 endpoints agregados desde la auditoría de agosto (`checklist-dotacion`, `limpieza-plantillas`,
+  `formato-temperatura-humedad`, `tecno-comites`, `capacitaciones`) exigen `requireAuth`/
+  `requireSuperAdmin` igual que el resto — ninguno quedó sin proteger.
+- `lib/db-postgres.js` (camino de salida de Vercel): todas las consultas parametrizadas
+  (`$1`, `$2`, `ANY($1::text[])`), sin concatenar nunca un valor dentro del SQL — sin inyección.
+- `server.js` (adaptador Express para autoalojar): replica los mismos headers de seguridad,
+  límite de tamaño de body (10 MB), y usa los mismos handlers de `api/*.js` sin reescribir
+  lógica de autorización.
+- `dangerouslySetInnerHTML`: ya no aparece en ningún lugar del frontend (se eliminó desde la
+  auditoría de agosto, cuando era el único uso reportado).
+- Contraseñas: scrypt + salt + comparación en tiempo constante + hash señuelo contra
+  enumeración de usuarios por timing — sin cambios, sigue correcto.
+- Sin secretos commiteados (`.env*` en `.gitignore`, verificado que nunca entraron al historial).
+- La migración 004/005/006 (equipos, personal, reportes de falla a una clave por registro) no
+  abre ninguna vía nueva: las claves siguen aisladas por namespace de entorno igual que antes,
+  y los ids que las componen vienen de la misma validación de siempre (string, máx. 100
+  caracteres) — revisé específicamente si un id elegido por el usuario podía colisionar con la
+  clave del índice (`cmms:equipos:ids`) y no es posible por cómo está armada la clave
+  (`cmms:equipos:item:<id>` siempre lleva el segmento `:item:` de por medio).
+
+### Pendientes ya documentados en auditorías anteriores que SIGUEN pendientes (no re-auditados a
+### fondo esta vez, solo confirmado que no se resolvieron)
+- Logs de auditoría (quién borró/cambió qué y cuándo) — sigue sin existir.
+- Mínimo de contraseña en 8 caracteres — aceptable combinado con el bloqueo por fuerza bruta,
+  pero se podría subir a 10-12 si se quiere ser más estricto.
+- KV/Postgres sin transacciones: el patrón leer-modificar-escribir puede perder una escritura
+  bajo concurrencia extrema — bajo impacto por el volumen de uso esperado, ya documentado.

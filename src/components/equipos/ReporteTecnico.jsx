@@ -118,7 +118,7 @@ function generarReportePDF(equipo, tipoKey, rep) {
         </div>
       </div>`;
 
-  win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Reporte de mantenimiento — ${equipo.equipo || ''}</title>
+  win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Reporte de mantenimiento — ${esc(equipo.equipo)}</title>
     <style>
       * { box-sizing: border-box; }
       body { font-family: Arial, Helvetica, sans-serif; color:#1e293b; padding:30px; font-size:11.5px; }
