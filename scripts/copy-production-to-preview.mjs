@@ -15,12 +15,22 @@
 
 import { rawKv } from '../lib/db.js';
 import { EQUIPOS_IDS_KEY, equipoItemKey } from '../lib/equipos.js';
+import { PERSONAL_IDS_KEY, personalItemKey } from '../lib/personal.js';
+import { REPORTES_FALLA_IDS_KEY, reporteFallaItemKey } from '../lib/reportes-falla.js';
+
+// Colecciones que ya no viven en un solo valor (una clave por registro, ver lib/equipos.js) —
+// no entran en CLAVES porque no se copian con un simple get/set.
+const COLECCIONES_POR_CLAVE = [
+  { nombre: 'equipos', idsKey: EQUIPOS_IDS_KEY, itemKey: equipoItemKey },
+  { nombre: 'personal', idsKey: PERSONAL_IDS_KEY, itemKey: personalItemKey },
+  { nombre: 'reportesFalla', idsKey: REPORTES_FALLA_IDS_KEY, itemKey: reporteFallaItemKey },
+];
 
 const CLAVES = [
   'cmms:empresas',
-  'cmms:equipos', // respaldo histórico (migración 004) — los equipos vigentes se copian aparte, ver abajo
-  'cmms:personal',
-  'cmms:reportesFalla',
+  'cmms:equipos', // respaldo histórico (migración 004) — los vigentes se copian aparte, ver abajo
+  'cmms:personal', // ídem, migración 005
+  'cmms:reportesFalla', // ídem, migración 006
   'cmms:planesProgramas',
   'cmms:tecnoReportes',
   'cmms:tecnoTransversal',
@@ -38,31 +48,35 @@ if (!['preview', 'development', 'local'].includes(to)) {
 const overwrite = argv.includes('--overwrite');
 
 try {
-  const idsEquipos = await rawKv.smembers(EQUIPOS_IDS_KEY); // Production = sin prefijo (solo lectura)
+  // Production = claves sin prefijo (solo lectura).
+  const idsPorColeccion = await Promise.all(COLECCIONES_POR_CLAVE.map(c => rawKv.smembers(c.idsKey)));
+
   const ocupadas = [];
   for (const k of CLAVES) if ((await rawKv.get(`${to}:${k}`)) !== null) ocupadas.push(k);
-  if (idsEquipos.length && (await rawKv.smembers(`${to}:${EQUIPOS_IDS_KEY}`)).length) ocupadas.push(EQUIPOS_IDS_KEY);
+  for (const [i, c] of COLECCIONES_POR_CLAVE.entries()) {
+    if (idsPorColeccion[i].length && (await rawKv.smembers(`${to}:${c.idsKey}`)).length) ocupadas.push(c.idsKey);
+  }
   if (ocupadas.length && !overwrite) {
     console.error(`El namespace "${to}" ya tiene datos (${ocupadas.join(', ')}). Usa --overwrite para reemplazarlos.`);
     process.exit(1);
   }
   for (const k of CLAVES) {
-    const valor = await rawKv.get(k); // Production = claves sin prefijo (solo lectura)
+    const valor = await rawKv.get(k);
     if (valor === null) { console.log(`· ${k}: vacío en production, se omite`); continue; }
     await rawKv.set(`${to}:${k}`, valor);
     console.log(`✔ ${k} → ${to}:${k}`);
   }
-  // Equipos vigentes: una clave por equipo (ver lib/equipos.js) — no entran en CLAVES porque
-  // no son un solo valor. Se copian aparte: el índice de ids y cada equipo.
-  if (idsEquipos.length) {
-    const valores = await rawKv.mget(...idsEquipos.map(equipoItemKey));
-    await rawKv.sadd(`${to}:${EQUIPOS_IDS_KEY}`, ...idsEquipos);
-    for (const [i, id] of idsEquipos.entries()) {
-      if (valores[i] !== null) await rawKv.set(`${to}:${equipoItemKey(id)}`, valores[i]);
+  // Una clave por registro (ver lib/equipos.js, lib/personal.js, lib/reportes-falla.js): se
+  // copian aparte el índice de ids y cada registro.
+  for (const [i, c] of COLECCIONES_POR_CLAVE.entries()) {
+    const ids = idsPorColeccion[i];
+    if (!ids.length) { console.log(`· ${c.nombre}: vacío en production, se omite`); continue; }
+    const valores = await rawKv.mget(...ids.map(c.itemKey));
+    await rawKv.sadd(`${to}:${c.idsKey}`, ...ids);
+    for (const [j, id] of ids.entries()) {
+      if (valores[j] !== null) await rawKv.set(`${to}:${c.itemKey(id)}`, valores[j]);
     }
-    console.log(`✔ equipos (${idsEquipos.length}) → ${to}:${EQUIPOS_IDS_KEY} + ${to}:${equipoItemKey('*')}`);
-  } else {
-    console.log(`· equipos: vacío en production, se omite`);
+    console.log(`✔ ${c.nombre} (${ids.length}) → ${to}:${c.idsKey} + ${to}:${c.itemKey('*')}`);
   }
   console.log(`\nListo. El deployment de ${to} verá estos datos; Production no se modificó.`);
 } catch (err) {

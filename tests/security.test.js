@@ -260,7 +260,7 @@ describe('Separación de entornos (Preview / Production) sobre un mismo KV', () 
       const usuarios = await raw.get('cmms:usuarios');
       assert.equal(usuarios.filter(u => u.role === 'SUPER_ADMIN').length, 1);
       assert.equal((await raw.get('cmms:empresas')).length, 5);
-      assert.equal((await raw.get('cmms:schema_migrations')).length, 4);
+      assert.equal((await raw.get('cmms:schema_migrations')).length, 6);
       assert.equal(await raw.get('cmms:schema_migrations:lock'), null, 'el candado se libera');
     } finally {
       process.env.KV_NAMESPACE = prevNs;

@@ -17,14 +17,13 @@
 //   DELETE (sin id)  → vaciar el histórico: SUPER_ADMIN vacía todo (o ?empresa=); un usuario
 //                      de empresa solo puede vaciar los de SU empresa.
 
-import { kv } from '../lib/db.js';
 import { requireAuth, allowRate, getClientIp } from '../lib/auth.js';
 import { listEmpresas, getEmpresa, empresaPublica } from '../lib/empresas.js';
 import { listEquipos } from '../lib/equipos.js';
-import { empresaFilter, scopeArray, findOwned, applyScopedPatch } from '../lib/tenancy.js';
+import { listReportesFalla, getReporteFalla, setReporteFalla, deleteReportesFalla } from '../lib/reportes-falla.js';
+import { EMPRESA_FIELD, empresaFilter, scopeArray, canAccessEmpresa, applyScopedPatch } from '../lib/tenancy.js';
 import { HttpError, withErrors, methodNotAllowed } from '../lib/http.js';
 
-const KV_KEY = 'cmms:reportesFalla';
 const PRIORIDADES = ['Baja', 'Media', 'Alta', 'Crítica'];
 const MAX_REPORTES_POR_HORA = 30;
 
@@ -84,7 +83,7 @@ export default withErrors('api/reportes-falla', 'No se pudo acceder a la base de
   if (req.method === 'GET') {
     if (req.query?.catalogo) return catalogoPublico(res);
     const ctx = await requireAuth(req);
-    const reportes = scopeArray(ctx, (await kv.get(KV_KEY)) || [], empresaFilter(ctx, req.query));
+    const reportes = scopeArray(ctx, await listReportesFalla(), empresaFilter(ctx, req.query));
     return res.status(200).json({ reportes });
   }
 
@@ -94,11 +93,10 @@ export default withErrors('api/reportes-falla', 'No se pudo acceder a la base de
       throw new HttpError(429, 'Se enviaron demasiados reportes desde esta conexión. Intenta más tarde.');
     }
     const reporte = await construirReportePublico(req.body?.reporte);
-    const reportes = (await kv.get(KV_KEY)) || [];
     // Idempotencia: si por un reintento de red llega el mismo id dos veces, no se duplica.
     // La respuesta pública solo devuelve el propio reporte, nunca el listado.
-    if (reportes.some(r => r.id === reporte.id)) return res.status(200).json({ reporte });
-    await kv.set(KV_KEY, [...reportes, reporte]);
+    if (await getReporteFalla(reporte.id)) return res.status(200).json({ reporte });
+    await setReporteFalla(reporte);
     return res.status(200).json({ reporte });
   }
 
@@ -107,29 +105,27 @@ export default withErrors('api/reportes-falla', 'No se pudo acceder a la base de
   if (req.method === 'PATCH') {
     const { id, patch } = req.body || {};
     if (typeof id !== 'string' || !id || !patch) throw new HttpError(400, 'Falta id o patch para actualizar el reporte.');
-    const reportes = (await kv.get(KV_KEY)) || [];
-    const idx = findOwned(ctx, reportes, id);
-    const actualizado = await applyScopedPatch(ctx, reportes[idx], patch);
-    const actualizados = [...reportes];
-    actualizados[idx] = actualizado;
-    await kv.set(KV_KEY, actualizados);
+    const actual = await getReporteFalla(id);
+    if (!actual || !canAccessEmpresa(ctx, actual[EMPRESA_FIELD])) throw new HttpError(404);
+    const actualizado = await applyScopedPatch(ctx, actual, patch);
+    await setReporteFalla(actualizado);
     // Solo el reporte actualizado: el frontend no usa la colección (ver api/equipos.js).
     return res.status(200).json({ reporte: actualizado });
   }
 
   if (req.method === 'DELETE') {
     const { id } = req.query || {};
-    const reportes = (await kv.get(KV_KEY)) || [];
     if (id) {
-      const idx = findOwned(ctx, reportes, id);
-      const actualizados = reportes.filter((_, i) => i !== idx);
-      await kv.set(KV_KEY, actualizados);
+      const actual = await getReporteFalla(id);
+      if (!actual || !canAccessEmpresa(ctx, actual[EMPRESA_FIELD])) throw new HttpError(404);
+      await deleteReportesFalla([id]);
       return res.status(200).json({ ok: true, id });
     }
     const empresa = empresaFilter(ctx, req.query); // null solo para SUPER_ADMIN sin filtro
-    const actualizados = empresa ? reportes.filter(r => r.empresa !== empresa) : [];
-    await kv.set(KV_KEY, actualizados);
-    return res.status(200).json({ ok: true, eliminados: reportes.length - actualizados.length });
+    const todos = await listReportesFalla();
+    const aBorrar = empresa ? todos.filter(r => r.empresa === empresa) : todos;
+    await deleteReportesFalla(aBorrar.map(r => r.id));
+    return res.status(200).json({ ok: true, eliminados: aBorrar.length });
   }
 
   return methodNotAllowed(res, ['GET', 'POST', 'PATCH', 'DELETE']);

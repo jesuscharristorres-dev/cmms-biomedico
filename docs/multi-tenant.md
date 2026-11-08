@@ -53,8 +53,8 @@ reescribir ningún registro existente.
 | Clave KV | Entidad | Forma | ¿Pertenece a una empresa? |
 |---|---|---|---|
 | `cmms:equipos:ids` + `cmms:equipos:item:<id>` | Equipos, con preventivos, correctivos, calibraciones, bajas y documentos anidados | un SET de ids + un valor por equipo (ver `lib/equipos.js` y la migración `004_equipos_por_clave`) | Sí, `empresa` por registro |
-| `cmms:personal` | Hojas de vida del personal | arreglo | Sí, `empresa` por registro |
-| `cmms:reportesFalla` | Reportes de falla (órdenes de trabajo correctivas) | arreglo | Sí, `empresa` por registro |
+| `cmms:personal:ids` + `cmms:personal:item:<id>` | Hojas de vida del personal | un SET de ids + un valor por registro (ver `lib/personal.js` y la migración `005_personal_por_clave`) | Sí, `empresa` por registro |
+| `cmms:reportesFalla:ids` + `cmms:reportesFalla:item:<id>` | Reportes de falla (órdenes de trabajo correctivas) | un SET de ids + un valor por reporte (ver `lib/reportes-falla.js` y la migración `006_reportes_falla_por_clave`) | Sí, `empresa` por registro |
 | `cmms:planesProgramas` | Planes y programas | `{ [empresa_id]: … }` | Sí, por clave |
 | `cmms:tecnoReportes` | Reportes trimestrales de tecnovigilancia | `{ [empresa_id]: … }` | Sí, por clave |
 | `cmms:limpiezaDesinfeccion` | Enlaces mensuales de limpieza | `{ [empresa_id]: … }` | Sí, por clave |
@@ -87,6 +87,8 @@ aplicadas se registran en `cmms:schema_migrations`.
 | `002_super_admin` | Si no hay SUPER_ADMIN, lo crea desde `SUPERADMIN_EMAIL`/`SUPERADMIN_PASSWORD_HASH` o desde `AUTH_USER`/`AUTH_PASSWORD_HASH`. Sin credenciales no se marca como aplicada y se reintenta | Elimina los usuarios creados por la migración |
 | `003_auditoria_sin_empresa` | Genera `cmms:migracion:sin_empresa` con los registros cuya `empresa` no coincide con ninguna empresa. **No modifica datos** | Borra el informe |
 | `004_equipos_por_clave` | Copia cada equipo de `cmms:equipos` a su propia clave (`cmms:equipos:item:<id>` + índice `cmms:equipos:ids`) — ver `lib/equipos.js`. `cmms:equipos` no se toca, queda como respaldo histórico | Borra las claves nuevas (`cmms:equipos:ids` y cada `cmms:equipos:item:<id>`) |
+| `005_personal_por_clave` | Igual que 004, para `cmms:personal` — ver `lib/personal.js` | Borra `cmms:personal:ids` y cada `cmms:personal:item:<id>` |
+| `006_reportes_falla_por_clave` | Igual que 004, para `cmms:reportesFalla` — ver `lib/reportes-falla.js` | Borra `cmms:reportesFalla:ids` y cada `cmms:reportesFalla:item:<id>` |
 
 **Ejecución:**
 

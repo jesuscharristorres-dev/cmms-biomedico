@@ -101,7 +101,7 @@ test('paso a Production: datos históricos intactos, migraciones aditivas e idem
       assert.deepEqual(await raw.get(k), v, `la clave ${k} no debe cambiar`);
     }
     const nuevas = [...raw.store.keys()].filter(k => !(k in inicial)).sort();
-    assert.ok(nuevas.every(k => /^(cmms:(empresas|usuarios|schema_migrations|migracion:sin_empresa|equipos:ids|equipos:item:.+)|session:[0-9a-f]{64}|user_sessions:usr_[0-9a-f]+|login_fail:.*)$/.test(k)), nuevas.join(', '));
+    assert.ok(nuevas.every(k => /^(cmms:(empresas|usuarios|schema_migrations|migracion:sin_empresa|(equipos|personal|reportesFalla):(ids|item:.+))|session:[0-9a-f]{64}|user_sessions:usr_[0-9a-f]+|login_fail:.*)$/.test(k)), nuevas.join(', '));
     assert.ok(!nuevas.some(k => k.startsWith('preview:')), 'Production nunca escribe en preview:*');
     assert.equal((await raw.get('cmms:usuarios')).filter(u => u.role === 'SUPER_ADMIN').length, 1);
   } finally {

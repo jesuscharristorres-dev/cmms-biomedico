@@ -68,17 +68,21 @@ export async function call(handler, { method = 'GET', query = {}, body, cookie }
 }
 
 /**
- * Lee el inventario de equipos tal como lo guarda el sistema hoy: una clave por equipo (ver
- * lib/equipos.js), no el arreglo histórico bajo `cmms:equipos` (que una vez migrado queda
- * congelado — ver migración 004 en lib/migrations.js). `raw` es el store crudo devuelto por
- * `createMemoryKv`/`setupStore`; `prefix` es el prefijo de namespace si aplica (p. ej. 'preview:').
+ * Lee una colección tal como la guarda hoy el sistema para las que ya no viven en un solo
+ * arreglo (ver lib/equipos.js, lib/personal.js, lib/reportes-falla.js): una clave por
+ * registro, no el arreglo histórico (que una vez migrado queda congelado — ver migraciones
+ * 004/005/006 en lib/migrations.js). `raw` es el store crudo de `createMemoryKv`/`setupStore`;
+ * `prefix` es el prefijo de namespace si aplica (p. ej. 'preview:').
  */
-export async function leerEquipos(raw, prefix = '') {
-  const ids = await raw.smembers(`${prefix}cmms:equipos:ids`);
+export async function leerColeccion(raw, clave, prefix = '') {
+  const ids = await raw.smembers(`${prefix}${clave}:ids`);
   if (!ids.length) return [];
-  const valores = await Promise.all(ids.map(id => raw.get(`${prefix}cmms:equipos:item:${id}`)));
+  const valores = await Promise.all(ids.map(id => raw.get(`${prefix}${clave}:item:${id}`)));
   return valores.filter(Boolean);
 }
+export const leerEquipos = (raw, prefix = '') => leerColeccion(raw, 'cmms:equipos', prefix);
+export const leerPersonal = (raw, prefix = '') => leerColeccion(raw, 'cmms:personal', prefix);
+export const leerReportesFalla = (raw, prefix = '') => leerColeccion(raw, 'cmms:reportesFalla', prefix);
 
 export function cookieFrom(response) {
   const sc = response.headers['set-cookie'];

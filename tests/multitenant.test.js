@@ -19,7 +19,7 @@ import plantillas from '../api/limpieza-plantillas.js';
 import checklistDotacion from '../api/checklist-dotacion.js';
 import formatoTempHumedad from '../api/formato-temperatura-humedad.js';
 import capacitaciones from '../api/capacitaciones.js';
-import { setupStore, call, cookieFrom, leerEquipos, ADMIN_USER, ADMIN_PASS, EMPRESAS, SEDES } from './helpers.js';
+import { setupStore, call, cookieFrom, leerEquipos, leerPersonal, leerReportesFalla, ADMIN_USER, ADMIN_PASS, EMPRESAS, SEDES } from './helpers.js';
 
 const PASS = 'ClaveEmpresa-123';
 
@@ -226,7 +226,7 @@ describe('Arquitectura multiempresa', () => {
       assert.equal(rd.status, 404);
       const pp = await call(personal, { method: 'PATCH', cookie: cookies.MACROMED, body: { id: 'per_1', patch: { nombreCompleto: 'X' } } });
       assert.equal(pp.status, 404);
-      assert.equal((await store.get('cmms:personal')).find(x => x.id === 'per_1').nombreCompleto, 'Persona MEIDE');
+      assert.equal((await leerPersonal(store)).find(x => x.id === 'per_1').nombreCompleto, 'Persona MEIDE');
     });
     test('crear un registro reutilizando el id de otra empresa no lo sobrescribe ni lo mueve (409)', async () => {
       const r = await call(equipos, { method: 'POST', cookie: cookies.MACROMED, body: { equipo: { id: 'eq_1_2', equipo: 'Suplantado' } } });
@@ -281,7 +281,7 @@ describe('Arquitectura multiempresa', () => {
     test('vaciar historial de fallas solo borra los de su empresa', async () => {
       const r = await call(reportes, { method: 'DELETE', cookie: cookies.DIAGNOSTIK });
       assert.equal(r.status, 200);
-      const all = await store.get('cmms:reportesFalla');
+      const all = await leerReportesFalla(store);
       assert.ok(!all.some(x => x.empresa === 'DIAGNOSTIK'));
       assert.equal(all.length, 4);
     });
