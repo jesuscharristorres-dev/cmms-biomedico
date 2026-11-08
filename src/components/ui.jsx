@@ -151,9 +151,96 @@ export function PdfLink({ url, label = 'Ver PDF', title, t, emptyLabel = 'Sin do
   );
 }
 
-// Carga + vista previa de una imagen de firma (PNG). El valor se guarda como Data URI,
-// así se imprime directamente en el reporte sin depender de almacenamiento externo.
+// Panel para firmar con el dedo/stylus/mouse directamente en pantalla — pensado para cuando
+// el reporte está abierto en una tablet en el momento de la entrega. Usa Pointer Events (no
+// Touch/Mouse por separado): un mismo manejador cubre dedo, stylus y mouse sin duplicar lógica.
+// El trazo se dibuja en un <canvas> escalado por devicePixelRatio para que no se vea pixelado
+// en pantallas de alta densidad, y se exporta como el mismo Data URI PNG que ya usa la carga
+// de archivo — el resto de la app (reporte impreso, guardado en el equipo) no sabe ni le
+// importa si la firma vino de un archivo o se dibujó aquí.
+function PanelFirmaDibujada({ onGuardar, onCancelar, t }) {
+  const canvasRef = useRef(null);
+  const dibujando = useRef(false);
+  const tieneTrazo = useRef(false);
+
+  // Ref-callback: configura el canvas apenas se monta (sin useEffect, para no sumar otro
+  // import). Corre una sola vez porque este panel se desmonta al cerrar/cancelar.
+  const setupCanvas = (canvas) => {
+    if (!canvas || canvasRef.current === canvas) return;
+    canvasRef.current = canvas;
+    const dpr = window.devicePixelRatio || 1;
+    const { width, height } = canvas.getBoundingClientRect();
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.lineWidth = 2.25;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#1e293b';
+  };
+
+  const posicionDe = (e) => {
+    const r = canvasRef.current.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+
+  const onPointerDown = (e) => {
+    e.target.setPointerCapture(e.pointerId);
+    dibujando.current = true;
+    tieneTrazo.current = true;
+    const { x, y } = posicionDe(e);
+    canvasRef.current.getContext('2d').beginPath();
+    canvasRef.current.getContext('2d').moveTo(x, y);
+  };
+  const onPointerMove = (e) => {
+    if (!dibujando.current) return;
+    const { x, y } = posicionDe(e);
+    const ctx = canvasRef.current.getContext('2d');
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+  const onPointerUp = () => { dibujando.current = false; };
+
+  const limpiar = () => {
+    const c = canvasRef.current;
+    const dpr = window.devicePixelRatio || 1;
+    c.getContext('2d').clearRect(0, 0, c.width / dpr, c.height / dpr);
+    tieneTrazo.current = false;
+  };
+
+  const guardar = () => {
+    if (!tieneTrazo.current) return;
+    onGuardar(canvasRef.current.toDataURL('image/png'));
+  };
+
+  return (
+    <div className="flex-1 min-w-0">
+      <canvas
+        ref={setupCanvas}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
+        className={`w-full h-28 rounded-md border bg-white touch-none ${t.border}`}
+      />
+      <div className="flex gap-2 mt-1.5">
+        <button type="button" onClick={limpiar} className={`text-3xs underline ${t.muted}`}>Limpiar</button>
+        <button type="button" onClick={guardar} className="text-3xs font-semibold text-emerald-500 underline">Usar esta firma</button>
+        <button type="button" onClick={onCancelar} className={`text-3xs underline ${t.muted}`}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
+// Carga + vista previa de una imagen de firma. El valor se guarda como Data URI PNG (ya sea
+// que haya venido de un archivo subido o de un trazo dibujado en pantalla), así se imprime
+// directamente en el reporte sin depender de almacenamiento externo. Dos formas de cargarla:
+//   - "Subir archivo": PNG ya firmado a mano en papel y escaneado/fotografiado.
+//   - "Firmar en pantalla": pensado para cuando el reporte está abierto en una tablet en el
+//     momento de la entrega — se firma ahí mismo con el dedo o un stylus.
 export function FirmaInput({ value, onChange, readOnly, alt, t }) {
+  const [modo, setModo] = useState(null); // null (sin elegir) | 'archivo' | 'dibujo'
   const handleFile = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -168,10 +255,20 @@ export function FirmaInput({ value, onChange, readOnly, alt, t }) {
           ? <img src={value} alt={alt} className="w-full h-full object-contain" />
           : <span className={`text-3xs px-1 text-center leading-tight ${t.muted}`}>Sin firma</span>}
       </div>
-      {!readOnly && (
+      {!readOnly && !value && modo === 'dibujo' && (
+        <PanelFirmaDibujada t={t} onCancelar={() => setModo(null)} onGuardar={(dataUri) => { onChange(dataUri); setModo(null); }} />
+      )}
+      {!readOnly && !value && modo !== 'dibujo' && (
         <div className="flex-1 min-w-0">
           <input type="file" accept="image/png" onChange={handleFile} className={`w-full text-3xs ${t.muted}`} />
-          {value && <button type="button" onClick={() => onChange('')} className="text-3xs text-red-400 mt-0.5">Quitar firma</button>}
+          <button type="button" onClick={() => setModo('dibujo')} className="text-3xs font-semibold underline underline-offset-2 mt-0.5">
+            Firmar en pantalla (tablet)
+          </button>
+        </div>
+      )}
+      {!readOnly && value && (
+        <div className="flex-1 min-w-0">
+          <button type="button" onClick={() => { onChange(''); setModo(null); }} className="text-3xs text-red-400">Quitar firma</button>
         </div>
       )}
     </div>
