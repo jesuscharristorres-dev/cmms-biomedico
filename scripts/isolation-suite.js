@@ -216,8 +216,6 @@
       check(g, 'Informe de registros sin empresa → 403', sin.status === 403, st(sin));
       const sync = await http('POST', '/api/capacitaciones', { as });
       check(g, 'Sincronizar capacitaciones (global) → 403', sync.status === 403, st(sync));
-      const mail = await http('POST', '/api/send-email', { as, body: { to: 'x@x.co', subject: 'x', html: 'x' } });
-      check(g, 'Usar /api/send-email → 403', mail.status === 403, st(mail));
       const who = await http('GET', '/api/login', { as });
       check(g, 'Tras todos los intentos sigue siendo EMPRESA de su empresa', who.body.user.role === 'EMPRESA' && who.body.user.empresa_id === mia);
     }

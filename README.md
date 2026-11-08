@@ -137,7 +137,6 @@ Ninguna contraseña se escribe en el código: solo se guardan hashes scrypt con 
 | `AUTH_USER` + `AUTH_PASSWORD_HASH` | Una de las dos parejas | Administrador histórico, migrado a SUPER_ADMIN |
 | `SUPERADMIN_EMAIL` + `SUPERADMIN_PASSWORD_HASH` | Una de las dos parejas | SUPER_ADMIN inicial (alternativa) |
 | `SUPERADMIN_NOMBRE` | No | Nombre visible del SUPER_ADMIN inicial |
-| `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | Para correos | Envío de alertas por email |
 | `CAPACITACIONES_SHEETS` | Para capacitaciones | JSON con las hojas de Google Sheets |
 
 ## 9. Tests

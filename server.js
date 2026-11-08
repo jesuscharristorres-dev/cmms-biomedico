@@ -34,7 +34,6 @@ import login from './api/login.js';
 import personal from './api/personal.js';
 import planesProgramas from './api/planes-programas.js';
 import reportesFalla from './api/reportes-falla.js';
-import sendEmail from './api/send-email.js';
 import tecnoComites from './api/tecno-comites.js';
 import tecnoReportes from './api/tecno-reportes.js';
 import tecnoTransversal from './api/tecno-transversal.js';
@@ -75,7 +74,6 @@ export function createApp() {
   ruta('/api/personal', personal);
   ruta('/api/planes-programas', planesProgramas);
   ruta('/api/reportes-falla', reportesFalla);
-  ruta('/api/send-email', sendEmail);
   ruta('/api/tecno-comites', tecnoComites);
   ruta('/api/tecno-reportes', tecnoReportes);
   ruta('/api/tecno-transversal', tecnoTransversal);

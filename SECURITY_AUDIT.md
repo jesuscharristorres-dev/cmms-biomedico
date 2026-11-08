@@ -343,3 +343,24 @@ no encontré más interpolaciones sin `esc()` en él.
   pero se podría subir a 10-12 si se quiere ser más estricto.
 - KV/Postgres sin transacciones: el patrón leer-modificar-escribir puede perder una escritura
   bajo concurrencia extrema — bajo impacto por el volumen de uso esperado, ya documentado.
+
+---
+
+## SEGUIMIENTO 2026-11-08 (mismo día) — decisiones sobre los hallazgos pendientes
+
+- **Rate limit no atómico: corregido.** `lib/auth.js` (`allowRate`, `bumpCounter`) ya no hace
+  `get` + `set` en dos pasos — usa `kv.incr`, nuevo en la interfaz (`lib/db.js`,
+  `lib/db-postgres.js`, backend en memoria de los tests), atómico en los tres backends. El TTL
+  solo se fija en la primera petición de la ventana (`current === 1`), igual que antes. Mismo
+  comportamiento observable (exactamente `max` peticiones por ventana), solo sin la condición de
+  carrera.
+- **Correos de alerta: eliminados, no conectados.** Se decidió que no es una función que se
+  vaya a usar. Se borraron `api/send-email.js` y `src/services/emailService.js` (código
+  huérfano, sin ninguna pantalla que lo usara), su ruta en `server.js`, la dependencia `resend`
+  de `package.json`, y las referencias en pruebas/scripts/documentación. La variable
+  `RESEND_API_KEY` sigue configurada en Vercel (no hay forma de borrarla desde aquí) pero ya no
+  la lee ningún código — se puede quitar a mano desde Vercel → Settings → Environment Variables
+  cuando se quiera.
+- **`X-Forwarded-For` sin validar**, **sin CSP** y **permisos del directorio de respaldos**:
+  sin cambios — quedan como estaban, documentados arriba, para cuando aplique (self-hosted,
+  sesión dedicada a CSP, y despliegue real con Postgres respectivamente).

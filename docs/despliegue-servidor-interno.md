@@ -61,7 +61,6 @@ como `.env*`) con:
 | `DATABASE_URL` | **Sí** | Activa el backend de PostgreSQL en `lib/db.js` (sin ella, el código intentaría usar Vercel KV, que ya no existe) |
 | `KV_NAMESPACE=production` | **Sí** | **Crítico.** `lib/db.js` falla cerrado (error 500 en toda la app) si no puede determinar el entorno — en Vercel eso lo daba `VERCEL_ENV`, que aquí no existe. Sin esta variable, el servidor no funciona (a propósito: así nunca mezcla datos por accidente) |
 | `AUTH_USER` + `AUTH_PASSWORD_HASH`, o `SUPERADMIN_EMAIL` + `SUPERADMIN_PASSWORD_HASH` (+ `SUPERADMIN_NOMBRE` opcional) | Sí, al menos una de las dos formas | Solo se usa si Postgres arranca **vacío**, para crear el primer SUPER_ADMIN. Si ya migraste los datos reales (sección 7), esto no hace nada porque el SUPER_ADMIN ya existe |
-| `RESEND_API_KEY` | No | Envío de alertas por correo (`api/send-email.js`); sin ella, ese endpoint responde error pero el resto de la app funciona igual |
 | `PORT` | No (3000 por defecto) | Puerto donde escucha `server.js` — el que debe apuntar Nginx/Caddy |
 
 Genera el hash de una contraseña con el script que ya tiene el proyecto:

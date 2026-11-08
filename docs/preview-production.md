@@ -6,7 +6,6 @@
 |---|---|---|
 | `KV_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN`, `REDIS_URL` | Un único store | Production **y** Preview (no Development) |
 | `AUTH_USER`, `AUTH_PASSWORD_HASH` | Manual | Production y Preview |
-| `RESEND_API_KEY` | Manual | Production y Preview |
 | `CAPACITACIONES_SHEETS` | Manual | Solo Production |
 | `KV_NAMESPACE`, `SUPERADMIN_*` | — | No existen |
 

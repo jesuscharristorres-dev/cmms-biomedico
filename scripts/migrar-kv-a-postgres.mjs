@@ -44,7 +44,6 @@ const CLAVES = [
   ...COLECCIONES_OBJETO.map(c => c.key),
   'cmms:tecnoTransversal', // api/tecno-transversal.js
   'cmms:capacitaciones',   // api/capacitaciones.js
-  'cmms:alertEmails',      // api/send-email.js
 ];
 
 const VALIDOS = ['production', 'preview', 'development', 'local'];

@@ -44,9 +44,8 @@ que sea SUPER_ADMIN.
     **idéntico** al de un id inexistente, así que no se puede deducir que existen.
   - Crear un equipo con el id de uno ajeno → 409, sin sobrescribirlo.
 - **Escalada de privilegios.** Hacerse SUPER_ADMIN, cambiarse de empresa, crear un SUPER_ADMIN,
-  listar usuarios, desactivar la otra empresa, ver registros sin empresa, sincronizar
-  capacitaciones o usar `send-email` → 403. Al final, el usuario sigue siendo `EMPRESA` de su
-  empresa.
+  listar usuarios, desactivar la otra empresa, ver registros sin empresa o sincronizar
+  capacitaciones → 403. Al final, el usuario sigue siendo `EMPRESA` de su empresa.
 - **Endpoints directos sin sesión:** 401 en los 10 endpoints de datos o administración. El
   catálogo público no incluye datos sensibles.
 - **SUPER_ADMIN:**

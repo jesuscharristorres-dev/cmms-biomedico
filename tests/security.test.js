@@ -11,7 +11,6 @@ import admin from '../api/admin.js';
 import equipos from '../api/equipos.js';
 import personal from '../api/personal.js';
 import reportes from '../api/reportes-falla.js';
-import sendEmail from '../api/send-email.js';
 import { setupStore, call, cookieFrom, leerEquipos, ADMIN_USER, ADMIN_PASS } from './helpers.js';
 import { createMemoryKv, setKvForTests, kv, currentNamespace } from '../lib/db.js';
 import { resetEnsureSchemaForTests } from '../lib/migrations.js';
@@ -162,11 +161,6 @@ describe('Checklist de seguridad multiempresa', () => {
     assert.equal(post.body.reportes, undefined);
     // GET /api/login sin sesión no revela nada más que "no autenticado".
     assert.deepEqual((await call(login, {})).body, { authenticated: false, entorno: 'production' });
-  });
-
-  test('14b. send-email ya no es un relay público', async () => {
-    assert.equal((await call(sendEmail, { method: 'POST', body: { to: 'x@x.co', subject: 's', html: '<b>x</b>' } })).status, 401);
-    assert.equal((await call(sendEmail, { method: 'POST', cookie: ua, body: { to: 'x@x.co', subject: 's', html: '<b>x</b>' } })).status, 403);
   });
 
   test('14c. el formulario público tiene límite de frecuencia por IP', async () => {

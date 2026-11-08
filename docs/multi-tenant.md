@@ -61,7 +61,6 @@ reescribir ningún registro existente.
 | `cmms:limpiezaPlantillas` | Plantilla del formato de limpieza | `{ [empresa_id]: … }` | Sí, por clave |
 | `cmms:tecnoTransversal` | Documentación de tecnovigilancia | `{ [docKey]: { [empresa_id]: url } \| url }` | Mixto: por empresa, o **global** (valor plano, p. ej. INVIMA) |
 | `cmms:capacitaciones` | Snapshot de Google Sheets | `{ records[] }` | Sí, `empresa` por registro. `OTRAS` = ninguna empresa, solo lo ve SUPER_ADMIN |
-| `cmms:alertEmails` | Correos de alerta | arreglo | **Global** (configuración del sistema) |
 | `session:*`, `user_sessions:*`, `login_fail:*` | Sesiones y anti fuerza bruta | — | Infraestructura |
 
 ### Integridad referencial
@@ -203,7 +202,6 @@ Los mensajes son genéricos: no revelan datos de otra empresa ni detalles intern
 | `POST /api/login` | Mensaje genérico de credenciales | Bloqueo tras 5 intentos por cuenta y por IP; hash señuelo contra la enumeración de emails |
 | `GET /api/reportes-falla?catalogo=1` | Empresas activas (id, nombre, color, logo, sedes). Equipos de empresas activas: id, empresa, sede, nombre, marca, modelo, serie, n.º de inventario | Nunca incluye mantenimientos, calibraciones, observaciones, documentos, datos de contacto ni usuarios |
 | `POST /api/reportes-falla` | Solo el reporte creado | Whitelist de campos; empresa activa; sede y equipo de esa empresa; 30 reportes por hora por IP |
-| `POST /api/send-email` | — | **Ya no es público**: solo SUPER_ADMIN. Antes permitía enviar HTML arbitrario a la lista interna de alertas |
 
 ## 7. Frontend
 
