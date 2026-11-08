@@ -12,7 +12,7 @@ import equipos from '../api/equipos.js';
 import personal from '../api/personal.js';
 import reportes from '../api/reportes-falla.js';
 import sendEmail from '../api/send-email.js';
-import { setupStore, call, cookieFrom, ADMIN_USER, ADMIN_PASS } from './helpers.js';
+import { setupStore, call, cookieFrom, leerEquipos, ADMIN_USER, ADMIN_PASS } from './helpers.js';
 import { createMemoryKv, setKvForTests, kv, currentNamespace } from '../lib/db.js';
 import { resetEnsureSchemaForTests } from '../lib/migrations.js';
 
@@ -76,13 +76,13 @@ describe('Checklist de seguridad multiempresa', () => {
   test('6. Usuario de A no puede modificar registros de B', async () => {
     const r = await call(equipos, { method: 'PATCH', cookie: ua, body: { id: 'eq_1_1', patch: { marca: 'HACK' } } });
     assert.equal(r.status, 404);
-    assert.notEqual((await store.get('cmms:equipos')).find(e => e.id === 'eq_1_1').marca, 'HACK');
+    assert.notEqual((await leerEquipos(store)).find(e => e.id === 'eq_1_1').marca, 'HACK');
   });
 
   test('7. Usuario de A no puede eliminar registros de B', async () => {
     const r = await call(equipos, { method: 'DELETE', cookie: ua, body: { id: 'eq_1_1' } });
     assert.equal(r.status, 404);
-    assert.ok((await store.get('cmms:equipos')).some(e => e.id === 'eq_1_1'));
+    assert.ok((await leerEquipos(store)).some(e => e.id === 'eq_1_1'));
   });
 
   test('8. Usuario de A no puede cambiar su empresa_id para volverse usuario de B', async () => {
@@ -260,7 +260,7 @@ describe('Separación de entornos (Preview / Production) sobre un mismo KV', () 
       const usuarios = await raw.get('cmms:usuarios');
       assert.equal(usuarios.filter(u => u.role === 'SUPER_ADMIN').length, 1);
       assert.equal((await raw.get('cmms:empresas')).length, 5);
-      assert.equal((await raw.get('cmms:schema_migrations')).length, 3);
+      assert.equal((await raw.get('cmms:schema_migrations')).length, 4);
       assert.equal(await raw.get('cmms:schema_migrations:lock'), null, 'el candado se libera');
     } finally {
       process.env.KV_NAMESPACE = prevNs;

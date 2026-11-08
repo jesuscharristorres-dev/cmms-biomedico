@@ -67,6 +67,19 @@ export async function call(handler, { method = 'GET', query = {}, body, cookie }
   return out;
 }
 
+/**
+ * Lee el inventario de equipos tal como lo guarda el sistema hoy: una clave por equipo (ver
+ * lib/equipos.js), no el arreglo histórico bajo `cmms:equipos` (que una vez migrado queda
+ * congelado — ver migración 004 en lib/migrations.js). `raw` es el store crudo devuelto por
+ * `createMemoryKv`/`setupStore`; `prefix` es el prefijo de namespace si aplica (p. ej. 'preview:').
+ */
+export async function leerEquipos(raw, prefix = '') {
+  const ids = await raw.smembers(`${prefix}cmms:equipos:ids`);
+  if (!ids.length) return [];
+  const valores = await Promise.all(ids.map(id => raw.get(`${prefix}cmms:equipos:item:${id}`)));
+  return valores.filter(Boolean);
+}
+
 export function cookieFrom(response) {
   const sc = response.headers['set-cookie'];
   if (!sc) return '';

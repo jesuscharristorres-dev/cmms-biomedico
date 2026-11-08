@@ -20,11 +20,11 @@
 import { kv } from '../lib/db.js';
 import { requireAuth, allowRate, getClientIp } from '../lib/auth.js';
 import { listEmpresas, getEmpresa, empresaPublica } from '../lib/empresas.js';
+import { listEquipos } from '../lib/equipos.js';
 import { empresaFilter, scopeArray, findOwned, applyScopedPatch } from '../lib/tenancy.js';
 import { HttpError, withErrors, methodNotAllowed } from '../lib/http.js';
 
 const KV_KEY = 'cmms:reportesFalla';
-const EQUIPOS_KEY = 'cmms:equipos';
 const PRIORIDADES = ['Baja', 'Media', 'Alta', 'Crítica'];
 const MAX_REPORTES_POR_HORA = 30;
 
@@ -35,7 +35,7 @@ function texto(v, max) {
 async function catalogoPublico(res) {
   const empresas = (await listEmpresas()).filter(e => e.estado === 'activo');
   const activas = new Set(empresas.map(e => e.id));
-  const equipos = ((await kv.get(EQUIPOS_KEY)) || [])
+  const equipos = (await listEquipos())
     .filter(e => e && activas.has(e.empresa))
     .map(e => ({
       id: e.id, empresa: e.empresa, sede: e.sede,
@@ -57,7 +57,7 @@ async function construirReportePublico(body) {
   const sede = texto(r.sede, 80);
   if (empresa && !empresa.sedes.includes(sede)) errores.sede = 'La sede no pertenece a la empresa.';
 
-  const equipos = (await kv.get(EQUIPOS_KEY)) || [];
+  const equipos = await listEquipos();
   const equipo = equipos.find(e => e && e.id === r.equipoId);
   if (!equipo || !empresa || equipo.empresa !== empresa.id || equipo.sede !== sede) {
     errores.equipoId = 'El equipo no pertenece a la empresa y sede seleccionadas.';

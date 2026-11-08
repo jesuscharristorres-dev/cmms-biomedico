@@ -52,7 +52,7 @@ reescribir ningún registro existente.
 
 | Clave KV | Entidad | Forma | ¿Pertenece a una empresa? |
 |---|---|---|---|
-| `cmms:equipos` | Equipos, con preventivos, correctivos, calibraciones, bajas y documentos anidados | arreglo | Sí, `empresa` por registro |
+| `cmms:equipos:ids` + `cmms:equipos:item:<id>` | Equipos, con preventivos, correctivos, calibraciones, bajas y documentos anidados | un SET de ids + un valor por equipo (ver `lib/equipos.js` y la migración `004_equipos_por_clave`) | Sí, `empresa` por registro |
 | `cmms:personal` | Hojas de vida del personal | arreglo | Sí, `empresa` por registro |
 | `cmms:reportesFalla` | Reportes de falla (órdenes de trabajo correctivas) | arreglo | Sí, `empresa` por registro |
 | `cmms:planesProgramas` | Planes y programas | `{ [empresa_id]: … }` | Sí, por clave |
@@ -86,6 +86,7 @@ aplicadas se registran en `cmms:schema_migrations`.
 | `001_empresas` | Crea `cmms:empresas` con las 5 empresas reales. No sobrescribe empresas ya editadas | Borra `cmms:empresas`, solo si ningún usuario está asignado a una empresa |
 | `002_super_admin` | Si no hay SUPER_ADMIN, lo crea desde `SUPERADMIN_EMAIL`/`SUPERADMIN_PASSWORD_HASH` o desde `AUTH_USER`/`AUTH_PASSWORD_HASH`. Sin credenciales no se marca como aplicada y se reintenta | Elimina los usuarios creados por la migración |
 | `003_auditoria_sin_empresa` | Genera `cmms:migracion:sin_empresa` con los registros cuya `empresa` no coincide con ninguna empresa. **No modifica datos** | Borra el informe |
+| `004_equipos_por_clave` | Copia cada equipo de `cmms:equipos` a su propia clave (`cmms:equipos:item:<id>` + índice `cmms:equipos:ids`) — ver `lib/equipos.js`. `cmms:equipos` no se toca, queda como respaldo histórico | Borra las claves nuevas (`cmms:equipos:ids` y cada `cmms:equipos:item:<id>`) |
 
 **Ejecución:**
 
