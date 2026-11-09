@@ -150,7 +150,7 @@ export default function TecnovigilanciaPage({ transversal, reportes, comites, ac
                           <div className="text-2xs mt-0.5 font-semibold" style={{ color: card.color }}>{card.subtitulo}</div>
                         </div>
                       </div>
-                      <DocumentoEstadoAcciones url={card.url} onChange={card.onChange} readOnly={readOnly || (card.soloSuperAdmin && !isSuper)} t={t} accent={card.color} />
+                      <DocumentoEstadoAcciones url={card.url} onChange={card.onChange} readOnly={readOnly || (card.soloSuperAdmin && !isSuper)} t={t} accent={card.color} titulo={`${card.titulo} · ${card.subtitulo}`} />
                     </div>
                   </div>
                 );
@@ -280,7 +280,7 @@ export default function TecnovigilanciaPage({ transversal, reportes, comites, ac
                         </div>
                       </div>
                       <DocumentoEstadoAcciones url={urlDeDoc(doc, c.key)}
-                        onChange={v => onUpdateTransversal(doc.key, c.key, v)} readOnly={readOnly} t={t} accent={c.color} />
+                        onChange={v => onUpdateTransversal(doc.key, c.key, v)} readOnly={readOnly} t={t} accent={c.color} titulo={`${doc.label} · ${c.key}`} />
                     </div>
                   </div>
                 );

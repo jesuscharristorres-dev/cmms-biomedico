@@ -5,7 +5,7 @@
 // tal cual, sin ningún cambio de comportamiento.
 
 import { useState, useRef, useMemo } from 'react';
-import { CalendarClock, FileText, Plus, Trash2, Save, X, Pencil, Upload } from 'lucide-react';
+import { CalendarClock, FileText, Plus, Trash2, Save, X, Pencil, Upload, ExternalLink } from 'lucide-react';
 import { formatFechaCorta } from '../utils/fechas.js';
 
 // Botón compartido — variantes primary/outline/danger/ghost. Reemplaza las
@@ -128,12 +128,48 @@ export function SelectInput({ value, onChange, options, t, disabled, dense, uppe
   );
 }
 
+// Vista previa embebida de un documento con URL (enlace externo — Drive/OneDrive/SharePoint
+// ya sirven su propia página de vista previa en esa misma URL, así que basta con incrustarla;
+// o un blob:/data: URI local). Reemplaza el viejo "abrir en pestaña nueva": el documento se ve
+// sin salir de la app. Si el sitio bloquea que lo incrusten (algunos lo hacen, y no hay forma
+// confiable de detectarlo desde JS por ser contenido de otro origen — el iframe no avisa de
+// ese error), "Abrir en pestaña nueva" queda siempre visible como salida, nunca escondido
+// detrás de un estado de error que no podemos saber con certeza si ocurrió.
+export function PreviewModal({ titulo, subtitulo, fuente, onClose, t, accent }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className={`animate-modal-in relative w-full max-w-2xl h-[85vh] flex flex-col rounded-xl border overflow-hidden ${t.panel} ${t.border}`}>
+        <div className="flex items-start justify-between gap-3 p-4 border-b shrink-0" style={{ borderColor: 'inherit' }}>
+          <div className="min-w-0">
+            <div className="text-sm font-bold truncate">{titulo}</div>
+            {subtitulo && <div className={`text-2xs ${t.muted}`}>{subtitulo}</div>}
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" className={`w-9 h-9 flex items-center justify-center shrink-0 -mr-1 -mt-1 rounded-md ${t.muted} hover:opacity-70`}><X size={18} /></button>
+        </div>
+        <div className={`flex-1 min-h-0 ${t.panel3}`}>
+          <iframe src={fuente} title={titulo} className="w-full h-full border-0" />
+        </div>
+        <div className="flex items-center justify-end gap-2 p-4 border-t shrink-0" style={{ borderColor: 'inherit' }}>
+          <Button variant="outline" t={t} onClick={onClose}>Cerrar</Button>
+          <Button variant="primary" accent={accent || '#DC2626'} icon={ExternalLink} iconSize={13}
+            onClick={() => window.open(fuente, '_blank', 'noopener,noreferrer')}>
+            Abrir en pestaña nueva
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Componente único para presentar cualquier campo de documento (certificados, actas,
 // hojas de vida, manuales, adjuntos, etc.) en toda la app. Nunca se muestra la URL cruda:
 // solo un botón con ícono de PDF, o un estado "Sin documento" si está vacío. El enlace
 // real se conserva intacto en los datos — esto solo cambia la presentación visual.
-// Cualquier campo nuevo de documento debe reutilizar este mismo componente.
+// Cualquier campo nuevo de documento debe reutilizar este mismo componente. Al hacer clic se
+// abre la vista previa incrustada (PreviewModal) en vez de navegar a una pestaña nueva.
 export function PdfLink({ url, label = 'Ver PDF', title, t, emptyLabel = 'Sin documento' }) {
+  const [abierto, setAbierto] = useState(false);
   if (!url) {
     return (
       <span title={emptyLabel}
@@ -143,11 +179,14 @@ export function PdfLink({ url, label = 'Ver PDF', title, t, emptyLabel = 'Sin do
     );
   }
   return (
-    <a href={url} target="_blank" rel="noreferrer" title={title || label}
-      className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold shrink-0 transition-colors hover:bg-[#DC2626]/10"
-      style={{ borderColor: '#DC2626', color: '#DC2626' }}>
-      <FileText size={13} /> {label}
-    </a>
+    <>
+      <button type="button" onClick={() => setAbierto(true)} title={title || label}
+        className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold shrink-0 transition-colors hover:bg-[#DC2626]/10"
+        style={{ borderColor: '#DC2626', color: '#DC2626' }}>
+        <FileText size={13} /> {label}
+      </button>
+      {abierto && <PreviewModal titulo={title || label} fuente={url} t={t} onClose={() => setAbierto(false)} />}
+    </>
   );
 }
 
@@ -430,9 +469,10 @@ export function MiniRow({ label, value, t, color, noTranslate }) {
 // Limpieza y desinfección...) — "Sin documento"/"Documento disponible", y editar/cargar la
 // URL. Reutilizado por varias páginas de dominio distintas, por eso vive aquí y no en una
 // de ellas.
-export function DocumentoEstadoAcciones({ url, onChange, readOnly, t, accent }) {
+export function DocumentoEstadoAcciones({ url, onChange, readOnly, t, accent, titulo = 'Documento' }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(url || '');
+  const [previendo, setPreviendo] = useState(false);
   const tieneDocumento = Boolean((url || '').trim());
 
   const abrirEdicion = () => { setDraft(url || ''); setEditing(true); };
@@ -458,7 +498,7 @@ export function DocumentoEstadoAcciones({ url, onChange, readOnly, t, accent }) 
         <div className="flex gap-2 flex-wrap pt-1">
           {tieneDocumento && (
             <Button variant="outline" size="sm" t={t} icon={FileText} iconSize={12}
-              onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>Ver documento</Button>
+              onClick={() => setPreviendo(true)}>Ver la vista previa del documento</Button>
           )}
           {!readOnly && (
             <Button variant={tieneDocumento ? 'ghost' : 'primary'} size="sm" accent={accent} t={t}
@@ -468,6 +508,7 @@ export function DocumentoEstadoAcciones({ url, onChange, readOnly, t, accent }) 
           )}
         </div>
       )}
+      {previendo && <PreviewModal titulo={titulo} fuente={url} t={t} accent={accent} onClose={() => setPreviendo(false)} />}
     </>
   );
 }

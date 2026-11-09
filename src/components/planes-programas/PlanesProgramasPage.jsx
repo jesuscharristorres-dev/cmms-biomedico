@@ -37,7 +37,7 @@ function PlanDocumentoCard({ doc, url, onChange, readOnly, t, accent }) {
           <div className={`text-2xs mt-0.5 ${t.muted}`}>{doc.descripcion}</div>
         </div>
       </div>
-      <DocumentoEstadoAcciones url={url} onChange={onChange} readOnly={readOnly} t={t} accent={accent} />
+      <DocumentoEstadoAcciones url={url} onChange={onChange} readOnly={readOnly} t={t} accent={accent} titulo={doc.label} />
     </div>
   );
 }

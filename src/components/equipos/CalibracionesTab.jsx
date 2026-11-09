@@ -5,7 +5,7 @@
 
 import { useState, useMemo } from 'react';
 import { ShieldCheck, Plus, MoreVertical, Pencil, Trash2, ExternalLink, X, AlertTriangle, Search, ArrowUpDown } from 'lucide-react';
-import { Button, Badge, Field, TextInput } from '../ui.jsx';
+import { Button, Badge, Field, TextInput, PreviewModal } from '../ui.jsx';
 import { uid } from '../../utils/id.js';
 import { todayISO } from '../../utils/fechas.js';
 import { SEMANTIC_HEX, CAL_HEX } from '../../data/equipos.js';
@@ -154,6 +154,7 @@ export default function CalibracionesTab({ equipo, onUpdate, readOnly, t, accent
   const [openPanel, setOpenPanel] = useState(null); // null | 'orden' | <calId>
   const [formAbierto, setFormAbierto] = useState(null); // null | { mode: 'create' } | { mode: 'edit', cal }
   const [porEliminar, setPorEliminar] = useState(null);
+  const [preview, setPreview] = useState(null); // null | cal (certificadoUrl a mostrar)
 
   const guardarCalibracion = (datos, id) => {
     const list = id
@@ -246,7 +247,7 @@ export default function CalibracionesTab({ equipo, onUpdate, readOnly, t, accent
           {filtradas.map(cal => (
             <CalibracionCard key={cal.id} cal={cal} t={t} accent={accent} readOnly={readOnly}
               menuOpen={openPanel === cal.id} onToggleMenu={() => setOpenPanel(p => p === cal.id ? null : cal.id)}
-              onView={() => window.open(cal.certificadoUrl, '_blank', 'noopener,noreferrer')}
+              onView={() => setPreview(cal)}
               onEdit={() => { setOpenPanel(null); setFormAbierto({ mode: 'edit', cal }); }}
               onDelete={() => { setOpenPanel(null); setPorEliminar(cal); }} />
           ))}
@@ -265,6 +266,11 @@ export default function CalibracionesTab({ equipo, onUpdate, readOnly, t, accent
           fecha={porEliminar.fecha ? new Date(porEliminar.fecha + 'T00:00:00').toLocaleDateString('es-CO') : ''}
           onCancel={() => setPorEliminar(null)}
           onConfirm={() => { eliminarCalibracion(porEliminar.id); setPorEliminar(null); }} />
+      )}
+      {preview && (
+        <PreviewModal t={t} accent={accent} titulo="Certificado de calibración"
+          subtitulo={preview.fecha ? new Date(preview.fecha + 'T00:00:00').toLocaleDateString('es-CO') : ''}
+          fuente={preview.certificadoUrl} onClose={() => setPreview(null)} />
       )}
     </div>
   );

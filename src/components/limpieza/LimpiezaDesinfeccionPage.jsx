@@ -5,15 +5,14 @@
 
 import { useState } from 'react';
 import { FileText, Eye, Download, MapPin, CheckCircle2, AlertCircle, SprayCan } from 'lucide-react';
-import { Button, TextInput, PdfLink, DocumentoEstadoAcciones } from '../ui.jsx';
+import { Button, TextInput, PdfLink, DocumentoEstadoAcciones, PreviewModal } from '../ui.jsx';
 import { COMPANIES, companyOf } from '../../data/empresas.js';
 import { MONTHS } from '../../data/equipos.js';
 
-// Convierte un Data URI (archivoDatos) a un blob: URL temporal — usado solo para "Ver" en
-// una pestaña nueva. Necesario porque los navegadores modernos bloquean la navegación de
-// nivel superior directamente a una URL data: (política anti-phishing de Chrome desde 2019),
-// pero sí permiten blob: URLs; para "Descargar" no hace falta este paso porque el atributo
-// `download` de <a> ya evita ese bloqueo.
+// Convierte un Data URI (archivoDatos) a un blob: URL temporal — usado solo para la vista
+// previa incrustada (PreviewModal), que la revoca ella misma al cerrarse. Necesario porque un
+// <iframe src="data:..."> de este tamaño puede fallar o ir lentísimo en algunos navegadores;
+// un blob: URL es liviano y se comporta como cualquier otro archivo servido por red.
 function dataUriAUrlTemporal(dataUri) {
   const [header, base64 = ''] = dataUri.split(',');
   const mime = /data:([^;]+)/.exec(header)?.[1] || 'application/octet-stream';
@@ -21,12 +20,6 @@ function dataUriAUrlTemporal(dataUri) {
   const bytes = new Uint8Array(binario.length);
   for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
   return URL.createObjectURL(new Blob([bytes], { type: mime }));
-}
-function verPlantillaLimpieza(plantilla) {
-  if (!plantilla?.archivoDatos) return;
-  const url = dataUriAUrlTemporal(plantilla.archivoDatos);
-  window.open(url, '_blank', 'noopener,noreferrer');
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 function descargarPlantillaLimpieza(plantilla) {
   if (!plantilla?.archivoDatos) return;
@@ -46,6 +39,17 @@ function descargarPlantillaLimpieza(plantilla) {
 // verlo/descargarlo una última vez — desaparece solo en cuanto se guarda una URL nueva, que lo
 // reemplaza en el servidor.
 function DocumentoLimpiezaCard({ empresa, url, legacyArchivo, onChange, readOnly, t, accent, titulo }) {
+  const [previewUrl, setPreviewUrl] = useState(null); // null | blob: URL activa
+
+  const abrirPreview = () => {
+    if (!legacyArchivo?.archivoDatos) return;
+    setPreviewUrl(dataUriAUrlTemporal(legacyArchivo.archivoDatos));
+  };
+  const cerrarPreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+  };
+
   return (
     <div className={`max-w-md rounded-xl border overflow-hidden shadow-sm ${t.panel} ${t.border}`}>
       <div className="h-1" style={{ background: empresa.color }} />
@@ -58,13 +62,16 @@ function DocumentoLimpiezaCard({ empresa, url, legacyArchivo, onChange, readOnly
         {legacyArchivo && (
           <div className="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-dashed border-slate-700/30">
             <span className={`text-3xs ${t.muted}`}>Archivo cargado antes del enlace — {legacyArchivo.nombre}:</span>
-            <Button variant="outline" size="sm" t={t} icon={Eye} iconSize={12} onClick={() => verPlantillaLimpieza(legacyArchivo)}>Ver</Button>
+            <Button variant="outline" size="sm" t={t} icon={Eye} iconSize={12} onClick={abrirPreview}>Ver</Button>
             <Button variant="outline" size="sm" t={t} icon={Download} iconSize={12} onClick={() => descargarPlantillaLimpieza(legacyArchivo)}>Descargar</Button>
           </div>
         )}
 
-        <DocumentoEstadoAcciones url={url} onChange={v => onChange(empresa.key, v)} readOnly={readOnly} t={t} accent={empresa.color || accent} />
+        <DocumentoEstadoAcciones url={url} onChange={v => onChange(empresa.key, v)} readOnly={readOnly} t={t} accent={empresa.color || accent} titulo={titulo} />
       </div>
+      {previewUrl && (
+        <PreviewModal t={t} accent={empresa.color || accent} titulo={legacyArchivo?.nombre || titulo} fuente={previewUrl} onClose={cerrarPreview} />
+      )}
     </div>
   );
 }
