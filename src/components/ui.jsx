@@ -128,6 +128,25 @@ export function SelectInput({ value, onChange, options, t, disabled, dense, uppe
   );
 }
 
+// SharePoint/OneDrive (`*.sharepoint.com`, `onedrive.live.com`, `1drv.ms`) rechazan que su
+// propia página se incruste en un iframe de otro sitio (incidente 2026-11-12: "ha rechazado la
+// conexión" al previsualizar documentos de varias empresas) — es una restricción del lado de
+// Microsoft, no un bug de esta app, y no depende de la empresa ni del documento, solo del host
+// del enlace. El visor público de Office (view.officeapps.live.com) sí se deja incrustar: él
+// mismo descarga y renderiza el documento del lado de Microsoft, así que el navegador nunca
+// incrusta sharepoint.com directamente. Se usa solo para esos hosts; cualquier otro enlace
+// (Drive, blob:/data: URI local, etc.) se incrusta tal cual, como siempre.
+const HOSTS_VISOR_OFFICE = /(^|\.)(sharepoint\.com|onedrive\.live\.com|1drv\.ms)$/i;
+function aFuenteIncrustable(url) {
+  try {
+    const { hostname, protocol } = new URL(url, window.location.href);
+    if (/^https?:$/.test(protocol) && HOSTS_VISOR_OFFICE.test(hostname)) {
+      return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
+    }
+  } catch { /* url relativa, blob:, data: u otra inválida para new URL: se usa tal cual */ }
+  return url;
+}
+
 // Vista previa embebida de un documento con URL (enlace externo — Drive/OneDrive/SharePoint
 // ya sirven su propia página de vista previa en esa misma URL, así que basta con incrustarla;
 // o un blob:/data: URI local). Reemplaza el viejo "abrir en pestaña nueva": el documento se ve
@@ -136,6 +155,7 @@ export function SelectInput({ value, onChange, options, t, disabled, dense, uppe
 // ese error), "Abrir en pestaña nueva" queda siempre visible como salida, nunca escondido
 // detrás de un estado de error que no podemos saber con certeza si ocurrió.
 export function PreviewModal({ titulo, subtitulo, fuente, onClose, t, accent }) {
+  const fuenteIncrustable = useMemo(() => aFuenteIncrustable(fuente), [fuente]);
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onClose} />
@@ -148,7 +168,7 @@ export function PreviewModal({ titulo, subtitulo, fuente, onClose, t, accent }) 
           <button onClick={onClose} aria-label="Cerrar" className={`w-9 h-9 flex items-center justify-center shrink-0 -mr-1 -mt-1 rounded-md ${t.muted} hover:opacity-70`}><X size={18} /></button>
         </div>
         <div className={`flex-1 min-h-0 ${t.panel3}`}>
-          <iframe src={fuente} title={titulo} className="w-full h-full border-0" />
+          <iframe src={fuenteIncrustable} title={titulo} className="w-full h-full border-0" />
         </div>
         <div className="flex items-center justify-end gap-2 p-4 border-t shrink-0" style={{ borderColor: 'inherit' }}>
           <Button variant="outline" t={t} onClick={onClose}>Cerrar</Button>
