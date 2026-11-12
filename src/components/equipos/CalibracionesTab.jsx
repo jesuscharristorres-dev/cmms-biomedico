@@ -5,7 +5,7 @@
 
 import { useState, useMemo } from 'react';
 import { ShieldCheck, Plus, MoreVertical, Pencil, Trash2, ExternalLink, X, AlertTriangle, Search, ArrowUpDown } from 'lucide-react';
-import { Button, Badge, Field, TextInput, PreviewModal } from '../ui.jsx';
+import { Button, Badge, Field, TextInput, PreviewModal, esHostPrevisualizable } from '../ui.jsx';
 import { uid } from '../../utils/id.js';
 import { todayISO } from '../../utils/fechas.js';
 import { SEMANTIC_HEX, CAL_HEX } from '../../data/equipos.js';
@@ -33,6 +33,7 @@ function EmptyCalibracionesState({ t, accent, readOnly, onAdd }) {
 
 function CalibracionCard({ cal, t, accent, readOnly, menuOpen, onToggleMenu, onView, onEdit, onDelete }) {
   const tieneCertificado = esUrlDocumentoValida(cal.certificadoUrl || '');
+  const previsualizable = tieneCertificado && esHostPrevisualizable(cal.certificadoUrl);
   const fechaTexto = cal.fecha ? new Date(cal.fecha + 'T00:00:00').toLocaleDateString('es-CO') : 'Sin fecha';
   const color = tieneCertificado ? SEMANTIC_HEX.ok : SEMANTIC_HEX.neutral;
 
@@ -69,7 +70,7 @@ function CalibracionCard({ cal, t, accent, readOnly, menuOpen, onToggleMenu, onV
 
       <div className="flex items-center gap-2 pt-1 mt-auto">
         <Button variant="outline" size="sm" t={t} icon={ExternalLink} iconSize={12} disabled={!tieneCertificado} onClick={onView} className="flex-1">
-          Ver certificado
+          {previsualizable ? 'Ver certificado' : 'Descargar certificado'}
         </Button>
       </div>
     </div>
@@ -247,7 +248,7 @@ export default function CalibracionesTab({ equipo, onUpdate, readOnly, t, accent
           {filtradas.map(cal => (
             <CalibracionCard key={cal.id} cal={cal} t={t} accent={accent} readOnly={readOnly}
               menuOpen={openPanel === cal.id} onToggleMenu={() => setOpenPanel(p => p === cal.id ? null : cal.id)}
-              onView={() => setPreview(cal)}
+              onView={() => esHostPrevisualizable(cal.certificadoUrl) ? setPreview(cal) : window.open(cal.certificadoUrl, '_blank', 'noopener,noreferrer')}
               onEdit={() => { setOpenPanel(null); setFormAbierto({ mode: 'edit', cal }); }}
               onDelete={() => { setOpenPanel(null); setPorEliminar(cal); }} />
           ))}

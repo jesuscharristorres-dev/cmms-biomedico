@@ -5,7 +5,7 @@
 // tal cual, sin ningún cambio de comportamiento.
 
 import { useState, useRef, useMemo } from 'react';
-import { CalendarClock, FileText, Plus, Trash2, Save, X, Pencil, Upload, ExternalLink } from 'lucide-react';
+import { CalendarClock, FileText, Plus, Trash2, Save, X, Pencil, Upload, ExternalLink, Download } from 'lucide-react';
 import { formatFechaCorta } from '../utils/fechas.js';
 
 // Botón compartido — variantes primary/outline/danger/ghost. Reemplaza las
@@ -132,30 +132,27 @@ export function SelectInput({ value, onChange, options, t, disabled, dense, uppe
 // propia página se incruste en un iframe de otro sitio (incidente 2026-11-12: "ha rechazado la
 // conexión" al previsualizar documentos de varias empresas) — es una restricción del lado de
 // Microsoft, no un bug de esta app, y no depende de la empresa ni del documento, solo del host
-// del enlace. El visor público de Office (view.officeapps.live.com) sí se deja incrustar: él
-// mismo descarga y renderiza el documento del lado de Microsoft, así que el navegador nunca
-// incrusta sharepoint.com directamente. Se usa solo para esos hosts; cualquier otro enlace
-// (Drive, blob:/data: URI local, etc.) se incrusta tal cual, como siempre.
-const HOSTS_VISOR_OFFICE = /(^|\.)(sharepoint\.com|onedrive\.live\.com|1drv\.ms)$/i;
-function aFuenteIncrustable(url) {
+// del enlace. Se probó redirigir esos enlaces al visor público de Office
+// (view.officeapps.live.com), pero no es confiable (depende de que el enlace sea de acceso
+// anónimo) — por decisión explícita, para esos hosts ya ni se intenta la vista previa: el botón
+// pasa directo a descargar/abrir el documento (ver esHostPrevisualizable más abajo).
+const HOSTS_SIN_VISTA_PREVIA = /(^|\.)(sharepoint\.com|onedrive\.live\.com|1drv\.ms)$/i;
+export function esHostPrevisualizable(url) {
   try {
     const { hostname, protocol } = new URL(url, window.location.href);
-    if (/^https?:$/.test(protocol) && HOSTS_VISOR_OFFICE.test(hostname)) {
-      return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
-    }
-  } catch { /* url relativa, blob:, data: u otra inválida para new URL: se usa tal cual */ }
-  return url;
+    if (/^https?:$/.test(protocol) && HOSTS_SIN_VISTA_PREVIA.test(hostname)) return false;
+  } catch { /* url relativa, blob:, data: u otra inválida para new URL: se asume previsualizable */ }
+  return true;
 }
 
-// Vista previa embebida de un documento con URL (enlace externo — Drive/OneDrive/SharePoint
-// ya sirven su propia página de vista previa en esa misma URL, así que basta con incrustarla;
-// o un blob:/data: URI local). Reemplaza el viejo "abrir en pestaña nueva": el documento se ve
-// sin salir de la app. Si el sitio bloquea que lo incrusten (algunos lo hacen, y no hay forma
-// confiable de detectarlo desde JS por ser contenido de otro origen — el iframe no avisa de
-// ese error), "Abrir en pestaña nueva" queda siempre visible como salida, nunca escondido
-// detrás de un estado de error que no podemos saber con certeza si ocurrió.
+// Vista previa embebida de un documento con URL (enlace externo — Drive ya sirve su propia
+// página de vista previa en esa misma URL, así que basta con incrustarla; o un blob:/data: URI
+// local). Solo se usa para hosts que esHostPrevisualizable() ya filtró como previsualizables —
+// ver los llamadores. Si aun así el sitio bloquea que lo incrusten, "Abrir en pestaña nueva"
+// queda siempre visible como salida, nunca escondido detrás de un estado de error que no
+// podemos saber con certeza si ocurrió (el iframe no avisa de ese error, por ser contenido de
+// otro origen).
 export function PreviewModal({ titulo, subtitulo, fuente, onClose, t, accent }) {
-  const fuenteIncrustable = useMemo(() => aFuenteIncrustable(fuente), [fuente]);
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="animate-fade-in absolute inset-0 bg-black/60" onClick={onClose} />
@@ -168,7 +165,7 @@ export function PreviewModal({ titulo, subtitulo, fuente, onClose, t, accent }) 
           <button onClick={onClose} aria-label="Cerrar" className={`w-9 h-9 flex items-center justify-center shrink-0 -mr-1 -mt-1 rounded-md ${t.muted} hover:opacity-70`}><X size={18} /></button>
         </div>
         <div className={`flex-1 min-h-0 ${t.panel3}`}>
-          <iframe src={fuenteIncrustable} title={titulo} className="w-full h-full border-0" />
+          <iframe src={fuente} title={titulo} className="w-full h-full border-0" />
         </div>
         <div className="flex items-center justify-end gap-2 p-4 border-t shrink-0" style={{ borderColor: 'inherit' }}>
           <Button variant="outline" t={t} onClick={onClose}>Cerrar</Button>
@@ -187,7 +184,9 @@ export function PreviewModal({ titulo, subtitulo, fuente, onClose, t, accent }) 
 // solo un botón con ícono de PDF, o un estado "Sin documento" si está vacío. El enlace
 // real se conserva intacto en los datos — esto solo cambia la presentación visual.
 // Cualquier campo nuevo de documento debe reutilizar este mismo componente. Al hacer clic se
-// abre la vista previa incrustada (PreviewModal) en vez de navegar a una pestaña nueva.
+// abre la vista previa incrustada (PreviewModal) en vez de navegar a una pestaña nueva — salvo
+// que el host no la permita (ver esHostPrevisualizable), caso en el que el botón pasa directo
+// a descargar/abrir el documento, sin intentar una vista previa que sabemos que va a fallar.
 export function PdfLink({ url, label = 'Ver PDF', title, t, emptyLabel = 'Sin documento' }) {
   const [abierto, setAbierto] = useState(false);
   if (!url) {
@@ -198,14 +197,17 @@ export function PdfLink({ url, label = 'Ver PDF', title, t, emptyLabel = 'Sin do
       </span>
     );
   }
+  const previsualizable = esHostPrevisualizable(url);
   return (
     <>
-      <button type="button" onClick={() => setAbierto(true)} title={title || label}
+      <button type="button"
+        onClick={() => previsualizable ? setAbierto(true) : window.open(url, '_blank', 'noopener,noreferrer')}
+        title={title || label}
         className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold shrink-0 transition-colors hover:bg-[#DC2626]/10"
         style={{ borderColor: '#DC2626', color: '#DC2626' }}>
-        <FileText size={13} /> {label}
+        {previsualizable ? <FileText size={13} /> : <Download size={13} />} {previsualizable ? label : 'Descargar documento'}
       </button>
-      {abierto && <PreviewModal titulo={title || label} fuente={url} t={t} onClose={() => setAbierto(false)} />}
+      {abierto && previsualizable && <PreviewModal titulo={title || label} fuente={url} t={t} onClose={() => setAbierto(false)} />}
     </>
   );
 }
@@ -498,6 +500,7 @@ export function DocumentoEstadoAcciones({ url, onChange, readOnly, t, accent, ti
   const abrirEdicion = () => { setDraft(url || ''); setEditing(true); };
   const guardar = () => { onChange(draft.trim()); setEditing(false); };
   const cancelar = () => { setDraft(url || ''); setEditing(false); };
+  const previsualizable = esHostPrevisualizable(url);
 
   return (
     <>
@@ -516,10 +519,13 @@ export function DocumentoEstadoAcciones({ url, onChange, readOnly, t, accent, ti
         </div>
       ) : (
         <div className="flex gap-2 flex-wrap pt-1">
-          {tieneDocumento && (
+          {tieneDocumento && (previsualizable ? (
             <Button variant="outline" size="sm" t={t} icon={FileText} iconSize={12}
               onClick={() => setPreviendo(true)}>Ver la vista previa del documento</Button>
-          )}
+          ) : (
+            <Button variant="outline" size="sm" t={t} icon={Download} iconSize={12}
+              onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>Descargar documento</Button>
+          ))}
           {!readOnly && (
             <Button variant={tieneDocumento ? 'ghost' : 'primary'} size="sm" accent={accent} t={t}
               icon={tieneDocumento ? Pencil : Upload} iconSize={12} onClick={abrirEdicion}>
